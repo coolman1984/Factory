@@ -42,10 +42,11 @@ L.columns = L.columns.filter((c) => { const b = { x: c.p[0] - 1.6, y: c.p[1] - 1
 L.rooms = L.rooms.filter((r) => r.label !== "Area" && r.label !== "Plan area");
 
 /* ---------- 2. the floor as a grid ---------- */
-function grid(plate, x0, y0, x1, y1) {
+function grid(plate, x0, y0, x1, y1, softWalls = false) {
   const nx = Math.ceil((x1 - x0) / CELL), ny = Math.ceil((y1 - y0) / CELL), blocked = new Uint8Array(nx * ny);
   const rect = (x, y, w, h) => { for (let j = Math.floor((y - y0) / CELL); j <= Math.ceil((y + h - y0) / CELL); j++) for (let i = Math.floor((x - x0) / CELL); i <= Math.ceil((x + w - x0) / CELL); i++) if (i >= 0 && j >= 0 && i < nx && j < ny) blocked[j * nx + i] = 1; };
   for (const w of L.walls) if (w.plate === plate) { const [a, b] = [w.a, w.b]; rect(Math.min(a[0], b[0]) - .6, Math.min(a[1], b[1]) - .6, Math.abs(a[0] - b[0]) + 1.2, Math.abs(a[1] - b[1]) + 1.2); }
+  const soft = softWalls ? blocked.slice() : null; if (softWalls) blocked.fill(0);
   for (const r of [...L.racks, ...L.machines, ...L.trucks]) if (r.plate === plate) rect(r.x, r.y, r.w, r.h);
   for (const c of L.columns) if (c.plate === plate) rect(c.p[0] - 1.4, c.p[1] - 1.4, 2.8, 2.8);
   for (const c of L.conveyors) if (c.plate === plate) for (let k = 1; k < c.pts.length; k++) { const a = c.pts[k - 1], b = c.pts[k]; rect(Math.min(a[0], b[0]) - 2, Math.min(a[1], b[1]) - 2, Math.abs(a[0] - b[0]) + 4, Math.abs(a[1] - b[1]) + 4); }
@@ -54,9 +55,10 @@ function grid(plate, x0, y0, x1, y1) {
   const relax = (k, n, d) => { if (clearance[n] + d < clearance[k]) clearance[k] = clearance[n] + d; };
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const k = j * nx + i; if (i) relax(k, k - 1, 1); if (j) relax(k, k - nx, 1); if (i && j) relax(k, k - nx - 1, 1.41); if (j && i < nx - 1) relax(k, k - nx + 1, 1.41); }
   for (let j = ny - 1; j >= 0; j--) for (let i = nx - 1; i >= 0; i--) { const k = j * nx + i; if (i < nx - 1) relax(k, k + 1, 1); if (j < ny - 1) relax(k, k + nx, 1); if (i < nx - 1 && j < ny - 1) relax(k, k + nx + 1, 1.41); if (i && j < ny - 1) relax(k, k + nx - 1, 1.41); }
-  return { minX: x0, minY: y0, nx, ny, cell: CELL, blocked, clearance, point: (i, j) => ({ x: x0 + (i + .5) * CELL, y: y0 + (j + .5) * CELL }), index: (p) => { const i = Math.floor((p.x - x0) / CELL), j = Math.floor((p.y - y0) / CELL); return i < 0 || j < 0 || i >= nx || j >= ny ? undefined : j * nx + i; } };
+  return { soft, minX: x0, minY: y0, nx, ny, cell: CELL, blocked, clearance, point: (i, j) => ({ x: x0 + (i + .5) * CELL, y: y0 + (j + .5) * CELL }), index: (p) => { const i = Math.floor((p.x - x0) / CELL), j = Math.floor((p.y - y0) / CELL); return i < 0 || j < 0 || i >= nx || j >= ny ? undefined : j * nx + i; } };
 }
-const grids = { "E1": grid("E1", 21, 150, 551, 494), "E2-1F": grid("E2-1F", 555, 305, 911, 443), "E2-2F": grid("E2-2F", 712, 143, 947, 303) };
+const makeGrids = (soft) => ({ "E1": grid("E1", 21, 150, 551, 494, soft), "E2-1F": grid("E2-1F", 555, 305, 911, 443, soft), "E2-2F": grid("E2-2F", 712, 143, 947, 303, soft) });
+let grids = makeGrids(false);
 const needOf = (m) => m.effectiveWidth / (2 * CELL) + .5, FORK = { name: "forklift", effectiveWidth: 3.2 * M }, AGV = { name: "agv", effectiveWidth: 2.4 * M }, TROLLEY = { name: "trolley", effectiveWidth: 3.6 * M };
 const free = (g, p, need) => { const k = g.index(p); return k !== undefined && !g.blocked[k] && g.clearance[k] >= need; };
 const nearestFree = (g, p, need) => { for (let r = 0; r < 60; r++) for (let a = 0; a < 24; a++) { const q = { x: p[0] + Math.cos(a / 24 * 6.283) * r * CELL * .7, y: p[1] + Math.sin(a / 24 * 6.283) * r * CELL * .7 }; if (free(g, q, need)) return snap(g, q); } return null; };
@@ -64,7 +66,7 @@ const out = (p) => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10];
 // Square routes: Dijkstra over (cell, heading) with four directions only. A turn costs as much as 14 m of straight run, so
 // paths are long clean straights with few 90 degree corners, and running close to obstacles costs extra, so they hold the lane centre.
 // Same floor model as 3D-Modeling's findRoute (blocked cells + clearance), which allows diagonals; this one must not.
-const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]], TURN = 14 / L.scale;
+const DIRS = [[1, 0], [0, 1], [-1, 0], [0, -1]], TURN = 30 / L.scale, WALL = 5 / L.scale;   // a turn costs 30 m of straight run; crossing a wall (a new door) about 15 m
 function ortho(g, from, to, need, label) {
   const s = g.index(from), e = g.index(to), N = g.nx * g.ny;
   if (s === undefined || e === undefined) throw new Error(`OUTSIDE ${label}`);
@@ -80,7 +82,7 @@ function ortho(g, from, to, need, label) {
       if ((nd + 2) % 4 === dir) continue;
       const a = x + DIRS[nd][0], b = y + DIRS[nd][1]; if (a < 0 || b < 0 || a >= g.nx || b >= g.ny) continue;
       const n = b * g.nx + a; if (g.blocked[n] || g.clearance[n] < need) continue;
-      const near = Math.max(0, need * 2.2 - g.clearance[n]) * 1.6, c = d0 + CELL * (1 + near) + (nd === dir ? 0 : TURN), ns = n * 4 + nd;
+      const near = Math.max(0, need * 1.5 - g.clearance[n]) * .3, c = d0 + CELL * (1 + near) + (nd === dir ? 0 : TURN) + (g.soft && g.soft[n] ? WALL : 0), ns = n * 4 + nd;
       if (c < dist[ns]) { dist[ns] = c; prev[ns] = st; push(ns, c); }
     }
   }
@@ -96,16 +98,43 @@ function route(plate, from, to, mover, label) { return ortho(grids[plate], from,
 const pad = {}; const station = (id, need = needOf(TROLLEY)) => { if (pad[id]) return pad[id]; const n = D.nodes[id], q = nearestFree(grids[plateOf(n.x, n.y)], [n.x, n.y], need); if (!q) throw new Error("no free pad for " + id); pad[id] = q; return q; };
 const E = D.elevator, need0 = needOf(TROLLEY), low = nearestFree(grids["E2-1F"], E.low, need0), high = nearestFree(grids["E2-2F"], [742, 282], need0); E.low = out(low); E.high = out(high);
 const gateLCM = nearestFree(grids["E2-2F"], [716, 282], need0), gateMain = nearestFree(grids["E1"], [223, 166], need0);
-for (const f of D.flows) {
-  let at = station(f.steps[0].node);
-  f.steps.forEach((s, i) => {
-    if (i === 0) return; if (s.path === "lift") { at = high; return; }
-    const here = plateOf(at.x, at.y);
-    if (s.title === "To LCM") { const p = route(here, at, gateLCM, TROLLEY, f.name + " " + s.title).map(out); D.nodes[s.node].y = p[p.length - 1][1]; s.path = [...p, [D.nodes[s.node].x, p[p.length - 1][1]]]; return; }
-    if (s.title === "To Main") { const p = route(here, at, gateMain, TROLLEY, f.name + " " + s.title).map(out); D.nodes[s.node].x = p[p.length - 1][0]; s.path = [...p, [p[p.length - 1][0], 131]]; return; }
-    const to = s.title === "To Elev 5" ? low : station(s.node); s.path = route(here, at, to, TROLLEY, f.name + " " + s.title).map(out); at = to;
-  });
+// one planner, used twice: first with walls passable at a price, to find the direct line; doors are cut there; then for real
+function planFlows(commit) {
+  const legs = [];
+  for (const f of D.flows) {
+    let at = station(f.steps[0].node);
+    f.steps.forEach((s, i) => {
+      if (i === 0) return; if (s.path === "lift" || s.lift) { at = high; return; }
+      const here = plateOf(at.x, at.y), label = f.name + " " + s.title;
+      if (s.title === "To LCM" || s.title === "To Main") {
+        const p = route(here, at, s.title === "To LCM" ? gateLCM : gateMain, TROLLEY, label).map(out), e = p[p.length - 1]; legs.push(p); if (!commit) return;
+        if (s.title === "To LCM") { D.nodes[s.node].y = e[1]; s.path = [...p, [D.nodes[s.node].x, e[1]]]; } else { D.nodes[s.node].x = e[0]; s.path = [...p, [e[0], 131]]; }
+        return;
+      }
+      const to = s.title === "To Elev 5" ? low : station(s.node), p = route(here, at, to, TROLLEY, label).map(out); legs.push(p); if (commit) s.path = p; at = to;
+    });
+  }
+  return legs;
 }
+for (const f of D.flows) for (const s of f.steps) if (s.path === "lift") s.lift = true;
+for (const f of D.flows) for (const s of f.steps) if (D.nodes[s.node].kind !== "dest" && s.title !== "To Elev 5" && !s.lift) station(s.node);   // pads are chosen on the real floor, never inside a wall
+const hardGrids = grids; grids = makeGrids(true);
+const legs = planFlows(false); grids = hardGrids; let doors = 0;
+function cutAt(x, y, axis) {   // axis "x": a vertical wall at x, opened around y; axis "y": a horizontal wall at y, opened around x
+  const i = axis === "x" ? 0 : 1, j = 1 - i, at = axis === "x" ? x : y, mid = axis === "x" ? y : x, half = 2.8 * M, plate = plateOf(x, y), o = []; let cut = false;
+  for (const w of L.walls) {
+    const on = w.plate === plate && Math.abs(w.a[i] - w.b[i]) < .2 && Math.abs(w.a[i] - at) < 2, lo = Math.min(w.a[j], w.b[j]), hi = Math.max(w.a[j], w.b[j]);
+    if (!on || hi < mid - half || lo > mid + half) { o.push(w); continue; }
+    cut = true; const part = (p, q) => { if (q - p < 3) return; const a = [...w.a], b = [...w.b]; a[j] = p; b[j] = q; o.push({ ...w, a, b }); }; part(lo, mid - half); part(mid + half, hi);
+  }
+  L.walls = o; if (cut) doors++;
+}
+for (const p of legs) for (let i = 1; i < p.length; i++) { const a = p[i - 1], b = p[i], v = a[0] === b[0];
+  for (const w of [...L.walls]) { if (w.plate !== plateOf((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)) continue; const wv = Math.abs(w.a[0] - w.b[0]) < .2, wh = Math.abs(w.a[1] - w.b[1]) < .2;
+    if (!v && wv && w.a[0] > Math.min(a[0], b[0]) && w.a[0] < Math.max(a[0], b[0]) && a[1] > Math.min(w.a[1], w.b[1]) - 2 && a[1] < Math.max(w.a[1], w.b[1]) + 2) cutAt(w.a[0], a[1], "x");
+    if (v && wh && w.a[1] > Math.min(a[1], b[1]) && w.a[1] < Math.max(a[1], b[1]) && a[0] > Math.min(w.a[0], w.b[0]) - 2 && a[0] < Math.max(w.a[0], w.b[0]) + 2) cutAt(a[0], w.a[1], "y"); } }
+console.log("doors cut on the direct lines:", doors);
+grids = makeGrids(false); planFlows(true);
 for (const [id, q] of Object.entries(pad)) { D.nodes[id].x = out(q)[0]; D.nodes[id].y = out(q)[1]; }
 D.nodes[134].x = E.low[0]; D.nodes[134].y = E.low[1];
 // painted lanes: the unique straight runs of every flow, for the floor markings
@@ -133,7 +162,10 @@ for (const [kind, plate, mover] of [["forklift", "E1", FORK], ["forklift", "E1",
   const pts = findLoop(plate, mover); if (!pts) { console.log("left out:", kind, plate); continue; }
   L.routes.push({ kind, plate, pts }); blockPath(pts, (kind === "forklift" ? 2.4 : 1.8) * M); reclear(grids[plate]); console.log(`${kind} on ${plate}: circuit ${Math.round(Math.abs(pts[1][0] - pts[0][0]) * L.scale)} x ${Math.round(Math.abs(pts[2][1] - pts[1][1]) * L.scale)} m`);
 }
+// staged pallets on free floor in front of the docks, clear of every lane
+L.pallets = []; { const g = grids.E1; for (const m of L.machines) if (m.type === "dock") for (const dx of [-5, 5]) { const q = { x: m.x + m.w / 2 + dx, y: m.y - 9 }, k = g.index(q); if (k !== undefined && !g.blocked[k] && g.clearance[k] >= 3) L.pallets.push({ x: q.x - 2, y: q.y - 1.4, w: 4, h: 2.8, plate: "E1" }); } }
 writeFileSync(rf, JSON.stringify(L)); writeFileSync(ff, JSON.stringify(D));
+for (const f of D.flows) { let turns = 0, len = 0; for (const s of f.steps) if (Array.isArray(s.path)) { const l = s.path.slice(1).reduce((d, b, i) => d + Math.abs(b[0] - s.path[i][0]) + Math.abs(b[1] - s.path[i][1]), 0), a = s.path[0], b = s.path[s.path.length - 1], m = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]), n = s.path.length - 2; turns += n; len += l; console.log(`  ${f.name} / ${s.title}: ${n} turns, ${Math.round(l * L.scale)} m, shortest possible ${Math.round(m * L.scale)} m`); } console.log(`${f.name}: ${turns} turns in all`); }
 console.log(`racks ${L.racks.length}, columns ${L.columns.length}, walls ${L.walls.length}, stations ${Object.keys(pad).length}, vehicle routes ${L.routes.length}`);
 for (const f of D.flows) console.log(`${f.name}: ${Math.round(f.steps.reduce((s, x) => s + (Array.isArray(x.path) ? x.path.slice(1).reduce((d, b, i) => d + Math.hypot(b[0] - x.path[i][0], b[1] - x.path[i][1]), 0) : 0), 0) * L.scale)} m on the floor`);
 

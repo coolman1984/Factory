@@ -7,9 +7,12 @@
   const D = window.MF_DATA, RP = window.MF_REPLICA, T = window.THREE, $ = (id) => document.getElementById(id);
   function fail(m) { const e = $("err"); e.style.display = "grid"; e.textContent = m; }
   if (!T) { fail("The 3D library did not load."); return; }
-  const CX = 480, CY = 290, GAP = 120, DWELL = 1.8, INTRO = 7, PT_M = RP.scale;
-  // Physical story-time motion (Round 4): cruise speed, ramp time to/from cruise, and in-place quarter-turn time.
-  const V_MAX = 1.6, RAMP_T = 1.2, TURN_T = .8, MIN_SEG = 1e-4, TURN_SNAP = 1e-6;
+  const CX = 480, CY = 290, GAP = 120, DWELL = .7, INTRO = 7, LIFT_T = 2, STATION_T = .01, PT_M = RP.scale;
+  // A truly stationary step (no path, or a path with zero motion) lasts DWELL in total: a token STATION_T "move" (so tm > t0 and step-stop
+  // still has something to stop at) plus DWELL - STATION_T of dwell. Moving steps and the lift keep move + DWELL.
+  // Physical story-time motion (Round 5 baseline): cruise speed, ramp time to/from cruise, and in-place quarter-turn time.
+  // Playback speed (S.speed, 0.5x-8x) multiplies story time exactly once, in frame(); nothing below knows about it.
+  const V_MAX = 4, RAMP_T = .25, TURN_T = .3, MIN_SEG = 1e-4, TURN_SNAP = 1e-6;
   const PLATE_X = 553, PLATE_Y = 303;   // plate boundaries in slide points: x < PLATE_X is E1; right of it y >= PLATE_Y is E2-1F, else E2-2F
   const plateOf = (x, y) => (x < PLATE_X ? "E1" : y >= PLATE_Y ? "E2-1F" : "E2-2F");
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v)), lerp = (a, b, t) => a + (b - a) * t, ease = (t) => t * t * (3 - 2 * t);
@@ -18,7 +21,7 @@
 
   /* ---------- state ---------- */
   // panel: the steps list starts collapsed. mini: the mini map starts hidden. blur: opt-in glass backdrop blur (never on Low).
-  const S = { flow: 0, t: 0, playing: false, speed: 1, view: "auto", cam: "guided", stack: 0, stackUser: null, labels: true, net: false, panel: false, mini: false, blur: query.get("blur") === "1", autoFade: query.get("fade") !== "0", stepStop: false, R: 0, focus: true, sound: false, plan: "replica", look: "studio", quality: ["high", "medium", "low"].includes(query.get("q")) ? query.get("q") : "high", measure: false, pts: [],
+  const S = { flow: 0, t: 0, playing: false, speed: 1, view: "auto", cam: "guided", stack: 0, stackUser: null, labels: true, net: false, panel: false, mini: false, blur: query.get("blur") === "1", autoFade: query.get("fade") !== "0", stepStop: false, roof: true, R: 0, focus: true, sound: false, plan: "replica", look: "studio", quality: ["high", "medium", "low"].includes(query.get("q")) ? query.get("q") : "high", measure: false, pts: [],
     c: { x: 0, y: 0, z: 0, dist: 640, az: 0, pol: 0.001 } };
   const want = { x: 0, y: 0, z: 0, dist: 640, az: 0, pol: 0.001 };
 
@@ -66,7 +69,7 @@
     const planMaterial = art.material, surfaceMaterial = window.MFLook.floor(T, w, h);
     art.name = "MF floor " + key; slab.name = "MF slab " + key; planMaterial.name = "MF plan " + key; surfaceMaterial.name = "MF surface " + key;
     surfaceMaterial.userData.floorLight.value = window.MFLook.contactLight(T, key, P.box, RP);
-    floors.push({ art, key, box: P.box, planMaterial, surfaceMaterial }); P.art = art;
+    floors.push({ art, slab, key, box: P.box, planMaterial, surfaceMaterial, reflW: 0 }); P.art = art;
   }
   const REP = window.MFReplica.build({ T, plates, R: RP, CX, CY });
   // Sweep in the vertex shader: immutable instance buffers throughout the rise.
@@ -94,9 +97,13 @@
     }
   }
   let replicaVisible = null;
+  // Roof switch: the lead's REP.setRoof(on) owns the geometry; absent API = silent no-op. The rise override below forces every
+  // replica mesh visible again when the factory appears, so the roof state is re-applied right after that pass.
+  const hasRoof = () => typeof REP.setRoof === "function";
+  function applyRoof() { if (hasRoof()) REP.setRoof(S.roof); }
   REP.rise = value => {
     riseUniform.value = value; const show = value > .004;
-    if (replicaVisible !== show) { replicaVisible = show; for (let i = 0; i < REP.meshes.length; i++) REP.meshes[i].im.visible = show; }
+    if (replicaVisible !== show) { replicaVisible = show; for (let i = 0; i < REP.meshes.length; i++) REP.meshes[i].im.visible = show; if (show) applyRoof(); }
     metrics.riseUpdates++;
   };
   bindReplicaMeshes();
@@ -140,17 +147,19 @@
   const gates = Object.values(D.nodes).filter((n) => n.kind === "dest" && n.text !== "Elev 5 2F").map((n) => { const m = new T.Mesh(new T.BoxGeometry(24, 16, 24), new T.MeshStandardMaterial({ color: 0x156082, roughness: .4, metalness: .2 })); m.castShadow = true; m.userData.n = n; scene.add(m); return m; });
   const E = D.elevator, shaft = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(30, 1, 30)), new T.LineBasicMaterial({ color: 0xffc000 })); scene.add(shaft);
   const cabin = new T.Mesh(new T.BoxGeometry(19, 1.6, 19), new T.MeshStandardMaterial({ color: 0xffc000, metalness: .4, roughness: .4 })); cabin.castShadow = true; scene.add(cabin);
-  const lot = new T.Group(); let trolleyReady;
+  const lot = new T.Group(); let trolleyReady, contactBlob = null;
   { // the hero: Blender's trolley with rear covers, 1.4x real size so it stays readable, on a soft contact shadow
     const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), r = g.createRadialGradient(64, 64, 8, 64, 64, 62); r.addColorStop(0, "rgba(10,14,24,.62)"); r.addColorStop(.6, "rgba(10,14,24,.3)"); r.addColorStop(1, "rgba(10,14,24,0)"); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
-    const blob = new T.Mesh(new T.PlaneGeometry(18, 22).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false, toneMapped: false })); blob.position.y = .35; lot.add(blob);
+    const blob = new T.Mesh(new T.PlaneGeometry(18, 22).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false, toneMapped: false })); blob.position.y = .35; lot.add(blob); contactBlob = blob;
     const bytes = Uint8Array.from(atob(window.MF_TROLLEY), (ch) => ch.charCodeAt(0));
     trolleyReady = new Promise((ok, no) => new T.X.GLTFLoader().parse(bytes.buffer, "", (gl) => { gl.scene.scale.setScalar(1.6 / PT_M); lot.add(gl.scene); ok(); }, (e) => { fail("The trolley model could not load: " + e.message); no(e); })); }
   scene.add(lot);
   const beacon = new T.Mesh(new T.RingGeometry(9, 11, 48).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: new T.Color(0x8fdcff).multiplyScalar(3), toneMapped: false, transparent: true, side: T.DoubleSide })); scene.add(beacon);
   // atmosphere: Digital Factory's light shafts and dust
   const lamps = []; for (let x = 60; x < 520; x += 70) for (let y = 190; y < 480; y += 62) lamps.push([x - CX, 46, y - CY]);
+  const sceneBeforeAtmos = new Set(scene.children);   // whatever DFAtmos adds to the scene is hidden while the floor reflection renders
   const atmos = window.DFAtmos ? window.DFAtmos.create(T, scene, { lamps, shafts: { height: 46, top: 1.4, bottom: 13, intensity: .05 }, dust: { count: 900, box: [620, 70, 620], size: .16, alpha: .3 } }) : null;
+  const atmosObjects = scene.children.filter(o => !sceneBeforeAtmos.has(o));
 
   /* ---------- a persistent, bounded post chain (night bloom only) ---------- */
   let composer = null, bloom = null;
@@ -273,11 +282,12 @@
       if (path === "lift") path = [E.low, E.high];
       if (path === "fromLift") path = [E.high, [D.nodes[s.node].x, E.high[1]], [D.nodes[s.node].x, D.nodes[s.node].y]];
       const sched = path && !s.lift ? buildSchedule(path, hPrev) : null, moving = sched && sched.phases.length > 0;
-      const move = !path ? .6 : s.lift ? 3.2 : moving ? sched.duration : .6, metres = path && !s.lift ? pl(path) * PT_M : 0, base = total; total += metres;
-      const it = { s, i: i + 1, path, sched, t0: t, tm: t + move, t1: t + move + DWELL, metres, base, run: total, h0: hPrev, h1: hPrev };
+      const stationary = !path || (!s.lift && !moving), move = s.lift ? LIFT_T : moving ? sched.duration : STATION_T, dwell = stationary ? DWELL - STATION_T : DWELL;
+      const metres = path && !s.lift ? pl(path) * PT_M : 0, base = total; total += metres;
+      const it = { s, i: i + 1, path, sched, t0: t, tm: t + move, t1: t + move + dwell, metres, base, run: total, h0: hPrev, h1: hPrev };
       if (moving) { it.h0 = sched.h0; it.h1 = sched.h1; if (hPrev === undefined) { for (const w of waiting) w.h0 = w.h1 = sched.h0; waiting = []; } hPrev = sched.h1; }
       else if (hPrev === undefined) waiting.push(it);
-      f.items.push(it); t += move + DWELL;
+      f.items.push(it); t += move + dwell;
     });
     for (const w of waiting) w.h0 = w.h1 = 0;   // a flow with no moving step at all
     f.items.forEach(it => { if (it.h0 === undefined) it.h0 = it.h1 = 0; });
@@ -475,28 +485,49 @@ void main() {
   // that segment. Corners never turn the camera: only the target and distance ease (spring) to the next segment.
   const AZ_STEP = [-.55, -.3, -.8, -.45, -.7, -.25];
   let guidedAz = 0, guidedReady = false, frameDt = 1 / 60;
+  // Speed-aware follow. At 8x the lot travels 8x faster in world space, and a critically damped spring chasing a goal that moves
+  // at velocity v lags by 2v/omega: the lag would grow with speed. Two measures keep it bounded:
+  //  1) velocity feed-forward: setWant publishes the current world velocity of the goal (camFF, units/s, already x speed and
+  //     x the share of the lot motion the goal carries); the spring integrates in the goal's frame, so a constant-velocity goal has
+  //     zero steady lag at any speed (exact for any dt);
+  //  2) camScale() stiffens every follow spring with playback speed, so discrete changes (segment/step switches, corners) settle
+  //     in roughly the same number of story metres instead of falling behind.
+  // Discrete jumps of the goal (new segment midpoint, new step) are NOT fed forward: they go into the spring's position error and
+  // are absorbed without overshoot. The feed-forward itself is low-pass filtered (FF_TAU) so it never steps the camera velocity.
+  const camFF = new T.Vector3(), camFFSmooth = new T.Vector3(), FF_TAU = .12;
+  const camScale = () => (S.playing && S.speed > 1 ? 1 + (S.speed - 1) * .22 : 1);
+  function leadVelocity(lp, cur, share) {   // world velocity (units/s) of the lot x share, only while playing
+    if (!S.playing || share <= 0) return;
+    const sp = S.speed * share;
+    if (lp.lift != null) {
+      const span = Math.max(.001, cur.tm - cur.t0), u = clamp((S.t - cur.t0) / span, 0, 1), k = 6 * u * (1 - u) / span * sp;   // d ease(u) / dt
+      camFF.subVectors(liftHigh, liftLow).multiplyScalar(k);
+    } else if (lp.k === "move" && lp.v > 0) { const s = lp.v / PT_M * sp; camFF.set(Math.sin(lp.h) * s, 0, Math.cos(lp.h) * s); }
+  }
   function setWant() {
+    camFF.set(0, 0, 0);
     if (S.cam !== "guided") guidedReady = false;
     if (S.cam === "free") return;
     const cur = stepAt(S.t);
     if (S.cam === "guided" || S.cam === "follow") {
       if (S.cam === "guided" && cur.s.intro) { const e = ease(S.R); aim(0, 0, 0, fit() * lerp(1, .9, e), lerp(0, -.5, e), lerp(.001, 1, e)); guidedReady = false; return; }
-      const lp = frameLot, p = worldFromLot(lp, S.stack, cameraPoint); let d = S.cam === "follow" ? 300 : cur.s.dist * (S.stack > .5 ? 1.05 : 1.2);
+      const lp = frameLot, p = worldFromLot(lp, S.stack, cameraPoint); let d = S.cam === "follow" ? 300 : cur.s.dist * (S.stack > .5 ? 1.05 : 1.2), share = 1;
       if (S.cam === "guided" && cur.sched && lp.lift == null && cur.sched.phases.length) {
         const a = cur.sched.pts[lp.seg], b = cur.sched.pts[lp.seg + 1];
         if (a && b) {
           W(a[0], a[1], S.stack, .8, segmentA); W(b[0], b[1], S.stack, .8, segmentB);
-          const length = segmentA.distanceTo(segmentB); p.lerp(segmentA.lerp(segmentB, .5), .65);
+          const length = segmentA.distanceTo(segmentB); p.lerp(segmentA.lerp(segmentB, .5), .65); share = .35;   // the goal carries 35% of the lot's motion
           d = clamp(length * 1.35, d * .85, d * 1.8);
         }
       }
       const targetAz = S.cam === "follow" ? -.55 : AZ_STEP[cur.i % AZ_STEP.length];
-      if (!guidedReady || flat()) { guidedAz = targetAz; guidedReady = true; } else guidedAz += wrapPi(targetAz - guidedAz) * (1 - Math.exp(-frameDt * 1.3));
+      if (!guidedReady || flat()) { guidedAz = targetAz; guidedReady = true; } else guidedAz += wrapPi(targetAz - guidedAz) * (1 - Math.exp(-frameDt * 1.3 * camScale()));
       aim(p.x, p.y, p.z, flat() ? d * 1.5 : d, flat() ? 0 : guidedAz, flat() ? .001 : .94);
+      leadVelocity(lp, cur, share);
     } else if (S.cam === "forklift") {
       const m = REP.movers[0]; if (!m || !m.v) return; const p = m.v.getWorldPosition(cameraPoint); aim(p.x, p.y + 12, p.z, 92, (m.heading ?? m.v.rotation.y) + Math.PI, 1.28);
     } else if (S.cam === "chase") {
-      const p = worldFromLot(frameLot, S.stack, cameraPoint); aim(p.x, p.y + 8, p.z, 120, frameLot.h + Math.PI, 1.3);
+      const p = worldFromLot(frameLot, S.stack, cameraPoint); aim(p.x, p.y + 8, p.z, 120, frameLot.h + Math.PI, 1.3); leadVelocity(frameLot, cur, 1);
     } else if (S.cam === "overview" || S.cam === "iso") {
       const iso = S.cam === "iso"; aim(0, iso ? 30 : 0, 0, fit() * (iso ? 1.05 : .95), flat() ? 0 : iso ? -.785 : -.55, flat() ? .001 : iso ? .96 : 1);
     } else {
@@ -511,16 +542,26 @@ void main() {
     const decay = Math.exp(-omega * dt);
     for (let i = 0; i < AXES.length; i++) { const axis = AXES[i]; const delta = point[axis] - goal[axis], j = velocity[axis] + omega * delta; point[axis] = goal[axis] + (delta + j * dt) * decay; velocity[axis] = (velocity[axis] - omega * j * dt) * decay; }
   }
+  // Same exact integration, in the frame of a goal that moves at constant velocity gv over the step (gv = 0 gives spring() above):
+  // e = x - goal(t), e(t) = (e0 + (ev0 + w e0) t) exp(-w t). Stable for any dt (long frames, 8x playback).
+  function springFF(point, velocity, goal, gv, omega, dt) {
+    const decay = Math.exp(-omega * dt);
+    for (let i = 0; i < AXES.length; i++) {
+      const axis = AXES[i], v = gv[axis], e0 = point[axis] - (goal[axis] - v * dt), ev0 = velocity[axis] - v, j = ev0 + omega * e0;
+      point[axis] = goal[axis] + (e0 + j * dt) * decay; velocity[axis] = v + (ev0 - omega * j * dt) * decay;
+    }
+  }
   function moveCam(dt) {
     const c = S.c;
     if (S.cam === "free") {
       const sp = Math.sin(c.pol); camera.position.set(c.x + c.dist * sp * Math.sin(c.az), c.y + c.dist * Math.cos(c.pol), c.z + c.dist * sp * Math.cos(c.az));
-      cameraTarget.set(c.x, c.y, c.z); eyeVelocity.set(0, 0, 0); targetVelocity.set(0, 0, 0);
+      cameraTarget.set(c.x, c.y, c.z); eyeVelocity.set(0, 0, 0); targetVelocity.set(0, 0, 0); camFFSmooth.set(0, 0, 0);
     } else {
       const sp = Math.sin(want.pol); desiredTarget.set(want.x, want.y, want.z);
       desiredEye.set(want.x + want.dist * sp * Math.sin(want.az), want.y + want.dist * Math.cos(want.pol), want.z + want.dist * sp * Math.cos(want.az));
-      const omega = S.cam === "chase" || S.cam === "forklift" ? 8 : stepAt(S.t).s.intro ? 9 : S.cam === "guided" ? 3.2 : 5;
-      spring(camera.position, eyeVelocity, desiredEye, omega, dt); spring(cameraTarget, targetVelocity, desiredTarget, omega, dt);
+      const omega = (S.cam === "chase" || S.cam === "forklift" ? 8 : stepAt(S.t).s.intro ? 9 : S.cam === "guided" ? 3.2 : 5) * camScale();
+      const blend = 1 - Math.exp(-dt / FF_TAU); camFFSmooth.x += (camFF.x - camFFSmooth.x) * blend; camFFSmooth.y += (camFF.y - camFFSmooth.y) * blend; camFFSmooth.z += (camFF.z - camFFSmooth.z) * blend;
+      springFF(camera.position, eyeVelocity, desiredEye, camFFSmooth, omega, dt); springFF(cameraTarget, targetVelocity, desiredTarget, camFFSmooth, omega, dt);
       c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z;
       const dx = camera.position.x - c.x, dy = camera.position.y - c.y, dz = camera.position.z - c.z;
       c.dist = Math.max(.001, Math.hypot(dx, dy, dz)); c.pol = Math.acos(clamp(dy / c.dist, -1, 1)); c.az = Math.atan2(dx, dz);
@@ -678,7 +719,21 @@ void main() {
   function toFree() { if (S.cam !== "free") { setCam("free"); tip("Free camera: press G to go back to the guided camera"); } }
   function setMeasure(on) { S.measure = on; S.pts = []; $("measure").classList.toggle("on", on); $("measure").setAttribute("aria-pressed", String(on)); if (on) tip("Measure: click two points on the floor"); }
   $("play").onclick = () => (S.playing ? pause() : play()); $("prev").onclick = () => stepBy(-1); $("next").onclick = () => stepBy(1); $("first").onclick = () => { seek(0); pause(); };
-  $("speed").onchange = (e) => (S.speed = +e.target.value); $("stepstop").onchange = (e) => (S.stepStop = e.target.checked);
+  // Playback speed: the native #speed select stays the one source of truth (0.5 .. 8x). [ and ] step through its options with
+  // bounds (no wrap); the select shows the new value, keeps focus state and is not re-created.
+  const speedSelect = $("speed"), speedOptions = Array.from(speedSelect.options);
+  function setSpeed(v, say) {
+    let best = 0; for (let i = 1; i < speedOptions.length; i++) if (Math.abs(+speedOptions[i].value - v) < Math.abs(+speedOptions[best].value - v)) best = i;
+    S.speed = +speedOptions[best].value; speedSelect.selectedIndex = best;
+    if (say) tip("Speed " + speedOptions[best].textContent);
+  }
+  function stepSpeed(d) {
+    let at = 0; for (let i = 1; i < speedOptions.length; i++) if (Math.abs(+speedOptions[i].value - S.speed) < Math.abs(+speedOptions[at].value - S.speed)) at = i;
+    const next = clamp(at + d, 0, speedOptions.length - 1);
+    if (next === at) { tip(d > 0 ? "Top speed " + speedOptions[at].textContent : "Lowest speed " + speedOptions[at].textContent); return; }
+    setSpeed(+speedOptions[next].value, true);
+  }
+  speedSelect.onchange = (e) => setSpeed(+e.target.value); $("stepstop").onchange = (e) => (S.stepStop = e.target.checked);
   $("views").querySelectorAll("button").forEach((b) => (b.onclick = () => setView(b.dataset.v)));
   $("cam").onchange = (e) => setCam(e.target.value); $("look").onchange = (e) => setLook(e.target.value); $("quality").onchange = (e) => setQuality(e.target.value);
   $("focusBtn").onclick = () => { S.focus = !S.focus; $("focusBtn").classList.toggle("on", S.focus); };
@@ -701,6 +756,7 @@ void main() {
   const tPanel = tog("panelBtn", "panel", () => { stepPanel.style.display = S.panel ? "block" : "none"; $("stepsToggle").classList.toggle("on", S.panel); $("stepsToggle").setAttribute("aria-expanded", String(S.panel)); if (S.panel) { frame.shift = -1; cacheStepLayout(); shown = -1; } else frame.shift = -1; });
   const tMini = tog("miniBtn", "mini", () => { $("mini").style.display = S.mini ? "block" : "none"; drawMini.last = null; });
   tog("blurBtn", "blur", () => { syncQualityClasses(); if (S.blur && S.quality === "low") tip("Glass blur stays off on Low quality"); });
+  const tRoof = tog("roofBtn", "roof", () => { applyRoof(); if (!hasRoof()) tip("The roof is not available in this build"); });
   $("stepsToggle").onclick = tPanel; $("stepsClose").onclick = tPanel;
   // Glass popovers beside the rail: Options and Camera. One open at a time; Escape or an outside click closes them.
   const popovers = [["opts", "optBtn", "flex"], ["camPop", "camBtn", "flex"]];
@@ -750,9 +806,10 @@ void main() {
   stg.onwheel = (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1.12 : .89); };
   stg.ondblclick = (e) => { if (S.measure) return; const hit = hitFloor(e); if (hit) { toFree(); Object.assign(S.c, { x: hit.point.x, y: hit.point.y, z: hit.point.z, dist: S.c.dist * .7 }); } };
   addEventListener("keydown", (e) => {
-    const tag = e.target.tagName; if (tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA" || e.ctrlKey || e.altKey || e.metaKey) return; const k = e.key.toLowerCase();
+    const tag = e.target.tagName; if (tag === "INPUT" || tag === "TEXTAREA" || e.ctrlKey || e.altKey || e.metaKey) return; const k = e.key.toLowerCase();
+    if (tag === "SELECT" && k !== "[" && k !== "]") return;   // a focused select keeps its own keys; only the speed steppers pass
     if ((k === " " || k === "enter") && (tag === "BUTTON" || e.target.getAttribute("role") === "button")) return;   // native activation for a focused control
-    const act = { " ": () => (S.playing ? pause() : play()), arrowright: () => stepBy(1), arrowleft: () => stepBy(-1), home: () => { seek(0); pause(); }, end: () => { seek(F().total); pause(); }, 2: () => setView("2d"), 3: () => setView("3d"), a: () => setView("auto"), g: () => setCam("guided"), l: tLbl, n: tNet, p: tPanel, f: fullscreen, h: toggleBare, "?": toggleHelp, "+": () => zoom(.8), "=": () => zoom(.8), "-": () => zoom(1.25), m: () => setMeasure(!S.measure), o: () => setPlan(S.plan === "replica" ? "original" : "replica"), escape: () => { setMeasure(false); closePopovers(null); if ($("help").style.display === "block") toggleHelp(); },
+    const act = { " ": () => (S.playing ? pause() : play()), arrowright: () => stepBy(1), arrowleft: () => stepBy(-1), home: () => { seek(0); pause(); }, end: () => { seek(F().total); pause(); }, 2: () => setView("2d"), 3: () => setView("3d"), a: () => setView("auto"), g: () => setCam("guided"), l: tLbl, n: tNet, p: tPanel, r: tRoof, "[": () => stepSpeed(-1), "]": () => stepSpeed(1), f: fullscreen, h: toggleBare, "?": toggleHelp, "+": () => zoom(.8), "=": () => zoom(.8), "-": () => zoom(1.25), m: () => setMeasure(!S.measure), o: () => setPlan(S.plan === "replica" ? "original" : "replica"), escape: () => { setMeasure(false); closePopovers(null); if ($("help").style.display === "block") toggleHelp(); },
       c: () => { const o = [...$("cam").options].filter((x) => !x.hidden).map((x) => x.value); setCam(o[(o.indexOf(S.cam) + 1) % o.length]); } }[k];
     if (act) { e.preventDefault(); act(); }
   });
@@ -773,6 +830,153 @@ void main() {
   let cueAt = -1;
   function cue(cur) { if (cur.i === cueAt) return; const first = cueAt === -1 || cur.i !== cueAt + 1; cueAt = cur.i; if (!S.sound || !S.playing || !ac || first && cur.i !== 0) return; if (cur.s.intro) sweep(); else if (cur.s.lift) { tone(440, 0, .09); tone(660, .09, .09); } else if (cur.i === F().items.length - 1) { tone(440, 0, .32); tone(550, .02, .32); tone(660, .04, .32); } else tone(660, 0, .07); }
 
+  /* ---------- planar floor reflection (High quality only) ----------
+     ONE shared render target and ONE extra scene render, shared by every floor that lies on the reflected plane:
+       - mirrored virtual camera + oblique near plane (the THREE.Reflector maths, written out so one target serves all floors);
+       - target = a quarter of the framebuffer per axis (480 x 272 at 1080p), rounded to 16 px, clamped 64..640, allocated once
+         (lazily, or in MF.ready on High) and only resized when that bucket changes; never per frame;
+       - refreshed every second frame (st.every); the floor shader samples it through a world-position matrix, so the texture stays
+         glued to the ground between refreshes;
+       - Low/Medium, Blueprint, the original-plan art, a camera below the floor, or a view where no reflected floor is on screen:
+         NO scene render at all; every floor's weight uniform goes to 0 (the floor program itself never changes);
+       - recursion guard: floors, slabs, original plan images, route light, beacon, contact blob, grid and atmosphere are hidden
+         for the duration of the render and restored in finally (together with the target, matrixWorldAutoUpdate).
+     Stacked floors: a single plane cannot serve floors at different heights. The dominant floor (nearest to the camera target,
+     with hysteresis) picks the plane; only floors within 0.6 units of that height keep a reflection weight, the others fade to 0
+     (so with floors separated, only the dominant level is reflective; at stack 0 every floor is coplanar and shares it).
+     Round 5 correction: map, matrix and plane height (U.plane) are published together, only after a successful render, and the floor
+     shader masks any fragment whose world Y is not on U.plane. A plane change forces a render in the same frame (no 2-frame wait). */
+  const reflection = (() => {
+    const U = window.MFLook.reflectionUniforms(T);
+    const st = { enabled: query.get("reflect") !== "0", active: false, reason: "init", every: 2, tick: 0, stale: true, renders: 0, skipped: 0, skippedOffscreen: 0, planeY: 0, published: 0, planeChanges: 0, dominant: "", width: 0, height: 0, lastMs: 0, maxMs: 0, calls: 0, triangles: 0, allocations: 0, halfFloat: true, error: null };
+    const SCALE = .25, GRID = 16, MIN_SIDE = 64, MAX_SIDE = 640, HYST = 60, SAME_PLANE = .6, CLIP_BIAS = 0;
+    const cam = new T.PerspectiveCamera(); cam.matrixWorldAutoUpdate = false;
+    const eye = new T.Vector3(), tgt = new T.Vector3(), UP = new T.Vector3(0, 1, 0), plane = new T.Plane(), clip = new T.Vector4(), q = new T.Vector4();
+    const frustum = new T.Frustum(), frustumMatrix = new T.Matrix4(), floorBox = new T.Box3();
+    const pending = new T.Matrix4(), savedViewport = new T.Vector4(), savedScissor = new T.Vector4(), nowViewport = new T.Vector4(), nowScissor = new T.Vector4(), NO_PLANE = -1e9, PLANE_EPS = .05;
+    let target = null, hide = null, hidden = null, dominant = null;
+    // The floor shader samples (map, matrix) only where world Y == U.plane (look.js mask). The three are published together, and only
+    // after a render succeeded; anything that makes the texture unusable (new/resized target, error, reflection off) withdraws the plane,
+    // which masks every floor at once.
+    const withdraw = () => { U.plane.value = NO_PLANE; };
+    const floorY = f => f.art.parent.position.y + f.art.position.y;
+    const side = px => clamp(Math.round(px * SCALE / GRID) * GRID, MIN_SIDE, MAX_SIDE);
+    function ensure() {
+      const w = side(innerWidth * Math.min(devicePixelRatio, 1)), h = side(innerHeight * Math.min(devicePixelRatio, 1));
+      if (!target) {
+        const half = renderer.extensions.has("EXT_color_buffer_float") || renderer.extensions.has("EXT_color_buffer_half_float");
+        target = new T.WebGLRenderTarget(w, h, { type: half ? T.HalfFloatType : T.UnsignedByteType, colorSpace: half ? T.NoColorSpace : T.SRGBColorSpace, format: T.RGBAFormat, depthBuffer: true, stencilBuffer: false, samples: 0, generateMipmaps: false, minFilter: T.LinearFilter, magFilter: T.LinearFilter });
+        target.texture.name = "MF floor reflection"; U.map.value = target.texture; st.halfFloat = half; st.allocations++; st.stale = true; withdraw();
+      } else if (target.width !== w || target.height !== h) { target.setSize(w, h); st.allocations++; st.stale = true; withdraw(); }   // resized: contents are gone
+      st.width = w; st.height = h; U.texel.value.set(1 / w, 1 / h);
+    }
+    function collectHide() {
+      hide = [grid, beacon, contactBlob, ...origs, ...atmosObjects, ...routeFlows.flatMap(r => r.meshes)];
+      for (const f of floors) hide.push(f.art, f.slab);
+      hide = hide.filter(Boolean); hidden = new Uint8Array(hide.length);
+    }
+    // Renders the reflected scene for the horizontal plane y = py into the shared target and updates the sampling matrix.
+    function renderAt(py) {
+      ensure(); if (!hide) collectHide();
+      const m = camera.matrixWorld.elements; eye.setFromMatrixPosition(camera.matrixWorld);
+      if (eye.y <= py + .5) return false;
+      // mirrored eye, forward and up (Reflector): reflecting about y = py negates the y offset only
+      cam.position.set(eye.x, 2 * py - eye.y, eye.z); cam.up.set(m[4], -m[5], m[6]);
+      tgt.set(eye.x - m[8], 2 * py - (eye.y - m[9]), eye.z - m[10]); cam.lookAt(tgt);
+      cam.near = camera.near; cam.far = camera.far; cam.projectionMatrix.copy(camera.projectionMatrix); cam.projectionMatrixInverse.copy(camera.projectionMatrixInverse); cam.updateMatrixWorld();
+      pending.set(.5, 0, 0, .5, 0, .5, 0, .5, 0, 0, .5, .5, 0, 0, 0, 1).multiply(cam.projectionMatrix).multiply(cam.matrixWorldInverse);   // before the oblique edit; published only after the render
+      // oblique near plane = the floor plane, so nothing below the floor (or between the mirrored eye and the floor) is drawn
+      plane.set(UP, -py).applyMatrix4(cam.matrixWorldInverse); clip.set(plane.normal.x, plane.normal.y, plane.normal.z, plane.constant);
+      const pe = cam.projectionMatrix.elements;
+      q.x = (Math.sign(clip.x) + pe[8]) / pe[0]; q.y = (Math.sign(clip.y) + pe[9]) / pe[5]; q.z = -1; q.w = (1 + pe[10]) / pe[14];
+      clip.multiplyScalar(2 / clip.dot(q)); pe[2] = clip.x; pe[6] = clip.y; pe[10] = clip.z + 1 - CLIP_BIAS; pe[14] = clip.w;
+      const previousTarget = renderer.getRenderTarget(), previousAuto = scene.matrixWorldAutoUpdate, previousTest = renderer.getScissorTest(), t0 = performance.now();
+      renderer.getViewport(savedViewport); renderer.getScissor(savedScissor);   // preallocated; setRenderTarget() is expected to restore these, this makes it certain
+      for (let i = 0; i < hide.length; i++) { hidden[i] = hide[i].visible ? 1 : 0; hide[i].visible = false; }
+      try {
+        scene.updateMatrixWorld(); scene.matrixWorldAutoUpdate = false;   // one matrix pass; the main render repeats it
+        renderer.setRenderTarget(target); renderer.render(scene, cam);
+        st.calls = renderer.info.render.calls; st.triangles = renderer.info.render.triangles;
+      } finally {
+        scene.matrixWorldAutoUpdate = previousAuto; renderer.setRenderTarget(previousTarget);
+        for (let i = 0; i < hide.length; i++) hide[i].visible = hidden[i] === 1;
+        const vp = renderer.getViewport(nowViewport), sc = renderer.getScissor(nowScissor);
+        if (!vp.equals(savedViewport)) renderer.setViewport(savedViewport);
+        if (!sc.equals(savedScissor)) renderer.setScissor(savedScissor);
+        if (renderer.getScissorTest() !== previousTest) renderer.setScissorTest(previousTest);
+      }
+      // success: publish matrix, plane height and the freshness together (an exception above skips all of it)
+      U.matrix.value.copy(pending); U.plane.value = py; st.planeY = py; st.published++;
+      st.lastMs = performance.now() - t0; if (st.lastMs > st.maxMs) st.maxMs = st.lastMs;
+      return true;
+    }
+    function off(reason) {
+      st.active = false; st.reason = reason; st.stale = true; st.tick = 0; withdraw();
+      for (const f of floors) { f.reflW = 0; f.surfaceMaterial.userData.floorReflect.value = 0; }
+    }
+    // Nearest floor to the camera target (xz distance + a little height difference), sticky within HYST world units.
+    function pick() {
+      let best = null, bestScore = Infinity, keep = null, keepScore = Infinity;
+      for (const f of floors) {
+        const g = f.art.parent.position, b = f.box, x0 = b[0] - CX + g.x, z0 = b[1] - CY + g.z;
+        const dx = Math.max(x0 - cameraTarget.x, 0, cameraTarget.x - (x0 + b[2])), dz = Math.max(z0 - cameraTarget.z, 0, cameraTarget.z - (z0 + b[3]));
+        const score = Math.hypot(dx, dz) + .3 * Math.abs(floorY(f) - cameraTarget.y);
+        if (score < bestScore) { bestScore = score; best = f; } if (f === dominant) { keep = f; keepScore = score; }
+      }
+      return keep && keepScore <= bestScore + HYST ? keep : best;
+    }
+    // The floor program reports (once compiled) whether the Three.js markers matched; if not, never start the costly render.
+    function shaderProblem() {
+      for (const f of floors) { const s = f.surfaceMaterial.userData.floorShader; if (s.compiles > 0 && s.reflectionError) return s.reflectionError; }
+      return null;
+    }
+    function update(dt) {
+      if (!st.error) { const problem = shaderProblem(); if (problem) st.error = problem; }
+      const why =!st.enabled ? "disabled" : st.error ? "error" : S.quality !== "high" ? "quality" : S.look === "blueprint" ? "blueprint" : S.R <= .85 || S.plan === "original" ? "plan" : "";
+      if (why) { if (st.active || st.reason !== why) off(why); return; }
+      dominant = pick(); const py = floorY(dominant);
+      if (camera.position.y <= py + .5) { if (st.active || st.reason !== "below") off("below"); return; }
+      st.dominant = dominant.key;
+      // The captured plane must follow the dominant floor: a new plane (dominant switch, or that floor moving during the stack
+      // animation) forces a render THIS frame instead of waiting for the 2-frame cadence, so the shared map/matrix/plane are never one
+      // frame behind the floor. Until it is published, the shader masks every floor that is not on the old plane.
+      if (Math.abs(py - U.plane.value) > PLANE_EPS) { if (!st.stale) st.planeChanges++; st.stale = true; }
+      // weights: floors on the dominant plane fade in; every other floor fades out. Correctness does not depend on this fade: the
+      // shader's world-Y plane mask (look.js) already cuts any receiver off the captured plane immediately.
+      const k = 1 - Math.exp(-dt * 10); let any = false;
+      frustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse); frustum.setFromProjectionMatrix(frustumMatrix);
+      for (const f of floors) {
+        const goal = Math.abs(floorY(f) - py) < SAME_PLANE ? 1 : 0; f.reflW += (goal - f.reflW) * k; if (Math.abs(goal - f.reflW) < .01) f.reflW = goal;
+        f.surfaceMaterial.userData.floorReflect.value = f.reflW * (f.k ?? 1);   // focus dimming (f.k) dims the mirrored sky/ground too
+        if (goal) { const g = f.art.parent.position, b = f.box; floorBox.min.set(b[0] - CX + g.x, py - 1, b[1] - CY + g.z); floorBox.max.set(b[0] - CX + g.x + b[2], py + 1, b[1] - CY + g.z + b[3]); if (frustum.intersectsBox(floorBox)) any = true; }
+      }
+      st.active = true; st.reason = "ok";
+      if (!any) { st.skippedOffscreen++; return; }   // no reflected floor on screen: no scene render
+      if (!st.stale && st.tick++ % st.every !== 0) { st.skipped++; return; }
+      try { if (renderAt(py)) { st.stale = false; st.renders++; st.tick = 1; } }
+      catch (e) { st.error = String(e && e.message || e); console.error("Material Flow floor reflection disabled", e); off("error"); }
+    }
+    function warm() {   // MF.ready: allocate and render once so the first playback frame has nothing left to create
+      if (!st.enabled || S.quality !== "high") return;
+      if (!st.error) { const problem = shaderProblem(); if (problem) st.error = problem; }
+      if (st.error) return;   // unsupported floor shader: no costly empty render
+      try { renderAt(floorY(floors[0])); st.stale = true; } catch (e) { st.error = String(e && e.message || e); console.error("Material Flow floor reflection warm-up failed", e); }
+    }
+    function resize() { if (target) ensure(); }
+    function set(p = {}) {
+      if ("enabled" in p) { st.enabled = !!p.enabled; if (st.enabled) st.error = null; }
+      if (p.every) st.every = Math.max(1, p.every | 0);
+      const v = U.params.value; if ("strength" in p) v.x = +p.strength; if ("f0" in p) v.y = +p.f0; if ("distort" in p) v.z = +p.distort; if ("blur" in p) v.w = +p.blur;
+      return debug();
+    }
+    function summary() { return { enabled: st.enabled, active: st.active, reason: st.reason, renders: st.renders, skipped: st.skipped, skippedOffscreen: st.skippedOffscreen, lastMs: st.lastMs, maxMs: st.maxMs, calls: st.calls, triangles: st.triangles, width: st.width, height: st.height, allocations: st.allocations }; }
+    function debug() {
+      return { ...st, every: st.every, publishedPlane: U.plane.value, strength: U.params.value.x, f0: U.params.value.y, distort: U.params.value.z, blur: U.params.value.w, target: target ? { width: target.width, height: target.height, uuid: target.texture.uuid, type: target.texture.type, colorSpace: target.texture.colorSpace } : null,
+        floors: floors.map(f => ({ plate: f.key, y: floorY(f), weight: f.reflW, uniform: f.surfaceMaterial.userData.floorReflect.value, program: f.surfaceMaterial.customProgramCacheKey(), patched: f.surfaceMaterial.userData.floorShader.reflectionPatched })), hidden: hide ? hide.length : 0 };
+    }
+    return { update, warm, resize, set, summary, debug, state: st, uniforms: U, renderNow: () => { renderAt(floorY(dominant || floors[0])); st.stale = false; st.renders++; return summary(); } };
+  })();
+
   /* ---------- the frame ---------- */
   function resize() {
     const ratio = Math.min(devicePixelRatio, 1) * ({ high: 1, medium: .8, low: .65 }[S.quality]) * resolutionScale;
@@ -780,6 +984,7 @@ void main() {
     const d = Math.min(devicePixelRatio, 1), fw = Math.round(innerWidth * d), fh = Math.round(innerHeight * d); if (fx.width !== fw) fx.width = fw; if (fx.height !== fh) fx.height = fh; g2.setTransform(d, 0, 0, d, 0, 0);
     // Fixed 3/4-resolution night targets: quality switches allocate no post resources.
     if (composer && (composer.width !== innerWidth || composer.height !== innerHeight)) { composer.setPixelRatio(.75); composer.setSize(innerWidth, innerHeight); composer.width = innerWidth; composer.height = innerHeight; }
+    reflection.resize();
     cacheStepLayout();
   }
   let resizePending = false;
@@ -846,7 +1051,7 @@ void main() {
     if (S.look === "night") atmos?.update(time, camera, innerHeight);
     stage("scene-update", frameStart);
     const cameraStart = profile ? performance.now() : 0;
-    setWant(time); moveCam(dt);
+    setWant(time); moveCam(dt); if (REP.roofFade) { const cy = camera.position.y - S.stack * GAP * .5, a = 1 - Math.min(1, Math.max(0, (cy - 42) / 60)); REP.roofFade(.1 + .9 * a * a); }   // full steel at working height, a hint from above: beams never hide the trolley
     const shift = S.panel && !bareOn ? -140 : 0;   // the steps list opens on the left: nudge the scene right of it
     if (shift !== frame.shift) { frame.shift = shift; camera.setViewOffset(innerWidth, innerHeight, shift, 0, innerWidth, innerHeight); }
     stage("camera", cameraStart);
@@ -854,6 +1059,9 @@ void main() {
     const settled = Math.abs(S.R - goalR) < 1e-4 && (S.R < .001 || S.R > .999) && S.stack === goal;
     shadowSettled = settled ? shadowSettled + dt : 0;
     if (realtimeShadows && shadowDirty && shadowSettled > .15) { renderer.shadowMap.needsUpdate = true; shadowDirty = false; metrics.shadows++; }
+    const reflectionStart = profile ? performance.now() : 0;
+    reflection.update(dt);   // High only: at most one extra low-resolution scene render every second frame, before the main render
+    stage("reflection", reflectionStart);
     const renderStart = profile ? performance.now() : 0;
     if (composer && S.look === "night" && S.quality !== "low") composer.render(dt); else renderer.render(scene, camera);
     stage("render-submit", renderStart);
@@ -880,9 +1088,9 @@ void main() {
   }
   prepareArt(); buildPost(); renderFlow(); resize(); setLook("studio"); $("quality").value = S.quality; S.c.dist = want.dist = fit(); setCam("guided");
   syncQualityClasses(); $("blurBtn").classList.toggle("on", S.blur); $("blurBtn").setAttribute("aria-pressed", String(S.blur));
-  for (const id of ["lblBtn", "netBtn", "panelBtn", "miniBtn", "focusBtn", "soundBtn", "measure"]) $(id).setAttribute("aria-pressed", String($(id).classList.contains("on")));
+  for (const id of ["lblBtn", "netBtn", "panelBtn", "miniBtn", "focusBtn", "soundBtn", "measure", "roofBtn"]) $(id).setAttribute("aria-pressed", String($(id).classList.contains("on")));
   $("views").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.classList.contains("on"))));
-  $("steps").style.display = "none"; $("mini").style.display = "none";
+  $("steps").style.display = "none"; $("mini").style.display = "none"; applyRoof();
   // Elevator connector diagnostics (allocates; for tests only). Returns, per lift connector: the mesh's own end points
   // (position and position + rotated +Z * scale.z), the expected W(E.low) / W(E.high) at the current stack, progress and state.
   // Mesh ends are from the transform last set by frame(), so call it after MF.frame/seek of the flow being checked.
@@ -898,11 +1106,14 @@ void main() {
   //   MF.sampleSchedule(sched, tau, out) -> out { x, y, h, d, v, k, seg }            (tau = seconds since the step began)
   //   MF.lotPose(t) -> the lot's pose at flow story time t (same sampler the frame loop uses)
   window.MF = { floors, S, D, REP, W, proj, seek, play, pause, stepBy, setFlow, setView, setCam, setLook, setPlan, setMeasure, setQuality, setFloorLight, debugFloor, stepAt, frame, want, perf: metrics,   // used by the tests
-    LOOK, PT_M, motion: { V_MAX, RAMP_T, TURN_T }, schedule: buildSchedule, sampleSchedule, cleanPath, lotPose: (t) => { const o = lotPos(t, { x: 0, y: 0, i: 1, u: 0, lift: null, it: null, h: 0, d: 0, v: 0, k: "hold", seg: 0 }); return o; }, route: { uniforms: routeU, flows: routeFlows, lifts: routeLifts, liftState: liftDiagnostics, plateOf }, vehicleAPI: physicalVehicles };
+    LOOK, PT_M, motion: { V_MAX, RAMP_T, TURN_T, DWELL, LIFT_T, STATION_T }, schedule: buildSchedule, sampleSchedule, cleanPath, lotPose: (t) => { const o = lotPos(t, { x: 0, y: 0, i: 1, u: 0, lift: null, it: null, h: 0, d: 0, v: 0, k: "hold", seg: 0 }); return o; }, route: { uniforms: routeU, flows: routeFlows, lifts: routeLifts, liftState: liftDiagnostics, plateOf }, vehicleAPI: physicalVehicles,
+    // Round 5: reflection = { state, uniforms, update, warm, set({enabled, every, strength, f0, distort, blur}), summary(), debug(), renderNow() };
+    // setSpeed(v) / stepSpeed(+-1) drive the #speed select; setRoof(on) drives S.roof + REP.setRoof (guarded); camera = feed-forward diagnostics.
+    reflection, setSpeed, stepSpeed, setRoof: (on) => { if (S.roof !== !!on) tRoof(); return S.roof; }, camera: { ff: camFF, ffSmooth: camFFSmooth, scale: camScale, eyeVelocity, targetVelocity } };
   metrics.reset = () => { metrics.frames = 0; metrics.intervals.fill(0); metrics.stages = {}; metrics.slowCount = 0; };
   metrics.snapshot = () => {
     const frames = Math.min(metrics.frames, metrics.intervals.length), a = Array.from(metrics.intervals.subarray(0, frames)).sort((a, b) => a - b);
-    return { frames, quality: S.quality, pixelRatio: renderer.getPixelRatio(), p50: a[Math.floor(frames * .5)] ?? 0, p99: a[Math.min(frames - 1, Math.floor(frames * .99))] ?? 0, worst: a[frames - 1] ?? 0, over34: a.filter(ms => ms > 34).length, over120: a.filter(ms => ms > 120).length, over250: a.filter(ms => ms > 250).length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, programs: renderer.info.programs?.length ?? 0, stages: metrics.stages };
+    return { frames, quality: S.quality, pixelRatio: renderer.getPixelRatio(), p50: a[Math.floor(frames * .5)] ?? 0, p99: a[Math.min(frames - 1, Math.floor(frames * .99))] ?? 0, worst: a[frames - 1] ?? 0, over34: a.filter(ms => ms > 34).length, over120: a.filter(ms => ms > 120).length, over250: a.filter(ms => ms > 250).length, geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures, programs: renderer.info.programs?.length ?? 0, reflection: reflection.summary(), stages: metrics.stages };
   };
   // Match BOTH real render destinations. Offscreen-only warm-up misses Three r170's
   // screen tone-mapping/output-colour variant and skips VAO/texture uploads when culled.
@@ -940,6 +1151,9 @@ void main() {
           if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera);
           composer.render(0); riseUniform.value = .95; REP.live(.9, 1, 0); composer.render(0);
         }
+        // The floor reflection target (High only): allocated and rendered once per look so no resource is created in playback.
+        // Its object programs are the same non-tone-mapped, linear-output variants as the HDR scene target compiled just above.
+        if (look !== "blueprint") reflection.warm();
       }
     } catch (e) { console.error("Material Flow warm-up failed", e); fail("The 3D materials could not start. " + e.message); throw e; }
     finally {

@@ -2,7 +2,7 @@
 // Usage: node tools/perf.mjs [high|medium|low] [seconds]   Prints the GPU name, FPS and the worst frames while the story plays.
 import { spawn } from "node:child_process";
 const q = process.argv[2] || "high", secs = +(process.argv[3] || 20), port = 9353;
-const file = new URL("../dist/Material_Flow_Player.html", import.meta.url).href + "?q=" + q;
+const file = new URL("../dist/Material_Flow_Player.html", import.meta.url).href + "?q=" + q + (process.env.MF_Q || "");
 const ch = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", ["--headless=new", "--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist", "--disable-frame-rate-limit", "--no-first-run", `--remote-debugging-port=${port}`, `--user-data-dir=${process.env.TEMP}/mf_prof_p${Date.now()}`, "--window-size=1920,1080", file]);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let tabs = null; for (let i = 0; i < 60 && !tabs; i++) { await wait(500); try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch { /* starting */ } }

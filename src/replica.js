@@ -80,6 +80,15 @@ window.MFReplica = (function () {
     for (const [a, b] of R.lanes || []) { if (plateAt(a) !== plateAt(b)) continue; const p = plateAt(a), h = a[1] === b[1], len = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + 1.7 * M * 2, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2; for (const s of [-1, 1]) { const off = s * 1.7 * M; box(p, h ? mx : mx + off, .34, h ? my + off : my, h ? len : .42, .08, h ? .42 : len, c.yellow, "paint"); } }
     for (const d of R.decks) box(d.plate, d.x + d.w / 2, .5, d.y + d.h / 2, d.w, 1, d.h, 0x56627a, "paint");
 
+    // roof steel: portal rafters on the column lines, purlins, and warm strip lights hung below; no cladding, so the view stays open
+    MAT.roof = MAT.paint.clone(); MAT.roof.transparent = true; MAT.roofLamp = MAT.glow.clone(); MAT.roofLamp.transparent = true;
+    for (const [p, x0, y0, w, h, H] of [["E1", 49, 157, 500, 303, 8.3], ["E2-1F", 625, 305, 285, 133, 8.3], ["E2-2F", 727, 149, 172, 146, 6.8]]) {
+      const y = H * M, d = .42 * M;
+      for (let x = x0 + 8; x < x0 + w; x += 26.7) { add(p, "box", "roof", x, y, y0 + h / 2, .75, d, h, 0x38424f); add(p, "box", "roof", x, y + d * .55, y0 + h / 2, 1, .22, h, 0x2c3540); add(p, "box", "roof", x, y - d * .55, y0 + h / 2, 1, .22, h, 0x2c3540); }
+      for (let z = y0 + 13; z < y0 + h; z += 26.7) add(p, "box", "roof", x0 + w / 2, y + d * .75, z, w, .4, .4, 0x4b5563);
+      for (let x = x0 + 21; x < x0 + w - 6; x += 53.4) for (let z = y0 + 20; z < y0 + h; z += 40) { add(p, "box", "roofLamp", x, y - 1.4 * M, z, 1, .25, 14, 0xfff3dc); add(p, "box", "roof", x, y - 1.33 * M, z, 1.4, .35, 14.4, 0xd8dde3); for (const s of [-6, 6]) add(p, "box", "roof", x, y - .7 * M, z + s, .1, 1.3 * M, .1, 0x5a6472); }
+    }
+    for (const q of R.pallets || []) place("pallet", q, { max: 1.1, h: 1.05 });
     function plateAt(p) { return p[0] < 553 ? "E1" : p[1] >= 303 ? "E2-1F" : "E2-2F"; }
     /* finalise: one InstancedMesh per plan, geometry and material */
     // each plan owns its materials, so one floor can stay bright while the others step back (focus)
@@ -88,7 +97,7 @@ window.MFReplica = (function () {
     for (const b of buckets.values()) {
       const im = new T.InstancedMesh(G[b.geo], matFor(b.plate, b.mat), b.list.length), base = new Float32Array(b.list.length * 4), xs = new Float32Array(b.list.length);
       b.list.forEach((o, i) => {
-        q.setFromAxisAngle(up, o.rot); mtx.compose(new T.Vector3(o.cx - CX, o.y, o.cz - CY), q, new T.Vector3(o.sx, o.sy, o.sz)); im.setMatrixAt(i, mtx); im.setColorAt(i, b.mat === "glow" ? col.set(o.color).multiplyScalar(3.2) : col.set(o.color));
+        q.setFromAxisAngle(up, o.rot); mtx.compose(new T.Vector3(o.cx - CX, o.y, o.cz - CY), q, new T.Vector3(o.sx, o.sy, o.sz)); im.setMatrixAt(i, mtx); im.setColorAt(i, b.mat === "glow" || b.mat === "roofLamp" ? col.set(o.color).multiplyScalar(3.2) : col.set(o.color));
         const e = mtx.elements; base[i * 4] = e[1]; base[i * 4 + 1] = e[5]; base[i * 4 + 2] = e[9]; base[i * 4 + 3] = e[13]; xs[i] = o.cx;
       });
       im.castShadow = b.mat !== "glow" && b.mat !== "glass"; im.receiveShadow = b.mat !== "glow"; im.frustumCulled = false; im.userData.replica = true;
@@ -160,7 +169,9 @@ window.MFReplica = (function () {
       }
     }
     function dim(plate, k) { for (const m of Object.values(owned)) if (m.userData.dim && m.userData.plate === plate) { if (m.userData.base) m.color.copy(m.userData.base).multiplyScalar(k); else m.color.setScalar(k); } }
-    return { ready: Promise.resolve(), vehicleAt, rise, live, dim, movers, parts, meshes, M, stats: { racks: R.racks.length, machines: R.machines.filter((m) => m.type === "injection" || m.type === "press").length, columns: R.columns.length, walls: R.walls.length, routes: (R.routes || []).length } };
+    const setRoof = (on) => { for (const k of Object.keys(owned)) if (/roof/.test(k)) owned[k].visible = on; };
+    let fadeNow = -1; const roofFade = (a) => { if (Math.abs(a - fadeNow) < .01) return; fadeNow = a; for (const k of Object.keys(owned)) if (/roof/.test(k)) { owned[k].opacity = a; owned[k].depthWrite = a > .9; } };
+    return { setRoof, roofFade, ready: Promise.resolve(), vehicleAt, rise, live, dim, movers, parts, meshes, M, stats: { racks: R.racks.length, machines: R.machines.filter((m) => m.type === "injection" || m.type === "press").length, columns: R.columns.length, walls: R.walls.length, routes: (R.routes || []).length } };
   }
 
   /* the clean 2D replica of one plan, drawn as CAD-like line art */

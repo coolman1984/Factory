@@ -10,6 +10,7 @@ for (const m of L.machines) solids.push({ kind: "machine", ...m });
 for (const t of L.trucks) solids.push({ kind: "truck", ...t });
 for (const c of L.columns) solids.push({ kind: "column", x: c.p[0] - 1, y: c.p[1] - 1, w: 2, h: 2, plate: c.plate });
 for (const l of L.lifts) solids.push({ kind: "lift", ...l });
+for (const p of L.pallets || []) solids.push({ kind: "pallet", ...p });
 for (const q of L.conveyors) for (let i = 1; i < q.pts.length; i++) { const a = q.pts[i - 1], b = q.pts[i]; solids.push({ kind: "conveyor", x: Math.min(a[0], b[0]) - 2, y: Math.min(a[1], b[1]) - 2, w: Math.abs(a[0] - b[0]) + 4, h: Math.abs(a[1] - b[1]) + 4, plate: q.plate }); }
 const walls = L.walls.map((w) => ({ kind: "wall", x: Math.min(w.a[0], w.b[0]) - .65, y: Math.min(w.a[1], w.b[1]) - .65, w: Math.abs(w.a[0] - w.b[0]) + 1.3, h: Math.abs(w.a[1] - w.b[1]) + 1.3, plate: w.plate }));
 const hit = (a, b, m = 0) => a.plate === b.plate && a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
