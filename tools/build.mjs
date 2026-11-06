@@ -11,11 +11,16 @@ const put = (html, mark, text) => html.split(mark).join(text);   // split/join: 
 let html = read("src/index.template.html");
 html = put(html, "/*CSS*/", read("src/player.css"));
 html = put(html, "/*THREE*/", three.replace(/<\/script/gi, "<\\/script"));
+html = put(html, "/*EXTRAS*/", readFileSync("D:/WORK/Software Development/GitHub/Digital- Factory/assets/vendor/three/three-extras.iife.min.js", "utf8").replace(/<\/script/gi, "<\\/script"));
+const light = Object.fromEntries(["E1", "E2-1F", "E2-2F"].map((k) => [k, "data:image/jpeg;base64," + readFileSync(at(`private/bake/${k}.jpg`)).toString("base64")]));
+html = put(html, "/*LIGHT*/", JSON.stringify(light));
+html = put(html, "/*TROLLEY*/", JSON.stringify(readFileSync(at("private/assets/trolley.glb")).toString("base64")));
 html = put(html, "/*DATA*/", JSON.stringify(data));
 html = put(html, "/*REPLICA*/", read("private/replica.json"));
 html = put(html, "/*PLANS*/", JSON.stringify(plans));
 html = put(html, "/*ATMOS*/", readFileSync("D:/WORK/Software Development/GitHub/Digital- Factory/assets/js/vfx/atmos.js", "utf8"));
 html = put(html, "/*REPLICAJS*/", read("src/replica.js"));
+html = put(html, "/*LOOK*/", read("src/look.js"));
 html = put(html, "/*PLAYER*/", read("src/player.js"));
 mkdirSync(at("dist/"), { recursive: true });
 writeFileSync(at("dist/Material_Flow_Player.html"), html);

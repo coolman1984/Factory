@@ -12,9 +12,12 @@ let id = 0; const call = (m, p = {}) => new Promise((r) => { const i = ++id; con
 const ev = async (e) => (await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result.value;
 await call("Runtime.enable"); await wait(5000);
 console.log("GPU:", await ev(`(()=>{const c=document.createElement('canvas').getContext('webgl2'),x=c.getExtension('WEBGL_debug_renderer_info');return x?c.getParameter(x.UNMASKED_RENDERER_WEBGL):'unknown'})()`));
-await ev(`window.__f=[];(function l(t){if(window.__p!=null)__f.push(t-__p);window.__p=t;requestAnimationFrame(l)})(performance.now());MF.seek(0);MF.play();0`);
+await ev(`Promise.resolve(MF.ready).then(()=>1)`); await wait(1500);
+await ev(`window.__f=[];window.__w=[];(function l(t){if(window.__p!=null){const d=t-__p;__f.push(d);if(d>60)__w.push([+MF.S.t.toFixed(1),Math.round(d)])}window.__p=t;requestAnimationFrame(l)})(performance.now());MF.seek(0);MF.play();0`);
 await wait(secs * 1000);
 const f = await ev(`__f`); f.sort((a, b) => a - b);
 const p = (k) => f[Math.floor(f.length * k)].toFixed(1), avg = f.reduce((s, x) => s + x, 0) / f.length;
 console.log(`quality ${await ev(`MF.S.quality`)}: ${f.length} frames, ${(1000 / avg).toFixed(1)} fps avg, median ${p(.5)} ms, 95% ${p(.95)} ms, 99% ${p(.99)} ms, worst ${f[f.length - 1].toFixed(0)} ms, frames over 50 ms: ${f.filter((x) => x > 50).length}; story reached t=${(await ev(`MF.S.t`)).toFixed(1)}`);
+console.log("error box:", JSON.stringify(await ev(`document.getElementById("err").textContent`)), "ready resolved:", await ev(`Promise.race([Promise.resolve(MF.ready).then(()=>true),new Promise(r=>setTimeout(()=>r(false),500))])`));
+console.log("slow frames at story time [t, ms]:", JSON.stringify(await ev(`__w`)));
 ws.close(); ch.kill(); process.exit(0);

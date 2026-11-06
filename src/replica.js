@@ -9,7 +9,7 @@ window.MFReplica = (function () {
 
   function build({ T, plates, R, CX, CY }) {
     const G = { box: new T.BoxGeometry(1, 1, 1), cyl: new T.CylinderGeometry(.5, .5, 1, 14), cylx: new T.CylinderGeometry(.5, .5, 1, 14).rotateZ(Math.PI / 2), cone: new T.ConeGeometry(.5, 1, 14).rotateX(Math.PI) };
-    const MAT = {
+    const MAT = window.MFLook ? window.MFLook.replicaMaterials(T) : {
       paint: new T.MeshStandardMaterial({ roughness: .52, metalness: .08 }), metal: new T.MeshStandardMaterial({ roughness: .34, metalness: .82 }),
       matte: new T.MeshStandardMaterial({ roughness: .92, metalness: 0 }), glass: new T.MeshPhysicalMaterial({ transparent: true, opacity: .2, roughness: .08, metalness: 0, clearcoat: 1, depthWrite: false }),
       glow: new T.MeshBasicMaterial({ toneMapped: false }),
@@ -52,11 +52,11 @@ window.MFReplica = (function () {
       box(p, cx, h * .5, cy + r.h * .42, r.w * .7, h * .8, 2, 0xbfe3ff, "glass");
     }
     function rack(r, levels, rand) {
-      const p = r.plate, vertical = r.h >= r.w, L = vertical ? r.h : r.w, D = vertical ? r.w : r.h, bays = Math.max(2, Math.round(L / (2.7 * M))), bl = L / bays, lv = 1.75 * M, cx = r.x + r.w / 2, cy = r.y + r.h / 2, row = D / 2 * .92, H = levels * lv + .6 * M;
+      const p = r.plate, vertical = r.h >= r.w, L = vertical ? r.h : r.w, D = vertical ? r.w : r.h, bays = Math.max(2, Math.round(L / (2.7 * M))), bl = L / bays, lv = 1.75 * M, cx = r.x + r.w / 2, cy = r.y + r.h / 2, row = D * .92, H = levels * lv + .6 * M;
       const pos = (u, v) => (vertical ? [cx + v, cy - L / 2 + u] : [cx - L / 2 + u, cy + v]);
       const up = vertical ? [.5, H, 1.1 * M * .1] : [.5, H, .5];
-      for (const side of [-1, 1]) {
-        const v = side * D / 4;
+      for (const side of [0]) {   // one clean row: the layout keeps real aisles around it (owner, 2026-11-06)
+        const v = side;
         for (let b = 0; b <= bays; b++) for (const e of [-1, 1]) { const [x, z] = pos(b * bl, v + e * row / 2); box(p, x, H / 2, z, .55, H, .55, c.orange, "paint"); }
         for (let l = 1; l <= levels; l++) for (const e of [-1, 1]) { const [x, z] = pos(L / 2, v + e * row / 2); box(p, x, l * lv - .4, z, vertical ? .4 : L, .55, vertical ? L : .4, c.blue); }
         for (let b = 0; b < bays; b++) for (let l = 0; l < levels; l++) for (const u of [.27, .73]) {
