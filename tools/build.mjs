@@ -19,7 +19,7 @@ html = put(html, "/*DATA*/", JSON.stringify(data));
 html = put(html, "/*REPLICA*/", read("private/replica.json"));
 html = put(html, "/*PLANS*/", JSON.stringify(plans));
 html = put(html, "/*ATMOS*/", readFileSync("D:/WORK/Software Development/GitHub/Digital- Factory/assets/js/vfx/atmos.js", "utf8"));
-html = put(html, "/*REPLICAJS*/", read("src/replica.js"));
+html = put(html, "/*REPLICAJS*/", "window.MF_ASSETS=" + read("private/assets/assets.json") + ";\n" + read("src/replica.js"));
 html = put(html, "/*LOOK*/", read("src/look.js"));
 html = put(html, "/*PLAYER*/", read("src/player.js"));
 mkdirSync(at("dist/"), { recursive: true });

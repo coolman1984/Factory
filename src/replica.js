@@ -8,7 +8,15 @@ window.MFReplica = (function () {
   function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 
   function build({ T, plates, R, CX, CY }) {
-    const G = { box: new T.BoxGeometry(1, 1, 1), cyl: new T.CylinderGeometry(.5, .5, 1, 14), cylx: new T.CylinderGeometry(.5, .5, 1, 14).rotateZ(Math.PI / 2), cone: new T.ConeGeometry(.5, 1, 14).rotateX(Math.PI) };
+    const G = { box: new T.BoxGeometry(1, 1, 1), cyl: new T.CylinderGeometry(.5, .5, 1, 14), cylx: new T.CylinderGeometry(.5, .5, 1, 14).rotateZ(Math.PI / 2), cylz: new T.CylinderGeometry(.5, .5, 1, 10).rotateX(Math.PI / 2), cone: new T.ConeGeometry(.5, 1, 14).rotateX(Math.PI) };
+    /* Blender models: packed primitives, instanced per plan. place() fits a model inside its take-off rectangle, never beyond it */
+    const ASSETS = window.MF_ASSETS || {}, placed = [];
+    const SIZE = { injection: [13.6, 2.75], truck: [2.5, 11.8], press: [3.2, 2.0], utility: [2.4, 1.2], pallet: [1.2, 0.8] };
+    function place(name, r, o = {}) {
+      if (!ASSETS[name]) return false;
+      const turn = !!o.turn, [mx, mz] = SIZE[name], lx = turn ? r.h : r.w, lz = turn ? r.w : r.h, sx = Math.min(lx / mx, M * (o.max || 1)), sz = Math.min(lz / mz, M * (o.max || 1));
+      placed.push({ name, plate: r.plate, x: r.x + r.w / 2, z: r.y + r.h / 2, sx, sy: M * (o.h || 1), sz, rot: turn ? Math.PI / 2 : 0 }); return true;
+    }
     const MAT = window.MFLook ? window.MFLook.replicaMaterials(T) : {
       paint: new T.MeshStandardMaterial({ roughness: .52, metalness: .08 }), metal: new T.MeshStandardMaterial({ roughness: .34, metalness: .82 }),
       matte: new T.MeshStandardMaterial({ roughness: .92, metalness: 0 }), glass: new T.MeshPhysicalMaterial({ transparent: true, opacity: .2, roughness: .08, metalness: 0, clearcoat: 1, depthWrite: false }),
@@ -30,27 +38,8 @@ window.MFReplica = (function () {
     }
     const c = { graph: 0x2b3240, blue: 0x2360c9, white: 0xe6eaf0, steel: 0x8e98a6, orange: 0xe2761b, yellow: 0xf4c20d, green: 0x27ae60, red: 0xe5484d, dark: 0x1a2030 };
 
-    function injection(r) {
-      const p = r.plate, f = frame(r, r.vertical), m = (x) => x * M, L = f.L, W = f.Wd, big = r.big || r.vertical, hh = big ? 1 : .72, part = (u, v, y, su, sy, sv, col, mat = "paint", geo = "box") => { const [x, z] = f.at(u, v); add(p, geo, mat, x, y, z, su, sy, sv, col, f.rot); };
-      part(.5, 0, m(.5), L, m(1), W * .62, c.graph);
-      for (const [u, tw] of [[.06, .05], [.26, .05], [.44, .06]]) part(u, 0, m(1.9) * hh, L * tw, m(2.4) * hh, W * .62, c.blue);
-      for (const v of [-1, 1]) for (const y of [1.2, 2.6]) part(.25, v * W * .22, m(y) * hh, L * .4, m(.22), m(.22), c.steel, "metal", "cylx");
-      part(.25, 0, m(1.9) * hh, L * .42, m(2.6) * hh, W * .72, 0xbfe3ff, "glass");
-      part(.66, 0, m(1.75) * hh, L * .4, m(.55), m(.55), c.steel, "metal", "cylx");
-      part(.74, 0, m(2.7) * hh, m(1), m(1.1), m(1), c.white, "paint", "cone");
-      part(.9, 0, m(1.6) * hh, L * .16, m(1.5) * hh, W * .55, c.blue);
-      part(.6, W * .4, m(1.1) * hh, L * .24, m(2.2) * hh, W * .14, c.white);
-      part(.52, W * .48, m(1.6) * hh, m(.9), m(.6), m(.06), 0x4fc3ff, "glow");
-      part(.47, -W * .34, m(2.9) * hh, m(.1), m(1.4), m(.1), c.steel, "metal", "cyl");
-      part(.47, -W * .34, m(3.7) * hh, m(.24), m(.34), m(.24), r.big ? 0x3dff8a : 0xffc000, "glow", "cyl");
-    }
-    function press(r) {
-      const p = r.plate, cx = r.x + r.w / 2, cy = r.y + r.h / 2, h = 4.2 * M;
-      box(p, cx, .5 * M, cy, r.w * .9, M, r.h * .8, c.graph);
-      for (const dx of [-.35, .35]) box(p, cx + r.w * dx, h / 2, cy, r.w * .14, h, r.h * .6, c.blue);
-      box(p, cx, h - M * .5, cy, r.w * .84, M, r.h * .6, c.blue); box(p, cx, h * .55, cy, r.w * .5, M * .5, r.h * .5, c.steel, "metal");
-      box(p, cx, h * .5, cy + r.h * .42, r.w * .7, h * .8, 2, 0xbfe3ff, "glass");
-    }
+    function injection(r) { place("injection", r, { turn: !!r.vertical, h: r.big || r.vertical ? 1 : .72 }); }
+    function press(r) { place("press", r, { max: 1.7, h: 1.1 }); }
     function rack(r, levels, rand) {
       const p = r.plate, vertical = r.h >= r.w, L = vertical ? r.h : r.w, D = vertical ? r.w : r.h, bays = Math.max(2, Math.round(L / (2.7 * M))), bl = L / bays, lv = 1.75 * M, cx = r.x + r.w / 2, cy = r.y + r.h / 2, row = D * .92, H = levels * lv + .6 * M;
       const pos = (u, v) => (vertical ? [cx + v, cy - L / 2 + u] : [cx - L / 2 + u, cy + v]);
@@ -67,19 +56,14 @@ window.MFReplica = (function () {
         }
       }
     }
-    function truck(r) {
-      const p = r.plate, cx = r.x + r.w / 2, tl = r.h * .74, y0 = r.y, wide = r.w * .78;
-      box(p, cx, 2.6 * M, y0 + tl / 2 + 1, wide, 2.7 * M, tl, c.white); box(p, cx, 2.6 * M, y0 + tl / 2 + 1, wide * 1.01, .6 * M, tl * 1.002, c.blue);
-      box(p, cx, 1.8 * M, y0 + tl + r.h * .13, wide * .96, 2.8 * M, r.h * .2, c.blue); box(p, cx, 2.3 * M, y0 + r.h * .985, wide * .8, .9 * M, 1, 0x9fd6ff, "glass");
-      for (const u of [.16, .28, .74, .96]) for (const s of [-1, 1]) add(p, "cylx", "matte", cx + s * wide * .46, .5 * M, y0 + r.h * u, .3 * M, M, M, 0x10131a);
-    }
-    function utility(r) { const p = r.plate, cx = r.x + r.w / 2, cy = r.y + r.h / 2, h = 2.4 * M; box(p, cx, h / 2, cy, r.w * .9, h, r.h * .9, 0x7f8a99); box(p, cx, h + .6, cy, r.w * .6, 1.2, r.h * .6, 0x596273, "metal"); }
+    function truck(r) { place("truck", r); }
+    function utility(r) { place("utility", r, { max: 1.5 }); }
     function dock(r) { const p = r.plate, cx = r.x + r.w / 2; box(p, cx, .5, r.y + r.h / 2, r.w * .8, 1, r.h, 0x3a4356); box(p, cx - r.w * .45, 7, r.y + .4, 1, 14, 1, c.yellow); box(p, cx + r.w * .45, 7, r.y + .4, 1, 14, 1, c.yellow); box(p, cx, 13.5, r.y + .4, r.w, 1, 1, c.yellow); }
 
     const rand = rng(20261106);
     for (const w of R.walls) {
       const [ax, ay] = w.a, [bx, by] = w.b, dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy), rot = -Math.atan2(dy, dx), mx = (ax + bx) / 2, my = (ay + by) / 2, H = 3.6 * M;
-      box(w.plate, mx, H / 2, my, len + 1.3, H, 1.3, 0xdde2e9, "paint", rot); box(w.plate, mx, H + .25, my, len + 1.5, .5, 1.5, 0x22304c, "paint", rot);
+      box(w.plate, mx, H / 2, my, len + 1.3, H, 1.3, 0xeef0f3, "paint", rot); box(w.plate, mx, .65 * M, my, len + 1.42, 1.3 * M, 1.42, 0x14536f, "paint", rot); box(w.plate, mx, H + .25, my, len + 1.5, .5, 1.5, 0x2f3a4e, "metal", rot);
     }
     for (const q of R.columns) { const H = (q.plate === "E2-2F" ? 7 : 8.5) * M; box(q.plate, q.p[0], H / 2, q.p[1], 1.9, H, 1.9, 0xc4cad3); box(q.plate, q.p[0], 1.6, q.p[1], 2.9, 3.2, 2.9, c.yellow); }
     for (const r of R.racks) rack(r, r.plate === "E2-2F" ? 3 : 4, rand);
@@ -87,13 +71,16 @@ window.MFReplica = (function () {
     R.trucks.forEach(truck);
     for (const q of R.conveyors) for (let k = 1; k < q.pts.length; k++) {
       const a = q.pts[k - 1], b = q.pts[k], len = Math.hypot(b[0] - a[0], b[1] - a[1]), rot = -Math.atan2(b[1] - a[1], b[0] - a[0]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, y = .9 * M, W = 1.1 * M;
-      box(q.plate, mx, y, my, len, .5, W, 0x23293a, "matte", rot);
-      for (const s of [-1, 1]) box(q.plate, mx + Math.sin(rot) * s * W / 2, y + .3, my + Math.cos(rot) * s * W / 2, len, .9, .3, c.steel, "metal", rot);
+      for (const s of [-1, 1]) box(q.plate, mx + Math.sin(rot) * s * W / 2, y + .1, my + Math.cos(rot) * s * W / 2, len, 1.1, .5, c.yellow, "paint", rot);
+      for (let u = .6; u < len; u += 1.25) add(q.plate, "cylz", "metal", a[0] + (b[0] - a[0]) * u / len, y + .25, a[1] + (b[1] - a[1]) * u / len, .85, .85, W * .96, 0xb4bac2, rot);
       for (let u = 0; u <= len; u += 3 * M) for (const s of [-1, 1]) { const x = a[0] + (b[0] - a[0]) * u / len + Math.sin(rot) * s * W * .45, z = a[1] + (b[1] - a[1]) * u / len + Math.cos(rot) * s * W * .45; box(q.plate, x, y / 2, z, .4, y, .4, c.steel, "metal"); }
     }
     for (const l of R.lifts) { const cx = l.x + l.w / 2, cy = l.y + l.h / 2, H = 7 * M; box(l.plate, cx, H / 2, cy, l.w, H, l.h, 0xffe08a, "glass"); for (const [i, j] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) box(l.plate, cx + i * l.w / 2, H / 2, cy + j * l.h / 2, .8, H, .8, c.yellow); }
+    // painted lanes either side of every trolley route, and a pale safety strip down the middle
+    for (const [a, b] of R.lanes || []) { if (plateAt(a) !== plateAt(b)) continue; const p = plateAt(a), h = a[1] === b[1], len = Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + 1.7 * M * 2, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2; for (const s of [-1, 1]) { const off = s * 1.7 * M; box(p, h ? mx : mx + off, .34, h ? my + off : my, h ? len : .42, .08, h ? .42 : len, c.yellow, "paint"); } }
     for (const d of R.decks) box(d.plate, d.x + d.w / 2, .5, d.y + d.h / 2, d.w, 1, d.h, 0x56627a, "paint");
 
+    function plateAt(p) { return p[0] < 553 ? "E1" : p[1] >= 303 ? "E2-1F" : "E2-2F"; }
     /* finalise: one InstancedMesh per plan, geometry and material */
     // each plan owns its materials, so one floor can stay bright while the others step back (focus)
     const owned = {}, matFor = (plate, k) => { const key = plate + k; if (!owned[key]) { owned[key] = MAT[k].clone(); owned[key].userData.dim = k !== "glass" && k !== "glow"; owned[key].userData.plate = plate; } return owned[key]; };
@@ -107,7 +94,19 @@ window.MFReplica = (function () {
       im.castShadow = b.mat !== "glow" && b.mat !== "glass"; im.receiveShadow = b.mat !== "glow"; im.frustumCulled = false; im.userData.replica = true;
       plates[b.plate].add(im); meshes.push({ im, base, xs });
     }
-    let parts = 0; for (const m of meshes) parts += m.xs.length;
+    // Blender models: one InstancedMesh per plan, model and material; emissive parts glow, colours are the model's own
+    const geoCache = {}, assetMat = {};
+    const geometry = (name, i, p) => { const k = name + i; if (!geoCache[k]) { const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(p.pos, 3)); g.setAttribute("normal", new T.Float32BufferAttribute(p.nor, 3)); g.setIndex(p.idx); geoCache[k] = g; } return geoCache[k]; };
+    const material = (plate, p) => { const k = plate + p.name; if (!assetMat[k]) { const m = new T.MeshStandardMaterial({ color: new T.Color().setRGB(...p.color), roughness: p.rough, metalness: p.metal }); if (/window|glass/.test(p.name)) { m.transparent = true; m.opacity = .45; } if (p.emissive && p.emissive.some((v) => v > 0)) { m.emissive = new T.Color().setRGB(...p.emissive); m.emissiveIntensity = 2.2; } m.userData.dim = !m.transparent; m.userData.plate = plate; m.userData.base = m.color.clone(); assetMat[k] = m; owned["a" + k] = m; } return assetMat[k]; };
+    for (const key of new Set(placed.map((o) => o.plate + "|" + o.name))) {
+      const list = placed.filter((o) => o.plate + "|" + o.name === key), [plate, name] = key.split("|");
+      ASSETS[name].forEach((p, i) => {
+        const im = new T.InstancedMesh(geometry(name, i, p), material(plate, p), list.length), base = new Float32Array(list.length * 4), xs = new Float32Array(list.length);
+        list.forEach((o, n) => { q.setFromAxisAngle(up, o.rot); mtx.compose(new T.Vector3(o.x - CX, 0, o.z - CY), q, new T.Vector3(o.sx, o.sy, o.sz)); im.setMatrixAt(n, mtx); const e = mtx.elements; base[n * 4] = e[1]; base[n * 4 + 1] = e[5]; base[n * 4 + 2] = e[9]; base[n * 4 + 3] = e[13]; xs[n] = o.x; });
+        im.castShadow = im.receiveShadow = true; im.frustumCulled = false; im.userData.replica = true; plates[plate].add(im); meshes.push({ im, base, xs });
+      });
+    }
+    let parts = placed.length * 40; for (const m of meshes) parts += m.xs.length;
     function rise(Rv) {
       const sweep = -160 + Rv * 1280, band = 150;
       for (const { im, base, xs } of meshes) {
@@ -125,32 +124,34 @@ window.MFReplica = (function () {
       const n = Math.floor(L / (4.5 * M)), im = new T.InstancedMesh(G.box, carton.material, n); im.castShadow = true; im.frustumCulled = false; plates[q2.plate].add(im); lines.push({ seg, L, n, im });
     }
     function vehicle(kind) {
-      const g = new T.Group(), std = (color, r = .5, m = .1) => new T.MeshStandardMaterial({ color, roughness: r, metalness: m }), B = (w, h, d, mat, x, y, z) => { const o = new T.Mesh(G.box, mat); o.scale.set(w, h, d); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
-      if (kind === "forklift") {
-        const y = std(0xf2b705), k = std(0x20242e, .7);
-        B(1.2 * M, .8 * M, 2.2 * M, y, 0, .75 * M, 0); B(1.2 * M, .25 * M, .9 * M, k, 0, 2.1 * M, -.1 * M);
-        for (const [i, j] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) B(.08 * M, 1.4 * M, .08 * M, k, i * .52 * M, 1.5 * M, -.1 * M + j * .4 * M);
-        B(.16 * M, 3 * M, .16 * M, k, -.42 * M, 1.5 * M, 1.2 * M); B(.16 * M, 3 * M, .16 * M, k, .42 * M, 1.5 * M, 1.2 * M);
-        B(.14 * M, .1 * M, 1.2 * M, k, -.3 * M, .3 * M, 1.8 * M); B(.14 * M, .1 * M, 1.2 * M, k, .3 * M, .3 * M, 1.8 * M);
-        B(1 * M, .9 * M, 1 * M, std(0xc9a26b, .9), 0, .85 * M, 1.8 * M);
-      } else {
-        B(1.2 * M, .45 * M, 1.9 * M, std(0x2360c9, .35, .3), 0, .35 * M, 0); B(1 * M, .9 * M, 1.2 * M, std(0xc9a26b, .9), 0, 1 * M, 0);
-        const led = new T.Mesh(G.box, new T.MeshBasicMaterial({ color: new T.Color(0x3dffb0).multiplyScalar(3), toneMapped: false })); led.scale.set(1.1 * M, .05 * M, 1.8 * M); led.position.y = .62 * M; g.add(led);
-      }
-      return g;
+      const g = new T.Group(), name = kind === "forklift" ? "forklift" : "agv";
+      (ASSETS[name] || []).forEach((p, i) => { const m = new T.Mesh(geometry(name, i, p), material("veh", p)); m.castShadow = true; g.add(m); });
+      g.scale.setScalar(M); return g;
     }
+    // square motion: drive a straight, stop, pivot 90 degrees, drive on; a pure function of time, looping
+    const ease = (u) => u * u * u * (u * (6 * u - 15) + 10), wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
     for (const r of R.routes || []) {
-      const v = vehicle(r.kind); plates[r.plate].add(v); let L = 0; const seg = r.pts.slice(1).map((b, i) => { const a = r.pts[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]); L += l; return { a, b, l }; });
-      movers.push({ v, seg, L, speed: (r.kind === "forklift" ? 2.6 : 1.4) * M, off: movers.length * 31, heading: 0 });
+      const v = vehicle(r.kind); plates[r.plate].add(v); const speed = (r.kind === "forklift" ? 1.9 : 1.1) * M, moves = []; let t = 0, head = null;
+      for (let i = 1; i < r.pts.length; i++) {
+        const a = r.pts[i - 1], b = r.pts[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l < .01) continue;
+        const hd = Math.atan2(b[0] - a[0], b[1] - a[1]);
+        if (head !== null && Math.abs(wrapA(hd - head)) > .01) { const d = Math.abs(wrapA(hd - head)) > 2 ? 1.6 : 1; moves.push({ turn: true, t0: t, d, a, h0: head, h1: head + wrapA(hd - head) }); t += d; }
+        const d = l / speed + .8; moves.push({ t0: t, d, a, b, h0: hd, h1: hd }); t += d; head = hd;
+      }
+      const first = moves.find((m) => !m.turn); moves.push({ turn: true, t0: t, d: 2, a: r.pts[r.pts.length - 1], h0: head, h1: head + wrapA(first.h0 - head) }); t += 2;
+      movers.push({ v, moves, total: t, off: movers.length * 23, heading: first.h0 });
+    }
+    function vehicleAt(m, time) {
+      const t = (time + m.off) % m.total; let lo = 0, hi = m.moves.length - 1; while (lo < hi) { const k = (lo + hi + 1) >> 1; if (m.moves[k].t0 <= t) lo = k; else hi = k - 1; }
+      const s = m.moves[lo], u = ease(Math.min(1, (t - s.t0) / s.d));
+      return s.turn ? { x: s.a[0], y: s.a[1], heading: s.h0 + (s.h1 - s.h0) * u } : { x: s.a[0] + (s.b[0] - s.a[0]) * u, y: s.a[1] + (s.b[1] - s.a[1]) * u, heading: s.h0 };
     }
     const at = (seg, d) => { for (const s of seg) { if (d <= s.l) return [s.a[0] + (s.b[0] - s.a[0]) * d / (s.l || 1), s.a[1] + (s.b[1] - s.a[1]) * d / (s.l || 1), s]; d -= s.l; } const s = seg[seg.length - 1]; return [s.b[0], s.b[1], s]; };
     function live(time, Rv, dt) {
       const show = Rv > .92;
       for (const m of movers) {
         m.v.visible = show; if (!show) continue;
-        const d = (time * m.speed + m.off) % m.L, [x, y, s] = at(m.seg, d), want = Math.atan2(s.b[0] - s.a[0], s.b[1] - s.a[1]);
-        let diff = Math.atan2(Math.sin(want - m.heading), Math.cos(want - m.heading)); m.heading += diff * Math.min(1, dt * 5);
-        m.v.position.set(x - CX, .1, y - CY); m.v.rotation.y = m.heading;
+        const p = vehicleAt(m, time); m.heading = p.heading; m.v.position.set(p.x - CX, .1, p.y - CY); m.v.rotation.y = p.heading;
       }
       for (const l of lines) {
         l.im.visible = show; if (!show) continue;
@@ -158,8 +159,8 @@ window.MFReplica = (function () {
         l.im.instanceMatrix.needsUpdate = true;
       }
     }
-    function dim(plate, k) { for (const m of Object.values(owned)) if (m.userData.dim && m.userData.plate === plate) m.color.setScalar(k); }
-    return { rise, live, dim, movers, parts, meshes, M, stats: { racks: R.racks.length, machines: R.machines.filter((m) => m.type === "injection" || m.type === "press").length, columns: R.columns.length, walls: R.walls.length, routes: (R.routes || []).length } };
+    function dim(plate, k) { for (const m of Object.values(owned)) if (m.userData.dim && m.userData.plate === plate) { if (m.userData.base) m.color.copy(m.userData.base).multiplyScalar(k); else m.color.setScalar(k); } }
+    return { ready: Promise.resolve(), vehicleAt, rise, live, dim, movers, parts, meshes, M, stats: { racks: R.racks.length, machines: R.machines.filter((m) => m.type === "injection" || m.type === "press").length, columns: R.columns.length, walls: R.walls.length, routes: (R.routes || []).length } };
   }
 
   /* the clean 2D replica of one plan, drawn as CAD-like line art */
