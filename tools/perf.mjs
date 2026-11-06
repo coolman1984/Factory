@@ -19,5 +19,6 @@ const f = await ev(`__f`); f.sort((a, b) => a - b);
 const p = (k) => f[Math.floor(f.length * k)].toFixed(1), avg = f.reduce((s, x) => s + x, 0) / f.length;
 console.log(`quality ${await ev(`MF.S.quality`)}: ${f.length} frames, ${(1000 / avg).toFixed(1)} fps avg, median ${p(.5)} ms, 95% ${p(.95)} ms, 99% ${p(.99)} ms, worst ${f[f.length - 1].toFixed(0)} ms, frames over 50 ms: ${f.filter((x) => x > 50).length}; story reached t=${(await ev(`MF.S.t`)).toFixed(1)}`);
 console.log("error box:", JSON.stringify(await ev(`document.getElementById("err").textContent`)), "ready resolved:", await ev(`Promise.race([Promise.resolve(MF.ready).then(()=>true),new Promise(r=>setTimeout(()=>r(false),500))])`));
+console.log("worst records:", JSON.stringify(await ev(`(MF.perf.slowFrames||[]).filter(x=>x.ms>60).sort((a,b)=>b.ms-a.ms).slice(0,6)`)));
 console.log("slow frames at story time [t, ms]:", JSON.stringify(await ev(`__w`)));
 ws.close(); ch.kill(); process.exit(0);

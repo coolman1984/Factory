@@ -74,9 +74,9 @@
     m.onBeforeCompile = (shader) => {
       shader.uniforms.mfFloorLight = m.userData.floorLight;
       shader.vertexShader = "varying vec2 vMfFloorUv;\n" + shader.vertexShader.replace("#include <uv_vertex>", "#include <uv_vertex>\nvMfFloorUv = uv;");
-      shader.fragmentShader = "uniform sampler2D mfFloorLight; varying vec2 vMfFloorUv;\n" + shader.fragmentShader.replace("#include <opaque_fragment>", "outgoingLight *= texture2D(mfFloorLight, vMfFloorUv).rgb;\n#include <opaque_fragment>");
+      shader.fragmentShader = "uniform sampler2D mfFloorLight; varying vec2 vMfFloorUv;\n" + shader.fragmentShader.replace("#include <colorspace_fragment>", "#include <colorspace_fragment>\ngl_FragColor.rgb *= texture2D(mfFloorLight, vMfFloorUv).rgb;");   // after tone mapping: the lit floor sits above white, so a shadow applied before it is squeezed away
     };
-    m.customProgramCacheKey = () => "mf-floor-light-v1";
+    m.customProgramCacheKey = () => "mf-floor-light-v2";
     return m;
   }
   // Digital Factory's analytic contact shade, rasterised once per plate. A Blender bake
