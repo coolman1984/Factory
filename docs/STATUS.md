@@ -19,3 +19,8 @@ Injection (slide 1): three flows, replica, glass player, square direct routes, 8
 
 ## Rules
 Local only: no remote; never commit `private/` or `dist/`; no company data in the public HERDR repository or chats. Office files through COM always. Short, simple reports to the owner.
+
+## PAUSED by owner - latest instruction, 2026-11-06
+Implementation and tests stopped. Read [the full saved handoff](PAUSED-2026-11-06.md) before resuming. Camera changes exist but final acceptance is incomplete. Stalls are measured, not fixed. Press/EPS slides were extracted through COM; their players are not built. Polish has not started. Do not resume without the owner asking.
+
+A complete CRC-verified local backup of code, private exports/evidence, built HTML and helper output is at `.herdr/checkpoints/20261106-170416/before-save.zip`. Test limits and exact resume steps are in the handoff. No push occurred.

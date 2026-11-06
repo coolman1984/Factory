@@ -1,8 +1,9 @@
-param($F,$Out)
+param([Parameter(Mandatory)][string]$F,[Parameter(Mandatory)][string]$Out,[ValidateRange(1,999)][int]$Slide=1)
 $ErrorActionPreference='Stop'
-Add-Type -AssemblyName System.Windows.Forms,System.Drawing
-$typed=New-Object -ComObject PowerPoint.Application
-$ptr=[Runtime.InteropServices.Marshal]::GetIUnknownForObject($typed); $pp=[Runtime.InteropServices.Marshal]::GetUniqueObjectForIUnknown($ptr); [void][Runtime.InteropServices.Marshal]::Release($ptr)
+[void][IO.Directory]::CreateDirectory($Out)
+[void][IO.Directory]::CreateDirectory((Join-Path $Out 'plans'))
+$pp=New-Object -ComObject PowerPoint.Application
+$hadPresentations=$pp.Presentations.Count
 $p=$null; $rows=New-Object Collections.ArrayList
 function Hex($c){ '#{0:X2}{1:X2}{2:X2}' -f ($c -band 255),(($c -shr 8) -band 255),(($c -shr 16) -band 255) }
 function Dump($h,$parent){
@@ -15,11 +16,14 @@ function Dump($h,$parent){
   if($h.Type -eq 6){ foreach($g in $h.GroupItems){ Dump $g $h.Id } }
 }
 try {
-  $p=$pp.Presentations.Open($F,-1,0,0); $s=$p.Slides.Item(1)
+  $p=$pp.Presentations.Open($F,-1,0,0); $s=$p.Slides.Item($Slide)
   foreach($h in $s.Shapes){ Dump $h 0 }
-  [IO.File]::WriteAllText((Join-Path $Out 'slide1.json'),($rows | ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding $false))
+  [IO.File]::WriteAllText((Join-Path $Out ("slide{0}.json" -f $Slide)),($rows | ConvertTo-Json -Depth 5),(New-Object Text.UTF8Encoding $false))
+  $s.Export((Join-Path $Out 'slide.png'),'PNG',1920,1080)
+  [IO.File]::WriteAllText((Join-Path $Out 'source.json'),([ordered]@{slide=$Slide;slides=$p.Slides.Count;width=$p.PageSetup.SlideWidth;height=$p.PageSetup.SlideHeight} | ConvertTo-Json))
   foreach($h in $s.Shapes){ if($h.Type -eq 13){
-    $h.Copy(); Start-Sleep -Milliseconds 1500; $img=$null; for($i=0;$i -lt 10 -and -not $img;$i++){ $img=[Windows.Forms.Clipboard]::GetImage(); if(-not $img){ Start-Sleep -Milliseconds 500 } }
-    if($img){ $o=Join-Path $Out ("plans\pic{0}.png" -f $h.Id); $img.Save($o,[Drawing.Imaging.ImageFormat]::Png); "pic id=$($h.Id) $($h.Name) rot=$($h.Rotation) crop? at $([int]$h.Left),$([int]$h.Top) $([int]$h.Width)x$([int]$h.Height) -> $($img.Width)x$($img.Height)"; $img.Dispose() } else { "pic $($h.Id): no image" }
+    $imagePath=Join-Path $Out ("plans/pic{0}.png" -f $h.Id)
+    $h.Export($imagePath,2)
+    "Exported picture $($h.Id), slide $Slide"
   } }
-} finally { [Windows.Forms.Clipboard]::Clear(); if($p){$p.Close()}; $pp.Quit(); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($pp); [void][Runtime.InteropServices.Marshal]::ReleaseComObject($typed) }
+} finally { if($p){$p.Close()}; if($hadPresentations -eq 0){$pp.Quit()}; [void][Runtime.InteropServices.Marshal]::ReleaseComObject($pp) }

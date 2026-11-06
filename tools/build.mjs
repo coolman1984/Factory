@@ -21,7 +21,7 @@ html = put(html, "/*PLANS*/", JSON.stringify(plans));
 html = put(html, "/*ATMOS*/", readFileSync("D:/WORK/Software Development/GitHub/Digital- Factory/assets/js/vfx/atmos.js", "utf8"));
 html = put(html, "/*REPLICAJS*/", "window.MF_ASSETS=" + read("private/assets/assets.json") + ";\n" + read("src/replica.js"));
 html = put(html, "/*LOOK*/", read("src/look.js"));
-html = put(html, "/*PLAYER*/", read("src/player.js"));
+html = put(html, "/*PLAYER*/", read("src/camera-envelope.js") + "\n" + read("src/player.js"));
 mkdirSync(at("dist/"), { recursive: true });
 writeFileSync(at("dist/Material_Flow_Player.html"), html);
 console.log(`dist/Material_Flow_Player.html ${(html.length / 1024 / 1024).toFixed(1)} MB`);

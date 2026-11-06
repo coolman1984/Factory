@@ -107,6 +107,25 @@
     metrics.riseUpdates++;
   };
   bindReplicaMeshes();
+  // Conservative overhead flight envelope. Measure full-height instance geometry once, not per frame.
+  // The upper floor can slide under the camera during a lift; reserve its entire height at every X/Z.
+  let chaseEnvelope;
+  const highestFloor = plateEntries.reduce((h, [, p]) => Math.max(h, p.lift * GAP), 0);
+  function prepareChaseEnvelope() {
+    const boxes = [{ minX: 0, minY: 0, minZ: 0, maxX: 1, maxY: 18, maxZ: 1 }]; // gates/cabin
+    for (const { im } of REP.meshes) {
+      im.computeBoundingBox(); const b = im.boundingBox;
+      if (b && !b.isEmpty()) boxes.push({ minX: b.min.x, minY: b.min.y, minZ: b.min.z, maxX: b.max.x, maxY: b.max.y, maxZ: b.max.z });
+    }
+    chaseEnvelope = window.CameraEnvelope.makeEnvelope(boxes);
+  }
+  function protectChaseEye(eye) {
+    const offset = highestFloor * S.stack;
+    eye.y -= offset;
+    try { return offset + chaseEnvelope.protect(eye, camera.near, camera.fov, camera.aspect, 1 / PT_M); }
+    finally { eye.y += offset; }
+  }
+  prepareChaseEnvelope();
   // Vehicles are lead-owned. REP.vehicleAt (physical, story-time) is used through REP.live as the lead
   // defines it; when that API is absent the original REP.live runs untouched. The player no longer
   // overrides REP.live, so there is no nearby-sample heading and no second time scaling for the physical API.
@@ -485,6 +504,7 @@ void main() {
   // that segment. Corners never turn the camera: only the target and distance ease (spring) to the next segment.
   const AZ_STEP = [-.55, -.3, -.8, -.45, -.7, -.25];
   let guidedAz = 0, guidedReady = false, frameDt = 1 / 60;
+  const chaseExitAngles = new Map();
   // Speed-aware follow. At 8x the lot travels 8x faster in world space, and a critically damped spring chasing a goal that moves
   // at velocity v lags by 2v/omega: the lag would grow with speed. Two measures keep it bounded:
   //  1) velocity feed-forward: setWant publishes the current world velocity of the goal (camFF, units/s, already x speed and
@@ -527,7 +547,20 @@ void main() {
     } else if (S.cam === "forklift") {
       const m = REP.movers[0]; if (!m || !m.v) return; const p = m.v.getWorldPosition(cameraPoint); aim(p.x, p.y + 12, p.z, 92, (m.heading ?? m.v.rotation.y) + Math.PI, 1.28);
     } else if (S.cam === "chase") {
-      const p = worldFromLot(frameLot, S.stack, cameraPoint); aim(p.x, p.y + 8, p.z, 120, frameLot.h + Math.PI, 1.3); leadVelocity(frameLot, cur, 1);
+      const p = worldFromLot(frameLot, S.stack, cameraPoint);
+      let az = frameLot.h + Math.PI;
+      if (frameLot.lift != null) {
+        // Look in from the nearest open edge of the upper landing, not through its slab/racks.
+        if (!chaseExitAngles.has(E.label)) {
+          // Include bridges projecting beyond the source picture: its edge alone is not an open edge.
+          const group = plates[plateOf(E.high[0], E.high[1])]; group.updateWorldMatrix(true, true);
+          const b = new T.Box3().setFromObject(group), landing = W(E.high[0], E.high[1]);
+          const sides = [[landing.x - b.min.x, -Math.PI / 2], [b.max.x - landing.x, Math.PI / 2], [landing.z - b.min.z, Math.PI], [b.max.z - landing.z, 0]];
+          chaseExitAngles.set(E.label, sides.reduce((a, b) => b[0] < a[0] ? b : a)[1]);
+        }
+        az = chaseExitAngles.get(E.label);
+      }
+      aim(p.x, p.y + 4, p.z, frameLot.lift != null ? 180 : 120, az, 1.3); leadVelocity(frameLot, cur, 1);
     } else if (S.cam === "overview" || S.cam === "iso") {
       const iso = S.cam === "iso"; aim(0, iso ? 30 : 0, 0, fit() * (iso ? 1.05 : .95), flat() ? 0 : iso ? -.785 : -.55, flat() ? .001 : iso ? .96 : 1);
     } else {
@@ -559,9 +592,12 @@ void main() {
     } else {
       const sp = Math.sin(want.pol); desiredTarget.set(want.x, want.y, want.z);
       desiredEye.set(want.x + want.dist * sp * Math.sin(want.az), want.y + want.dist * Math.cos(want.pol), want.z + want.dist * sp * Math.cos(want.az));
+      if (S.cam === "chase") protectChaseEye(desiredEye);
       const omega = (S.cam === "chase" || S.cam === "forklift" ? 8 : stepAt(S.t).s.intro ? 9 : S.cam === "guided" ? 3.2 : 5) * camScale();
       const blend = 1 - Math.exp(-dt / FF_TAU); camFFSmooth.x += (camFF.x - camFFSmooth.x) * blend; camFFSmooth.y += (camFF.y - camFFSmooth.y) * blend; camFFSmooth.z += (camFF.z - camFFSmooth.z) * blend;
       springFF(camera.position, eyeVelocity, desiredEye, camFFSmooth, omega, dt); springFF(cameraTarget, targetVelocity, desiredTarget, camFFSmooth, omega, dt);
+      // A spring or a seek can leave the rendered eye below its safe goal. Guard the actual eye too.
+      if (S.cam === "chase") { const before = camera.position.y; protectChaseEye(camera.position); if (camera.position.y !== before) eyeVelocity.y = Math.max(0, eyeVelocity.y); }
       c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z;
       const dx = camera.position.x - c.x, dy = camera.position.y - c.y, dz = camera.position.z - c.z;
       c.dist = Math.max(.001, Math.hypot(dx, dy, dz)); c.pol = Math.acos(clamp(dy / c.dist, -1, 1)); c.az = Math.atan2(dx, dz);
@@ -1109,7 +1145,7 @@ void main() {
     LOOK, PT_M, motion: { V_MAX, RAMP_T, TURN_T, DWELL, LIFT_T, STATION_T }, schedule: buildSchedule, sampleSchedule, cleanPath, lotPose: (t) => { const o = lotPos(t, { x: 0, y: 0, i: 1, u: 0, lift: null, it: null, h: 0, d: 0, v: 0, k: "hold", seg: 0 }); return o; }, route: { uniforms: routeU, flows: routeFlows, lifts: routeLifts, liftState: liftDiagnostics, plateOf }, vehicleAPI: physicalVehicles,
     // Round 5: reflection = { state, uniforms, update, warm, set({enabled, every, strength, f0, distort, blur}), summary(), debug(), renderNow() };
     // setSpeed(v) / stepSpeed(+-1) drive the #speed select; setRoof(on) drives S.roof + REP.setRoof (guarded); camera = feed-forward diagnostics.
-    reflection, setSpeed, stepSpeed, setRoof: (on) => { if (S.roof !== !!on) tRoof(); return S.roof; }, camera: { ff: camFF, ffSmooth: camFFSmooth, scale: camScale, eyeVelocity, targetVelocity } };
+    reflection, setSpeed, stepSpeed, setRoof: (on) => { if (S.roof !== !!on) tRoof(); return S.roof; }, camera: { eye: camera.position, target: cameraTarget, near: camera.near, fov: camera.fov, ceiling: () => chaseEnvelope.top + highestFloor * S.stack, ff: camFF, ffSmooth: camFFSmooth, scale: camScale, eyeVelocity, targetVelocity } };
   metrics.reset = () => { metrics.frames = 0; metrics.intervals.fill(0); metrics.stages = {}; metrics.slowCount = 0; };
   metrics.snapshot = () => {
     const frames = Math.min(metrics.frames, metrics.intervals.length), a = Array.from(metrics.intervals.subarray(0, frames)).sort((a, b) => a - b);
@@ -1125,7 +1161,7 @@ void main() {
       await Promise.all(originalLoads); await trolleyReady;
       // Lead's GLB parts: REP.ready resolves once they are instanced. Await it BEFORE any compile, then bind the
       // (possibly new) materials to the rise sweep and focus dimming; REP.meshes remains the one instanced list.
-      if (REP.ready && typeof REP.ready.then === "function") { await REP.ready; bindReplicaMeshes(); replicaVisible = null; REP.rise(S.R); REP.live(0, 1, 0); }
+      if (REP.ready && typeof REP.ready.then === "function") { await REP.ready; bindReplicaMeshes(); prepareChaseEnvelope(); replicaVisible = null; REP.rise(S.R); REP.live(0, 1, 0); }
       // Blender's baked light goes through the floor shader: soft shadows and contact occlusion for no runtime cost
       for (const [key, source] of Object.entries(window.MF_FLOOR_LIGHT || {})) await setFloorLight(key, source);
       for (const m of origs) renderer.initTexture(m.material.map);
