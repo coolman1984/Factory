@@ -59,6 +59,7 @@
     const slab = new T.Mesh(new T.BoxGeometry(w + 8, 6, h + 8), new T.MeshStandardMaterial({ color: 0x18233a, roughness: .7 })); slab.position.set(minX + w / 2 - CX, -3.2, minY + h / 2 - CY); slab.receiveShadow = true; g.add(slab);
     const art = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshStandardMaterial({ color: 0xc9ced6, roughness: .78, metalness: 0 })); art.rotation.x = -Math.PI / 2; art.position.set(minX + w / 2 - CX, .12, minY + h / 2 - CY); art.receiveShadow = true; g.add(art);
     const planMaterial = art.material, surfaceMaterial = window.MFLook.floor(T, w, h);
+    art.name = "MF floor " + key; slab.name = "MF slab " + key; planMaterial.name = "MF plan " + key; surfaceMaterial.name = "MF surface " + key;
     surfaceMaterial.userData.floorLight.value = window.MFLook.contactLight(T, key, P.box, RP);
     floors.push({ art, key, box: P.box, planMaterial, surfaceMaterial }); P.art = art;
   }
@@ -579,8 +580,23 @@
     if (drawMini.last == null || drawMini.flow !== S.flow || Math.abs(time - drawMini.last) >= .1) { drawMini(); drawMini.last = time; drawMini.flow = S.flow; }
     stage("overlay-dom", overlayStart); metrics.lastMask = mask; metrics.lastCPU = performance.now() - frameStart;
   }
+  // Read-only, on-demand diagnostics: inspect the renderer's own uniform table, not
+  // just the expected userData value. No image data URI or company image is returned.
+  function debugFloor() {
+    function textureInfo(tex) {
+      if (!tex) return null;
+      const image = tex.image || tex.source?.data;
+      return { id: tex.id, uuid: tex.uuid, name: tex.name, width: image?.naturalWidth || image?.width || 0, height: image?.naturalHeight || image?.height || 0, colorSpace: tex.colorSpace, version: tex.version };
+    }
+    return floors.map(fl => {
+      const material = fl.art.material, expected = fl.surfaceMaterial.userData.floorLight, properties = renderer.properties.get(fl.surfaceMaterial), active = renderer.properties.get(material), bound = properties.uniforms?.mfFloorLight;
+      const actual = active.uniforms?.mfFloorLight, sampler = active.currentProgram?.getUniforms().map.mfFloorLight;
+      let visible = true; for (let o = fl.art; o; o = o.parent) if (!o.visible) visible = false;
+      return { plate: fl.key, rise: S.R, look: S.look, plan: S.plan, visible, floorY: fl.art.position.y, material: { id: material.id, name: material.name, type: material.type, isSurface: material === fl.surfaceMaterial, shaderKey: material.customProgramCacheKey() }, texture: textureInfo(expected?.value), uniform: textureInfo(actual?.value), sameUniformObject: bound === expected, sameTexture: bound?.value === expected?.value, samplerActive: !!sampler, samplerUnit: sampler?.cache?.[0] ?? null, shader: fl.surfaceMaterial.userData.floorShader, originalPlanes: origs.filter(m => m.parent === fl.art.parent).map(m => ({ visible: m.visible, opacity: m.material.opacity, y: m.position.y })) };
+    });
+  }
   prepareArt(); buildPost(); renderFlow(); resize(); setLook("studio"); $("quality").value = S.quality; S.c.dist = want.dist = fit(); setCam("guided");
-  window.MF = { floors, S, D, REP, W, proj, seek, play, pause, stepBy, setFlow, setView, setCam, setLook, setPlan, setMeasure, setQuality, setFloorLight, stepAt, frame, want, perf: metrics };   // used by the tests
+  window.MF = { floors, S, D, REP, W, proj, seek, play, pause, stepBy, setFlow, setView, setCam, setLook, setPlan, setMeasure, setQuality, setFloorLight, debugFloor, stepAt, frame, want, perf: metrics };   // used by the tests
   metrics.reset = () => { metrics.frames = 0; metrics.intervals.fill(0); metrics.stages = {}; metrics.slowCount = 0; };
   metrics.snapshot = () => {
     const frames = Math.min(metrics.frames, metrics.intervals.length), a = Array.from(metrics.intervals.subarray(0, frames)).sort((a, b) => a - b);

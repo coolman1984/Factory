@@ -71,7 +71,13 @@
     // The bake uses the full plate UV rectangle, independently of the repeating concrete.
     // Always bind white until a bake arrives: replacing the uniform never recompiles a shader.
     m.userData.floorLight = { value: library(T).white };
+    m.userData.floorShader = { version: "mf-floor-light-v2", compiles: 0, uvPatched: false, multiplyPatched: false };
     m.onBeforeCompile = (shader) => {
+      const state = m.userData.floorShader;
+      state.uvPatched = shader.vertexShader.includes("#include <uv_vertex>");
+      state.multiplyPatched = shader.fragmentShader.includes("#include <colorspace_fragment>");
+      if (!state.uvPatched || !state.multiplyPatched) throw new Error("Floor-light shader markers do not match the bundled Three.js shader");
+      state.compiles++;
       shader.uniforms.mfFloorLight = m.userData.floorLight;
       shader.vertexShader = "varying vec2 vMfFloorUv;\n" + shader.vertexShader.replace("#include <uv_vertex>", "#include <uv_vertex>\nvMfFloorUv = uv;");
       shader.fragmentShader = "uniform sampler2D mfFloorLight; varying vec2 vMfFloorUv;\n" + shader.fragmentShader.replace("#include <colorspace_fragment>", "#include <colorspace_fragment>\ngl_FragColor.rgb *= texture2D(mfFloorLight, vMfFloorUv).rgb;");   // after tone mapping: the lit floor sits above white, so a shadow applied before it is squeezed away
