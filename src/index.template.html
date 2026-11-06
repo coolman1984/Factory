@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Material Flow Player</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><style>/*CSS*/</style></head><body>
+<div id="stage"><canvas id="gl"></canvas><canvas id="fx"></canvas><div id="labels"></div></div>
+<div id="top" class="ui"><h1 id="title"></h1><span class="tag" title="The order is read from the slide's arrows and still needs the owner's confirmation">DRAFT ORDER</span>
+<div class="tabs" id="flows"></div><span class="sp"></span>
+<div class="tabs"><button class="on">Injection</button><button disabled title="Next">Press</button><button disabled title="Next">EPS</button></div></div>
+<div id="tip" class="ui"></div>
+<div id="mini" class="ui"><canvas id="minic" width="420" height="236"></canvas></div>
+<div id="steps" class="ui"><ol id="list"></ol></div>
+<div id="card" class="ui"></div>
+<div id="bar" class="ui"><div id="scrub" role="slider" aria-label="Timeline" tabindex="0"><div class="tr"></div><div class="fl"></div><div class="hd"></div></div>
+<div class="row"><button id="first" title="First step (Home)">|&lt;</button><button id="prev" title="Previous step (Left)">&lt;</button><button id="play" title="Play or pause (Space)">&#9654;</button><button id="next" title="Next step (Right)">&gt;</button>
+<span id="time"></span><select id="speed" title="Speed"><option value=".5">0.5x</option><option value="1" selected>1x</option><option value="1.5">1.5x</option><option value="2">2x</option></select>
+<label title="Stop at each step, like clicks in PowerPoint"><input type="checkbox" id="stepstop"> Stop at steps</label><span class="sp"></span>
+<div class="seg" id="views"><button data-v="auto" class="on" title="View follows the story">Auto</button><button data-v="2d" title="Plan view (2)">2D</button><button data-v="3d" title="3D view (3)">3D</button></div>
+<select id="cam" title="Camera (C)"><option value="guided">Guided camera</option><option value="follow">Follow the lot</option><option value="chase">Ride with the lot</option><option value="overview">Overview</option><option value="iso">Isometric</option><option value="e1">E1-1F</option><option value="e21">E2-1F</option><option value="e22">E2-2F</option><option value="elev">Elevator 5</option><option value="free" hidden>Free camera</option></select>
+<label title="Separate the floors">Floors <input type="range" id="stack" min="0" max="100" value="0" style="width:80px"></label>
+<button id="lblBtn" class="on" title="Labels (L)">Labels</button><button id="netBtn" class="on" title="All flows on the slide (N)">All flows</button><button id="panelBtn" class="on" title="Steps panel (P)">Steps</button>
+<button id="zo" title="Zoom out (-)">-</button><button id="zi" title="Zoom in (+)">+</button><button id="helpBtn" title="Keys (?)">?</button><button id="full" title="Full screen (F)">Full screen</button></div></div>
+<div id="help" class="ui"><b>Controls</b><table>
+<tr><td>Space</td><td>Play or pause</td></tr><tr><td>Left / Right</td><td>Previous / next step</td></tr><tr><td>Home</td><td>Back to the start</td></tr>
+<tr><td>Left drag</td><td>Move the view (pan in 2D, turn in 3D)</td></tr><tr><td>Right drag or Shift</td><td>Pan</td></tr><tr><td>Wheel</td><td>Zoom</td></tr><tr><td>Double-click</td><td>Centre on that point</td></tr>
+<tr><td>2 / 3 / A</td><td>2D / 3D / Auto view</td></tr><tr><td>G / C</td><td>Guided camera / next camera</td></tr><tr><td>L / N / P</td><td>Labels / all flows / steps panel</td></tr><tr><td>F / H</td><td>Full screen / hide all controls</td></tr></table></div>
+<div id="err"></div>
+<script>/*THREE*/</script><script>window.MF_DATA=/*DATA*/;window.MF_PLANS=/*PLANS*/;</script><script>/*PLAYER*/</script></body></html>
