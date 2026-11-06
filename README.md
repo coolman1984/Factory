@@ -9,3 +9,12 @@ Interactive full-screen player for the material-flow deck: step by step like sli
 - `node tools/test-player.mjs <folder>`: drives the built file in headless Chrome and saves screenshots.
 
 `private/` and `dist/` are git-ignored because they hold company plans. This repository has no remote; keep it so.
+
+## The replica
+
+- `tools/extract-plan.py`: OpenCV analysis of the plan images (detections drawn in `private/debug_*.png`).
+- `tools/takeoff.mjs`: the take-off, every element read from the plans; `tools/check-takeoff.py` draws it back on them as proof.
+- `tools/routes.mjs`: vehicle routes from the 3D-Modeling repo's `findRoute`.
+- `src/replica.js`: the 3D factory (instanced) and the clean 2D plan. Atmosphere comes from Digital Factory's `DFAtmos`.
+- `node tools/shot-high.mjs <folder>`: slow look at the full-quality pipeline.
+- Scale: 1 slide point = 0.30 m, cross-checked on truck, column grid and machine length. It is an estimate, not a survey.
