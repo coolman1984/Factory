@@ -19,8 +19,10 @@
           // Sealed slab: broad stains, fine aggregate, and narrow recessed 6 m joints.
           const joint = x % (size / 2) < 1 || y % (size / 2) < 1;
           const stain = Math.max(0, cloud - .25);
-          a = 232 + cloud * 6 + n * 8 - stain * 15 - (joint ? 28 : 0);
-          r = 146 + n * 12 + stain * 24 + (joint ? 35 : 0); h = n * .08 - (joint ? .55 : 0);
+          // Round 4: a bright, clean, sealed grey slab: lighter albedo, tighter and lower roughness so the
+          // environment lights sit in it as soft, broad reflections (never a mirror: roughness stays well above .3).
+          a = 238 + cloud * 5 + n * 6 - stain * 12 - (joint ? 26 : 0);
+          r = 118 + n * 10 + stain * 22 + (joint ? 35 : 0); h = n * .06 - (joint ? .55 : 0);
         } else if (kind === "paint") { a = 248 + n * 5; r = 143 + n * 12; h = n * .035; }
         else if (kind === "galvanised") {
           const spangle = Math.sin(Math.floor(u * 22) * 9 + Math.floor(v * 22) * 17);
@@ -45,7 +47,8 @@
       }
       return { map: texture(albedo, true), roughnessMap: texture(rough, false), normalMap: texture(normal, false) };
     }
-    const finish = { concrete: [.76, 0, 256], paint: [.95, .08, 128], galvanised: [.85, .95, 128], cardboard: [1, 0, 128], plastic: [.94, 0, 128], wall: [.95, .02, 128] };
+    // effective roughness = factor x map: concrete ~ .72 x (.46-.59) = .33-.42 (soft sheen), steel and walls stay satin
+    const finish = { concrete: [.72, 0, 256], paint: [.95, .08, 128], galvanised: [.85, .95, 128], cardboard: [1, 0, 128], plastic: [.94, 0, 128], wall: [.95, .02, 128] };
     for (const [name, [roughness, metalness, size]] of Object.entries(finish)) {
       presets[name] = new T.MeshStandardMaterial({ ...maps(name, size), roughness, metalness, normalScale: new T.Vector2(name === "concrete" ? .3 : .12, name === "concrete" ? .3 : .12) });
       presets[name].name = "MF " + name;
@@ -66,7 +69,7 @@
     };
   }
   function floor(T, width, height) {
-    const m = material(T, "concrete"); m.color.setHex(0xc3c7c4);
+    const m = material(T, "concrete"); m.color.setHex(0xd0d4d2);   // player.js focus dimming uses the same base colour
     for (const key of ["map", "roughnessMap", "normalMap"]) { m[key] = m[key].clone(); m[key].repeat.set(width / 40, height / 40); }
     // The bake uses the full plate UV rectangle, independently of the repeating concrete.
     // Always bind white until a bake arrives: replacing the uniform never recompiles a shader.
@@ -111,14 +114,17 @@
   }
   function environment(T) {
     const s = new T.Scene(), PI = Math.PI;
-    const room = new T.Mesh(new T.BoxGeometry(64, 32, 64), new T.MeshBasicMaterial({ color: 0x4a5059, side: T.BackSide })); room.position.y = 11; s.add(room);
+    // Bright clean factory: pale grey-white shell (white walls and steel), a slightly darker floor so downward
+    // reflections keep contrast, and warm-white strip lights. Radiance stays moderate so nothing washes to white.
+    const room = new T.Mesh(new T.BoxGeometry(64, 32, 64), new T.MeshBasicMaterial({ color: 0x9aa3af, side: T.BackSide })); room.position.y = 11; s.add(room);
+    const slab = new T.Mesh(new T.PlaneGeometry(64, 64), new T.MeshBasicMaterial({ color: 0x6c737d, side: T.DoubleSide })); slab.rotation.x = -Math.PI / 2; slab.position.y = -4.8; s.add(slab);
     function panel(w, h, x, y, z, rx, ry, k, color = 0xffffff) {
       const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: new T.Color(color).multiplyScalar(k), side: T.DoubleSide }));
       m.position.set(x, y, z); m.rotation.set(rx, ry, 0); s.add(m);
     }
-    for (const x of [-14, -4.5, 4.5, 14]) panel(2.4, 46, x, 26.5, 0, PI / 2, 0, 5.5);
-    panel(18, 11, -31, 11, -6, 0, PI / 2, 3.2, 0xeef4ff); panel(14, 9, 31, 9, 9, 0, -PI / 2, 2.2, 0xffe6c8);
-    panel(34, 5, 0, 4.5, -31, 0, 0, 1.6, 0xdce6ff); panel(20, 4, 0, 2.5, 31, 0, PI, 1.1);
+    for (const x of [-14, -4.5, 4.5, 14]) panel(2.4, 46, x, 26.5, 0, PI / 2, 0, 4.6, 0xfff1dc);   // warm-white strips
+    panel(18, 11, -31, 11, -6, 0, PI / 2, 2.8, 0xffffff); panel(14, 9, 31, 9, 9, 0, -PI / 2, 2.2, 0xfff3e2);
+    panel(34, 8, 0, 6, -31, 0, 0, 1.9, 0xf4f8ff); panel(24, 6, 0, 3.5, 31, 0, PI, 1.5, 0xffffff);
     return s;
   }
   window.MFLook = { material, replicaMaterials, floor, contactLight, environment, textures: T => library(T).textures };

@@ -7,13 +7,18 @@
   const D = window.MF_DATA, RP = window.MF_REPLICA, T = window.THREE, $ = (id) => document.getElementById(id);
   function fail(m) { const e = $("err"); e.style.display = "grid"; e.textContent = m; }
   if (!T) { fail("The 3D library did not load."); return; }
-  const CX = 480, CY = 290, GAP = 120, DWELL = 1.8, SPEED = 8, INTRO = 7, PT_M = RP.scale;
-  const plateOf = (x, y) => (x < 553 ? "E1" : y >= 303 ? "E2-1F" : "E2-2F");
+  const CX = 480, CY = 290, GAP = 120, DWELL = 1.8, INTRO = 7, PT_M = RP.scale;
+  // Physical story-time motion (Round 4): cruise speed, ramp time to/from cruise, and in-place quarter-turn time.
+  const V_MAX = 1.6, RAMP_T = 1.2, TURN_T = .8, MIN_SEG = 1e-4, TURN_SNAP = 1e-6;
+  const PLATE_X = 553, PLATE_Y = 303;   // plate boundaries in slide points: x < PLATE_X is E1; right of it y >= PLATE_Y is E2-1F, else E2-2F
+  const plateOf = (x, y) => (x < PLATE_X ? "E1" : y >= PLATE_Y ? "E2-1F" : "E2-2F");
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v)), lerp = (a, b, t) => a + (b - a) * t, ease = (t) => t * t * (3 - 2 * t);
+  const wrapPi = (a) => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
   const query = new URLSearchParams(location.search);
 
   /* ---------- state ---------- */
-  const S = { flow: 0, t: 0, playing: false, speed: 1, view: "auto", cam: "guided", stack: 0, stackUser: null, labels: true, net: false, panel: true, stepStop: false, R: 0, focus: true, sound: false, plan: "replica", look: "studio", quality: ["high", "medium", "low"].includes(query.get("q")) ? query.get("q") : "high", measure: false, pts: [],
+  // panel: the steps list starts collapsed. mini: the mini map starts hidden. blur: opt-in glass backdrop blur (never on Low).
+  const S = { flow: 0, t: 0, playing: false, speed: 1, view: "auto", cam: "guided", stack: 0, stackUser: null, labels: true, net: false, panel: false, mini: false, blur: query.get("blur") === "1", autoFade: query.get("fade") !== "0", stepStop: false, R: 0, focus: true, sound: false, plan: "replica", look: "studio", quality: ["high", "medium", "low"].includes(query.get("q")) ? query.get("q") : "high", measure: false, pts: [],
     c: { x: 0, y: 0, z: 0, dist: 640, az: 0, pol: 0.001 } };
   const want = { x: 0, y: 0, z: 0, dist: 640, az: 0, pol: 0.001 };
 
@@ -56,7 +61,7 @@
       minX = Math.min(minX, pic.x); minY = Math.min(minY, pic.y); maxX = Math.max(maxX, pic.x + pic.w); maxY = Math.max(maxY, pic.y + pic.h);
     }
     const w = maxX - minX, h = maxY - minY; P.box = [minX, minY, w, h];
-    const slab = new T.Mesh(new T.BoxGeometry(w + 8, 6, h + 8), new T.MeshStandardMaterial({ color: 0x18233a, roughness: .7 })); slab.position.set(minX + w / 2 - CX, -3.2, minY + h / 2 - CY); slab.receiveShadow = true; g.add(slab);
+    const slab = new T.Mesh(new T.BoxGeometry(w + 8, 6, h + 8), new T.MeshStandardMaterial({ color: 0x56627a, roughness: .7 })); slab.position.set(minX + w / 2 - CX, -3.2, minY + h / 2 - CY); slab.receiveShadow = true; g.add(slab);
     const art = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshStandardMaterial({ color: 0xc9ced6, roughness: .78, metalness: 0 })); art.rotation.x = -Math.PI / 2; art.position.set(minX + w / 2 - CX, .12, minY + h / 2 - CY); art.receiveShadow = true; g.add(art);
     const planMaterial = art.material, surfaceMaterial = window.MFLook.floor(T, w, h);
     art.name = "MF floor " + key; slab.name = "MF slab " + key; planMaterial.name = "MF plan " + key; surfaceMaterial.name = "MF surface " + key;
@@ -66,18 +71,27 @@
   const REP = window.MFReplica.build({ T, plates, R: RP, CX, CY });
   // Sweep in the vertex shader: immutable instance buffers throughout the rise.
   const riseUniform = { value: 0 }, riseMaterials = new Set();
-  for (const { im } of REP.meshes) {
-    const m = im.material; if (riseMaterials.has(m)) continue; riseMaterials.add(m);
-    const previous = m.onBeforeCompile.bind(m), oldKey = m.customProgramCacheKey.bind(m), key = oldKey();
-    m.onBeforeCompile = shader => {
-      previous(shader); shader.uniforms.mfRise = riseUniform;
-      const factor = "float mfK = mfRise >= 1.0 ? 1.0 : max(0.004, smoothstep(0.0, 1.0, (-160.0 + mfRise * 1280.0 - (instanceMatrix[3].x + 480.0)) / 150.0));";
-      shader.vertexShader = "uniform float mfRise;\n" + shader.vertexShader
-        .replace("void main() {", "void main() {\n" + factor)
-        .replace("#include <defaultnormal_vertex>", "objectNormal.y /= mfK;\n#include <defaultnormal_vertex>")
-        .replace("#include <project_vertex>", T.ShaderChunk.project_vertex.replace("mvPosition = instanceMatrix * mvPosition;", "mvPosition = instanceMatrix * mvPosition; mvPosition.y *= mfK;"));
-    };
-    m.customProgramCacheKey = () => key + "|mf-rise-v1";
+  // Idempotent: patches every replica material once. Called now, and again after REP.ready
+  // (glTF parts may add instanced meshes/materials later; REP.meshes stays the one list).
+  function bindReplicaMeshes() {
+    for (const { im } of REP.meshes) {
+      const m = im.material; if (riseMaterials.has(m)) continue; riseMaterials.add(m);
+      const previous = m.onBeforeCompile.bind(m), oldKey = m.customProgramCacheKey.bind(m), key = oldKey();
+      m.onBeforeCompile = shader => {
+        previous(shader); shader.uniforms.mfRise = riseUniform;
+        const factor = "float mfK = mfRise >= 1.0 ? 1.0 : max(0.004, smoothstep(0.0, 1.0, (-160.0 + mfRise * 1280.0 - (instanceMatrix[3].x + 480.0)) / 150.0));";
+        shader.vertexShader = "uniform float mfRise;\n" + shader.vertexShader
+          .replace("void main() {", "void main() {\n" + factor)
+          .replace("#include <defaultnormal_vertex>", "objectNormal.y /= mfK;\n#include <defaultnormal_vertex>")
+          .replace("#include <project_vertex>", T.ShaderChunk.project_vertex.replace("mvPosition = instanceMatrix * mvPosition;", "mvPosition = instanceMatrix * mvPosition; mvPosition.y *= mfK;"));
+      };
+      m.customProgramCacheKey = () => key + "|mf-rise-v1";
+    }
+    for (const fl of floors) {
+      fl.dimMaterials = [];
+      for (const { im } of REP.meshes) if (im.material.userData.dim && im.material.userData.plate === fl.key && !fl.dimMaterials.includes(im.material)) fl.dimMaterials.push(im.material);
+      fl.lastDim = null;   // re-apply the current dim level to any late material
+    }
   }
   let replicaVisible = null;
   REP.rise = value => {
@@ -85,50 +99,13 @@
     if (replicaVisible !== show) { replicaVisible = show; for (let i = 0; i < REP.meshes.length; i++) REP.meshes[i].im.visible = show; }
     metrics.riseUpdates++;
   };
-  for (const fl of floors) {
-    fl.dimMaterials = [];
-    for (const { im } of REP.meshes) if (im.material.userData.dim && im.material.userData.plate === fl.key && !fl.dimMaterials.includes(im.material)) fl.dimMaterials.push(im.material);
-  }
-  // Geometry remains replica-owned. Pair its live conveyor instances with the existing
-  // route metadata once, so runtime animation need not call the allocating REP.live().
-  // Let replica initialise its own scales, rotations and heights once; the player
-  // subsequently changes only route translation and visibility.
+  bindReplicaMeshes();
+  // Vehicles are lead-owned. REP.vehicleAt (physical, story-time) is used through REP.live as the lead
+  // defines it; when that API is absent the original REP.live runs untouched. The player no longer
+  // overrides REP.live, so there is no nearby-sample heading and no second time scaling for the physical API.
+  const physicalVehicles = typeof REP.vehicleAt === "function";
+  metrics.vehicleAPI = physicalVehicles; metrics.liveFallback = !physicalVehicles;
   REP.live(0, 1, 0);
-  const animatedLines = [], liveA = { x: 0, y: 0 }, liveB = { x: 0, y: 0 }, livePoint = { x: 0, y: 0 };
-  let liveMappingOK = true;
-  for (const [key, group] of Object.entries(plates)) {
-    const instances = group.children.filter(o => o.isInstancedMesh && !o.userData.replica);
-    const routes = RP.conveyors.filter(r => r.plate === key);
-    if (instances.length !== routes.length) { liveMappingOK = false; break; }
-    for (let n = 0; n < routes.length; n++) {
-      const pts = routes[n].pts, seg = []; let length = 0;
-      for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]); length += l; seg.push({ a, b, l }); }
-      const im = instances[n]; if (im.count !== Math.floor(length / (4.5 * REP.M))) { liveMappingOK = false; break; }
-      im.instanceMatrix.setUsage(T.DynamicDrawUsage);
-      animatedLines.push({ im, seg, L: length });
-    }
-  }
-  function sampleSegments(seg, distance, out) {
-    for (let i = 0; i < seg.length; i++) { const v = seg[i]; if (distance <= v.l || i === seg.length - 1) { const k = v.l ? clamp(distance / v.l, 0, 1) : 0; out.x = lerp(v.a[0], v.b[0], k); out.y = lerp(v.a[1], v.b[1], k); return out; } distance -= v.l; }
-    out.x = out.y = 0; return out;
-  }
-  metrics.liveFallback = !liveMappingOK;
-  if (liveMappingOK) REP.live = (time, rise) => {
-    const show = rise > .92;
-    for (let n = 0; n < REP.movers.length; n++) {
-      const m = REP.movers[n]; m.v.visible = show; if (!show || !m.L || !m.seg.length) continue;
-      const distance = (time * m.speed + m.off) % m.L, pad = Math.min(m.L / 8, m.speed * .55 * .25);
-      sampleSegments(m.seg, distance, livePoint); m.v.position.set(livePoint.x - CX, .1, livePoint.y - CY);
-      sampleSegments(m.seg, Math.max(0, distance - pad), liveA); sampleSegments(m.seg, Math.min(m.L, distance + pad), liveB);
-      m.heading = Math.atan2(liveB.x - liveA.x, liveB.y - liveA.y); m.v.rotation.y = m.heading;
-    }
-    for (let n = 0; n < animatedLines.length; n++) {
-      const line = animatedLines[n], im = line.im; im.visible = show; if (!show || !line.L) continue;
-      const matrices = im.instanceMatrix.array;
-      for (let i = 0; i < im.count; i++) { sampleSegments(line.seg, (i / im.count * line.L + time * 1.1 * REP.M) % line.L, livePoint); const o = i * 16; matrices[o + 12] = livePoint.x - CX; matrices[o + 14] = livePoint.y - CY; }
-      im.instanceMatrix.needsUpdate = true;
-    }
-  };
   const planTex = {};
   function prepareArt() {
     const start = performance.now();
@@ -168,7 +145,7 @@
     const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), r = g.createRadialGradient(64, 64, 8, 64, 64, 62); r.addColorStop(0, "rgba(10,14,24,.62)"); r.addColorStop(.6, "rgba(10,14,24,.3)"); r.addColorStop(1, "rgba(10,14,24,0)"); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
     const blob = new T.Mesh(new T.PlaneGeometry(18, 22).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false, toneMapped: false })); blob.position.y = .35; lot.add(blob);
     const bytes = Uint8Array.from(atob(window.MF_TROLLEY), (ch) => ch.charCodeAt(0));
-    trolleyReady = new Promise((ok, no) => new T.X.GLTFLoader().parse(bytes.buffer, "", (gl) => { gl.scene.scale.setScalar(1.9 / PT_M); lot.add(gl.scene); ok(); }, (e) => { fail("The trolley model could not load: " + e.message); no(e); })); }
+    trolleyReady = new Promise((ok, no) => new T.X.GLTFLoader().parse(bytes.buffer, "", (gl) => { gl.scene.scale.setScalar(1.6 / PT_M); lot.add(gl.scene); ok(); }, (e) => { fail("The trolley model could not load: " + e.message); no(e); })); }
   scene.add(lot);
   const beacon = new T.Mesh(new T.RingGeometry(9, 11, 48).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: new T.Color(0x8fdcff).multiplyScalar(3), toneMapped: false, transparent: true, side: T.DoubleSide })); scene.add(beacon);
   // atmosphere: Digital Factory's light shafts and dust
@@ -184,16 +161,21 @@
     bloom = new T.UnrealBloomPass(new T.Vector2(1, 1), .25, .45, 2.2);
     composer.addPass(bloom); composer.addPass(new T.OutputPass());
   }
+  // Backdrop blur is opt-in (body.blur) and forced off on Low by CSS (body.q-low).
+  function syncQualityClasses() { document.body.classList.toggle("q-low", S.quality === "low"); document.body.classList.toggle("blur", S.blur && S.quality !== "low"); }
   function setQuality(q, manual = true) {
     if (!["high", "medium", "low"].includes(q)) return;
-    if (q === S.quality && resolutionScale === 1) { manualQuality = manual; return; }
-    const start = performance.now(); manualQuality = manual; S.quality = q; resolutionScale = 1; $("quality").value = q; resize(); event("quality-" + q, start);
+    if (q === S.quality && resolutionScale === 1) { manualQuality = manual; syncQualityClasses(); return; }
+    const start = performance.now(); manualQuality = manual; S.quality = q; resolutionScale = 1; $("quality").value = q; syncQualityClasses(); resize(); event("quality-" + q, start);
   }
 
   /* ---------- looks ---------- */
-  const LOOK = { studio: { bg: 0x0b1220, hemi: 1, sun: 2.4, exp: 1, dark: false, env: .55, air: false }, night: { bg: 0x05080f, hemi: .22, sun: .35, exp: 1.25, dark: true, env: .22, air: true }, blueprint: { bg: 0x071630, hemi: 1.2, sun: 0, exp: 1, dark: true, env: .1, air: false } };
+  // Studio is the bright clean factory: light grey-blue room, soft sky/ground fill and a stronger (still rough, never mirror)
+  // environment reflection. gain = route-light emissive multiplier (Night pushes it over the bloom threshold).
+  // The table is exposed as MF.LOOK so the lead can tune env/exp on a real GPU and call MF.setLook(name) again.
+  const LOOK = { studio: { bg: 0xd3dce7, ground: 0x929cab, hemi: .85, sun: 2.1, exp: 1, dark: false, env: .8, air: false, gain: 1, grid: false }, night: { bg: 0x05080f, ground: 0x2a3550, hemi: .22, sun: .35, exp: 1.25, dark: true, env: .22, air: true, gain: 3.2, grid: true }, blueprint: { bg: 0x071630, ground: 0x2a3550, hemi: 1.2, sun: 0, exp: 1, dark: true, env: .1, air: false, gain: 1.2, grid: true } };
   function setLook(k) {
-    const L = LOOK[k]; if (!L) return; const start = performance.now(); S.look = k; $("look").value = k; scene.background = new T.Color(L.bg); scene.fog = new T.Fog(L.bg, 1400, 3200); hemi.intensity = L.hemi; sun.intensity = L.sun; renderer.toneMappingExposure = L.exp; scene.environmentIntensity = L.env; setArt(L.dark); atmos?.set(L.air); atmos?.theme(L.dark);
+    const L = LOOK[k]; if (!L) return; const start = performance.now(); S.look = k; $("look").value = k; document.body.dataset.look = k; scene.background = new T.Color(L.bg); scene.fog = new T.Fog(L.bg, 1400, 3200); hemi.intensity = L.hemi; hemi.groundColor.setHex(L.ground); grid.visible = L.grid; sun.intensity = L.sun; renderer.toneMappingExposure = L.exp; scene.environmentIntensity = L.env; routeU.gain.value = L.gain; setArt(L.dark); atmos?.set(L.air); atmos?.theme(L.dark);
     for (const m of riseMaterials) m.wireframe = k === "blueprint";
     for (const f of floors) f.surfaceMaterial.wireframe = k === "blueprint";
     shadowDirty = true; event("look-" + k, start);
@@ -210,16 +192,95 @@
   }
   const pl = path => pathInfo(path).length;
   const st = REP.stats;
+
+  /* ---------- deterministic story-time motion ----------
+     A route is a pure schedule of phases, a function of story time only (no frame history, no global easing):
+       move = one straight segment: soft ramp up, cruise at V_MAX, soft ramp down (rest at both ends);
+       turn = exact in-place rotation at a corner (+-90 deg for orthogonal routes), zero translation.
+     Duplicate and same-direction collinear points are removed first, so a straight line never stops. Heading in a
+     move phase is exactly atan2(dx, dy) of its segment (the rotation.y convention of the lot model). A step's first
+     phase may be a turn from the previous step's final heading, so heading never snaps at a step boundary.
+     Duration = sum of all phase times; the dwell is added by buildFlow. Distances: slide points (d), metres via PT_M. */
+  const ZERO_POINT = [0, 0];
+  function cleanPath(path) {
+    const out = [];
+    for (const p of path) {
+      const q = [p[0], p[1]], n = out.length;
+      if (n && Math.hypot(q[0] - out[n - 1][0], q[1] - out[n - 1][1]) < MIN_SEG) continue;           // duplicate
+      if (n >= 2) {
+        const a = out[n - 2], b = out[n - 1], ux = b[0] - a[0], uy = b[1] - a[1], vx = q[0] - b[0], vy = q[1] - b[1];
+        if (Math.abs(ux * vy - uy * vx) < 1e-6 * Math.hypot(ux, uy) * Math.hypot(vx, vy) && ux * vx + uy * vy > 0) { out[n - 1] = q; continue; }   // same-direction collinear
+      }
+      out.push(q);
+    }
+    return out;
+  }
+  // Smooth ramp: v = vp * smoothstep(x); distance = vp * Ta * (x^3 - x^4 / 2), which reaches vp * Ta / 2 at x = 1.
+  const rampDist = (x) => x * x * x - x * x * x * x * .5, rampSpeed = (x) => x * x * (3 - 2 * x);
+  function segmentProfile(L) {   // L in metres
+    const full = V_MAX * RAMP_T, cruise = L >= full;
+    const Ta = cruise ? RAMP_T : RAMP_T * Math.sqrt(L / full), vp = cruise ? V_MAX : L / Ta;   // short segments: same acceleration, lower peak
+    return { Ta, vp, T: 2 * Ta + (cruise ? (L - full) / V_MAX : 0) };
+  }
+  function segmentAdvance(p, L, tau) {   // metres travelled along a segment after tau seconds
+    if (tau <= 0) return 0; if (tau >= p.T) return L;
+    if (tau < p.Ta) return p.vp * p.Ta * rampDist(tau / p.Ta);
+    if (tau > p.T - p.Ta) return L - p.vp * p.Ta * rampDist((p.T - tau) / p.Ta);
+    return p.vp * p.Ta * .5 + p.vp * (tau - p.Ta);
+  }
+  function segmentSpeed(p, tau) {
+    if (tau <= 0 || tau >= p.T) return 0;
+    if (tau < p.Ta) return p.vp * rampSpeed(tau / p.Ta);
+    if (tau > p.T - p.Ta) return p.vp * rampSpeed((p.T - tau) / p.Ta);
+    return p.vp;
+  }
+  // hIn: heading carried in from the previous step (undefined = this route sets its own initial heading, no turn).
+  function buildSchedule(path, hIn) {
+    const P = cleanPath(path), phases = [], sched = { pts: P, phases, duration: 0, length: 0, h0: hIn, h1: hIn };
+    let t = 0, d = 0, h = hIn;
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1], b = P[i], dx = b[0] - a[0], dy = b[1] - a[1], lp = Math.hypot(dx, dy), Lm = lp * PT_M, heading = Math.atan2(dx, dy);
+      if (h === undefined) { h = sched.h0 = heading; }
+      else {
+        let delta = wrapPi(heading - h); const quarter = Math.PI / 2;
+        if (Math.abs(Math.abs(delta) - quarter) < TURN_SNAP) delta = Math.sign(delta) * quarter; else if (Math.abs(Math.abs(delta) - Math.PI) < TURN_SNAP) delta = Math.PI;
+        if (Math.abs(delta) > TURN_SNAP) { const T2 = TURN_T * Math.abs(delta) / quarter; phases.push({ k: "turn", t0: t, t1: t + T2, x: a[0], y: a[1], h0: h, delta, h1: heading, d, seg: i - 1 }); t += T2; }
+      }
+      const p = segmentProfile(Lm); phases.push({ k: "move", t0: t, t1: t + p.T, a, b, lp, Lm, p, d0: d, h: heading, seg: i - 1 }); t += p.T; d += lp; h = heading;
+    }
+    sched.duration = t; sched.length = d; sched.h1 = h; return sched;
+  }
+  // Pure, seekable: out.x/y = position (slide points), h = heading (radians, rotation.y convention), d = distance along the
+  // cleaned route (slide points), v = speed (m/s), k = "move" | "turn" | "end", seg = index of the current/next segment.
+  function sampleSchedule(s, tau, out) {
+    const ph = s.phases, n = ph.length, P = s.pts;
+    if (!n || tau >= s.duration) { const e = P[P.length - 1] || ZERO_POINT; out.x = e[0]; out.y = e[1]; out.h = s.h1 === undefined ? 0 : s.h1; out.d = s.length; out.v = 0; out.k = "end"; out.seg = Math.max(0, P.length - 2); return out; }
+    if (tau < 0) tau = 0;
+    let i = 0; while (i < n - 1 && tau >= ph[i].t1) i++;
+    const p = ph[i]; out.seg = p.seg;
+    if (p.k === "turn") {
+      const u = clamp((tau - p.t0) / (p.t1 - p.t0), 0, 1); out.x = p.x; out.y = p.y; out.d = p.d; out.v = 0; out.k = "turn";
+      out.h = u >= 1 ? p.h1 : wrapPi(p.h0 + p.delta * ease(u)); return out;
+    }
+    const m = segmentAdvance(p.p, p.Lm, tau - p.t0), k = p.Lm ? clamp(m / p.Lm, 0, 1) : 1;
+    out.x = lerp(p.a[0], p.b[0], k); out.y = lerp(p.a[1], p.b[1], k); out.h = p.h; out.d = p.d0 + k * p.lp; out.v = segmentSpeed(p.p, tau - p.t0); out.k = "move"; return out;
+  }
   function buildFlow(f) {
-    f.items = [{ s: { node: f.steps[0].node, title: "From flat plan to factory", what: `Rebuilt from the slide: ${st.racks} rack blocks, ${st.machines} machines, ${st.columns} columns, ${st.walls} walls. Scale 1 slide point = ${PT_M} m.`, mode: "flow", view: "2d", dist: 300, intro: true }, i: 0, path: null, t0: 0, tm: INTRO - .6, t1: INTRO }];
-    let t = INTRO, total = 0;
+    f.items = [{ s: { node: f.steps[0].node, title: "From flat plan to factory", what: `Rebuilt from the slide: ${st.racks} rack blocks, ${st.machines} machines, ${st.columns} columns, ${st.walls} walls. Scale 1 slide point = ${PT_M} m.`, mode: "flow", view: "2d", dist: 300, intro: true }, i: 0, path: null, t0: 0, tm: INTRO - .6, t1: INTRO, h0: 0, h1: 0, sched: null, base: 0, run: 0, metres: 0 }];
+    let t = INTRO, total = 0, hPrev, waiting = [];
     f.steps.forEach((s, i) => {
       let path = s.path;
       if (path === "lift") path = [E.low, E.high];
       if (path === "fromLift") path = [E.high, [D.nodes[s.node].x, E.high[1]], [D.nodes[s.node].x, D.nodes[s.node].y]];
-      const move = !path ? .6 : s.lift ? 3.2 : Math.max(1.6, pl(path) / SPEED), metres = path && !s.lift ? pl(path) * PT_M : 0; total += metres;
-      f.items.push({ s, i: i + 1, path, t0: t, tm: t + move, t1: t + move + DWELL, metres, run: total }); t += move + DWELL;
+      const sched = path && !s.lift ? buildSchedule(path, hPrev) : null, moving = sched && sched.phases.length > 0;
+      const move = !path ? .6 : s.lift ? 3.2 : moving ? sched.duration : .6, metres = path && !s.lift ? pl(path) * PT_M : 0, base = total; total += metres;
+      const it = { s, i: i + 1, path, sched, t0: t, tm: t + move, t1: t + move + DWELL, metres, base, run: total, h0: hPrev, h1: hPrev };
+      if (moving) { it.h0 = sched.h0; it.h1 = sched.h1; if (hPrev === undefined) { for (const w of waiting) w.h0 = w.h1 = sched.h0; waiting = []; } hPrev = sched.h1; }
+      else if (hPrev === undefined) waiting.push(it);
+      f.items.push(it); t += move + DWELL;
     });
+    for (const w of waiting) w.h0 = w.h1 = 0;   // a flow with no moving step at all
+    f.items.forEach(it => { if (it.h0 === undefined) it.h0 = it.h1 = 0; });
     f.total = t;
   }
   D.flows.forEach(buildFlow);
@@ -233,20 +294,173 @@
     for (let i = 1; i < path.length; i++) { if (d <= info.cumulative[i] || i === path.length - 1) { const a = path[i - 1], b = path[i], l = info.cumulative[i] - info.cumulative[i - 1], k = l ? clamp((d - info.cumulative[i - 1]) / l, 0, 1) : 0; out.x = lerp(a[0], b[0], k); out.y = lerp(a[1], b[1], k); out.i = i; return out; } }
     out.x = path[0][0]; out.y = path[0][1]; out.i = 1; return out;
   }
-  const worldSample = { x: 0, y: 0, i: 1, u: 0, lift: null, it: null }, frameLot = { ...worldSample }, headingA = { x: 0, y: 0, i: 1 }, headingB = { ...headingA }, pathHead = { ...headingA };
-  const worldHigh = new T.Vector3(), lotPoint = new T.Vector3(), liftLow = new T.Vector3(), liftHigh = new T.Vector3(), cameraPoint = new T.Vector3(), cameraAhead = new T.Vector3();
+  const worldSample = { x: 0, y: 0, i: 1, u: 0, lift: null, it: null, h: 0, d: 0, v: 0, k: "hold", seg: 0 }, frameLot = { ...worldSample }, pathHead = { x: 0, y: 0, i: 1 };
+  const worldHigh = new T.Vector3(), lotPoint = new T.Vector3(), liftLow = new T.Vector3(), liftHigh = new T.Vector3(), cameraPoint = new T.Vector3(), segmentA = new T.Vector3(), segmentB = new T.Vector3();
+  // The lot's pose is a pure function of story time: position, heading (h), distance along the route (d, slide points),
+  // speed (v, m/s), phase (k: move / turn / end / hold) and the current segment. u = d / route length (exact, not a time fraction).
   function lotPos(t, out) {
-    const it = stepAt(t), n = D.nodes[it.s.node]; out.it = it; out.lift = null;
+    const it = stepAt(t), n = D.nodes[it.s.node]; out.it = it; out.lift = null; out.h = it.h0; out.d = 0; out.v = 0; out.k = "hold"; out.seg = 0;
     if (!it.path) { out.x = n.x; out.y = n.y; out.u = 1; out.i = 1; return out; }
-    const u = ease(clamp((t - it.t0) / Math.max(.001, it.tm - it.t0), 0, 1)); out.u = u;
-    if (it.s.lift) { out.lift = u; return out; }
-    return along(it.path, u, out);
+    if (it.s.lift) { out.lift = out.u = ease(clamp((t - it.t0) / Math.max(.001, it.tm - it.t0), 0, 1)); out.h = it.h1; return out; }
+    sampleSchedule(it.sched, t - it.t0, out); out.u = it.sched.length ? clamp(out.d / it.sched.length, 0, 1) : 1; out.i = out.seg + 1;
+    const p = it.sched.pts[it.sched.pts.length - 1]; if (!it.sched.phases.length && p) { out.x = p[0]; out.y = p[1]; out.h = it.h1; }
+    return out;
   }
   function worldFromLot(p, stack, out) {
     if (p.lift == null) return W(p.x, p.y, stack, .8, out);
     return W(E.low[0], E.low[1], stack, .8, out).lerp(W(E.high[0], E.high[1], stack, .8, worldHigh), p.lift);
   }
   function lotWorld(t, stack, out) { return worldFromLot(lotPos(t, worldSample), stack, out); }
+
+  /* ---------- route light: a real floor ribbon + station rings ----------
+     Static geometry per (flow, plate), parented to the plate group, so stack / floor offsets / elevator positions follow the
+     plate transform for free. Nothing is rebuilt or uploaded per frame: shared uniforms only (done distance, story time, step,
+     gain, alpha). aU is the flow-global route distance in metres, so "travelled" is one uniform: it.base + schedule distance. */
+  const routeU = { done: { value: 0 }, time: { value: 0 }, gain: { value: 1 }, alpha: { value: 0 }, step: { value: 0 }, dim: { value: .3 } };
+  const RIBBON_W = 3.6, RIBBON_Y = .6, STATION_R = 10;
+  // One fragment program for the floor ribbon and the elevator connector. uHead gates the leading glow
+  // (1 on the floor ribbon; on the connector it is 1 only while the lot is actually travelling it).
+  const RIBBON_FRAG = `uniform float uDone, uTime, uGain, uAlpha, uDim, uHead; varying float vU; varying float vV;
+void main() {
+  float e = abs(vV);
+  float core = 1.0 - smoothstep(0.16, 0.30, e);
+  float halo = exp(-e * e * 5.0) * (1.0 - smoothstep(0.85, 1.0, e));
+  float reach = 1.0 - smoothstep(uDone - 0.25, uDone + 0.25, vU);
+  float chev = fract((vU + e * 0.55) / 1.3 - uTime * 0.32);
+  float band = smoothstep(0.0, 0.05, chev) * (1.0 - smoothstep(0.2, 0.3, chev)) * (0.3 + 0.7 * reach) * (1.0 - smoothstep(0.55, 0.95, e));
+  // chevrons point along the route (the tip, e = 0, leads in +aU)
+  float hd = (vU - uDone) / 1.4; float head = exp(-hd * hd) * (1.0 - smoothstep(0.1, 0.9, e)) * uHead;
+  float lit = mix(uDim, 1.0, reach);
+  vec3 rgb = mix(vec3(1.0, 0.42, 0.04), vec3(1.0, 0.78, 0.36), clamp(core * 0.5 + band * 0.55 + head * 0.6, 0.0, 1.0)) * uGain;
+  float a = (core * (0.78 + 0.22 * band) + halo * 0.4 + head * 0.5) * lit * uAlpha;
+  gl_FragColor = vec4(rgb, clamp(a, 0.0, 1.0));
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`;
+  const ROUTE_STATE = { transparent: true, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 };
+  const ribbonMaterial = new T.ShaderMaterial({
+    uniforms: { uDone: routeU.done, uTime: routeU.time, uGain: routeU.gain, uAlpha: routeU.alpha, uDim: routeU.dim, uHead: { value: 1 } }, ...ROUTE_STATE,
+    vertexShader: "attribute float aU; attribute float aV; varying float vU; varying float vV;\nvoid main() { vU = aU; vV = aV; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: RIBBON_FRAG
+  });
+  // Elevator connector: same fragment program, one material per lift step (same GLSL, so one compiled program) so each
+  // carries its own progress. aU runs 0..1 along the connector; uLen (metres) turns it into route metres in the vertex stage.
+  const LIFT_VERT = "attribute float aU; attribute float aV; uniform float uLen; varying float vU; varying float vV;\nvoid main() { vU = aU * uLen; vV = aV; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }";
+  const makeLiftMaterial = () => new T.ShaderMaterial({
+    uniforms: { uDone: { value: -.5 }, uHead: { value: 0 }, uLen: { value: 1 }, uTime: routeU.time, uGain: routeU.gain, uAlpha: routeU.alpha, uDim: routeU.dim }, ...ROUTE_STATE,
+    vertexShader: LIFT_VERT, fragmentShader: RIBBON_FRAG
+  });
+  // Shared, static: two crossed strips (one wide in local X, one in local Y) along local +Z from 0 to 1, so the connector
+  // reads from any camera angle. The mesh transform (position, rotation, scale.z = length) is the only per-frame change.
+  const liftGeometry = (() => {
+    const hw = RIBBON_W / 2, pos = [], u = [], v = [], idx = [];
+    for (const [wx, wy] of [[hw, 0], [0, hw]]) { const n = pos.length / 3; pos.push(wx, wy, 0, -wx, -wy, 0, -wx, -wy, 1, wx, wy, 1); u.push(0, 0, 1, 1); v.push(1, -1, -1, 1); idx.push(n, n + 1, n + 2, n, n + 2, n + 3); }
+    const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); g.setAttribute("aU", new T.Float32BufferAttribute(u, 1)); g.setAttribute("aV", new T.Float32BufferAttribute(v, 1));
+    g.setIndex(idx); g.computeBoundingSphere(); return g;
+  })();
+  const LIFT_AXIS = new T.Vector3(0, 0, 1), liftDir = new T.Vector3();
+  const ringMaterial = new T.ShaderMaterial({
+    uniforms: { uTime: routeU.time, uGain: routeU.gain, uAlpha: routeU.alpha, uStep: routeU.step },
+    transparent: true, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2,
+    vertexShader: "attribute vec2 aC; attribute float aI; varying vec2 vC; varying float vI;\nvoid main() { vC = aC; vI = aI; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: `uniform float uTime, uGain, uAlpha, uStep; varying vec2 vC; varying float vI;
+void main() {
+  float r = length(vC);
+  float ring = smoothstep(0.66, 0.74, r) * (1.0 - smoothstep(0.84, 0.92, r));
+  float now = 1.0 - step(0.5, abs(vI - uStep)), done = step(0.5, uStep - vI);
+  float p = fract(uTime * 0.5), pr = 0.25 + p * 0.7;
+  float wave = (1.0 - smoothstep(0.0, 0.07, abs(r - pr))) * (1.0 - p) * now;
+  float disc = (1.0 - smoothstep(0.0, 0.7, r)) * 0.16 * now;
+  float a = ring * mix(0.26, 0.9, max(now, done * 0.6)) + wave * 0.8 + disc;
+  vec3 rgb = mix(vec3(1.0, 0.45, 0.06), vec3(1.0, 0.8, 0.4), now * 0.5) * uGain;
+  gl_FragColor = vec4(rgb, clamp(a * (r < 1.0 ? 1.0 : 0.0), 0.0, 1.0) * uAlpha);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`
+  });
+  const routeFlows = D.flows.map((f, fi) => {
+    const ribbon = {}, rings = {}, meshes = [], bucket = (map, key, make) => map[key] || (map[key] = make());
+    const quad = (g, ax, az, bx, bz, cx, cz, dx, dz, attrs) => { const n = g.pos.length / 3; g.pos.push(ax, RIBBON_Y, az, bx, RIBBON_Y, bz, cx, RIBBON_Y, cz, dx, RIBBON_Y, dz); attrs(g); g.idx.push(n, n + 1, n + 2, n, n + 2, n + 3); };
+    const hw = RIBBON_W / 2, lifts = [];
+    // One ring per step station (path end, lift landings, and pathless pickup/drop-off nodes), on the plate that owns the point.
+    const station = (x, y, step) => {
+      const sg = bucket(rings, plateOf(x, y), () => ({ pos: [], c: [], i: [], idx: [] }));
+      quad(sg, x - CX - STATION_R, y - CY - STATION_R, x - CX + STATION_R, y - CY - STATION_R, x - CX + STATION_R, y - CY + STATION_R, x - CX - STATION_R, y - CY + STATION_R, g => { g.c.push(-1, -1, 1, -1, 1, 1, -1, 1); g.i.push(step, step, step, step); });
+    };
+    for (const it of f.items) {
+      if (it.s.intro) continue;
+      if (!it.path) { const n = D.nodes[it.s.node]; if (n) station(n.x, n.y, it.i); continue; }
+      const end = it.path[it.path.length - 1];   // station: where the lot stops for this step (lift: the upper landing)
+      station(end[0], end[1], it.i);
+      if (it.s.lift) {
+        // Landing ring at the lower end too, and one connector mesh in world space (it spans two plates, so it is not
+        // parented to either): its transform is set every frame from W(E.low) -> W(E.high), see updateRoute.
+        station(E.low[0], E.low[1], it.i);
+        const material = makeLiftMaterial(), mesh = new T.Mesh(liftGeometry, material);
+        mesh.renderOrder = 3; mesh.visible = false; mesh.name = "MF route lift flow " + fi + " step " + it.i; scene.add(mesh); meshes.push(mesh);
+        lifts.push({ flow: fi, step: it.i, item: it, mesh, material, from: new T.Vector3(), to: new T.Vector3(), progress: 0, state: "future", length: 0 });
+        continue;
+      }
+      if (!it.sched) continue;
+      const pts = it.sched.pts; let cum = it.base;
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len < MIN_SEG) continue;
+        const rx = b[0] - a[0], ry = b[1] - a[1], dx = rx / len, dy = ry / len, nx = -dy * hw, ny = dx * hw, e0 = i > 1 ? hw : 0, e1 = i < pts.length - 1 ? hw : 0;
+        // Split at the plate boundaries (x = PLATE_X; right of it y = PLATE_Y) so every portion belongs to the plate it lies on.
+        // Neighbouring pieces on the same plate merge back; aU stays the global distance and only true corners get the joint overlap.
+        const cuts = [0]; { const tc = []; if (rx) { const t = (PLATE_X - a[0]) / rx; if (t > 0 && t < 1) tc.push(t); } if (ry) { const t = (PLATE_Y - a[1]) / ry; if (t > 0 && t < 1) tc.push(t); } tc.sort((p, q) => p - q); cuts.push(...tc, 1); }
+        const pieces = [];
+        for (let k = 1; k < cuts.length; k++) {
+          const t0 = cuts[k - 1], t1 = cuts[k], tm = (t0 + t1) / 2, plate = plateOf(a[0] + rx * tm, a[1] + ry * tm), last = pieces[pieces.length - 1];
+          if (last && last.plate === plate) last.t1 = t1; else pieces.push({ plate, t0, t1 });
+        }
+        for (const pc of pieces) {
+          const s0 = pc.t0 === 0 ? e0 : 0, s1 = pc.t1 === 1 ? e1 : 0;   // joint overlap only at the segment's own ends
+          const ax = a[0] + rx * pc.t0 - CX - dx * s0, ay = a[1] + ry * pc.t0 - CY - dy * s0, bx = a[0] + rx * pc.t1 - CX + dx * s1, by = a[1] + ry * pc.t1 - CY + dy * s1;
+          const g = bucket(ribbon, pc.plate, () => ({ pos: [], u: [], v: [], idx: [] }));
+          const u0 = cum + pc.t0 * len * PT_M - s0 * PT_M, u1 = cum + pc.t1 * len * PT_M + s1 * PT_M;
+          quad(g, ax + nx, ay + ny, ax - nx, ay - ny, bx - nx, by - ny, bx + nx, by + ny, h => { h.u.push(u0, u0, u1, u1); h.v.push(1, -1, -1, 1); });
+        }
+        cum += len * PT_M;
+      }
+    }
+    const make = (map, material, order, names) => { for (const [key, g] of Object.entries(map)) {
+      const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(g.pos, 3));
+      for (const [attr, size, src] of names) geo.setAttribute(attr, new T.Float32BufferAttribute(g[src], size));
+      geo.setIndex(g.idx); geo.computeBoundingSphere();
+      const mesh = new T.Mesh(geo, material); mesh.renderOrder = order; mesh.visible = false; mesh.name = "MF route " + key; plates[key].add(mesh); meshes.push(mesh);
+    } };
+    make(ribbon, ribbonMaterial, 3, [["aU", 1, "u"], ["aV", 1, "v"]]); make(rings, ringMaterial, 4, [["aC", 2, "c"], ["aI", 1, "i"]]);
+    return { meshes, lifts, shown: false };
+  });
+  const routeLifts = routeFlows.flatMap(r => r.lifts);
+  let routeShownFlow = -1, routeShownAlpha = -1;
+  function updateRoute(cur, lp) {
+    const a = clamp((S.R - .15) / .7, 0, 1), alpha = a * a * (3 - 2 * a); planLine = 1 - alpha;
+    routeU.alpha.value = alpha; routeU.time.value = S.t; routeU.step.value = cur.i;
+    routeU.done.value = (cur.base || 0) + (cur.path && !cur.s.lift ? lp.d * PT_M : 0);
+    const show = alpha > .01;
+    if (routeShownFlow !== S.flow || routeShownAlpha !== (show ? 1 : 0)) {
+      routeShownFlow = S.flow; routeShownAlpha = show ? 1 : 0;
+      routeFlows.forEach((r, i) => { for (const m of r.meshes) m.visible = show && i === S.flow; });
+    }
+    // Elevator connectors of the shown flow: re-aimed from the exact floor-lift ends (liftLow/liftHigh = W(E.low)/W(E.high) at the
+    // current stack, set in frame()). Preallocated vectors, transform and uniform values only; geometry is never touched.
+    const lifts = routeFlows[S.flow].lifts;
+    for (let k = 0; k < lifts.length; k++) {
+      const L = lifts[k], m = L.mesh, u = L.material.uniforms;
+      L.state = cur.i < L.step ? "future" : cur.i > L.step ? "past" : "current";
+      const p = L.state === "past" ? 1 : L.state === "current" ? clamp(lp.lift ?? 0, 0, 1) : 0;
+      L.progress = p; L.from.copy(liftLow); L.to.copy(liftHigh);
+      liftDir.subVectors(liftHigh, liftLow); const length = liftDir.length(); L.length = length;
+      m.position.copy(liftLow); m.scale.set(1, 1, Math.max(length, 1e-6));
+      if (length > 1e-6) m.quaternion.setFromUnitVectors(LIFT_AXIS, liftDir.multiplyScalar(1 / length)); else m.quaternion.identity();
+      const metres = length * PT_M;
+      u.uLen.value = metres;
+      u.uDone.value = p <= 0 ? -.5 : p >= 1 ? metres + .5 : p * metres;   // before: all dim; after: all lit; during: the head sits exactly at the lot
+      u.uHead.value = p > 0 && p < 1 ? 1 : 0;
+    }
+  }
 
   /* ---------- camera ---------- */
   const fit = () => { const a = camera.aspect, f = Math.tan((camera.fov * Math.PI) / 360); return Math.max(330 / f, 560 / (f * a)); };
@@ -256,18 +470,33 @@
     elev: [E.low[0], E.low[1], 340, -.9, 1.15], machines: [75, 215, 300, -1.05, 1.16], docks: [290, 440, 340, .55, 1.2], racks: [320, 330, 300, -.25, 1.25]
   };
   function aim(x, y, z, dist, az, pol) { want.x = x; want.y = y; want.z = z; want.dist = dist; want.az = az; want.pol = pol; }
+  // Guided camera: the azimuth is a constant per story step (only a step change moves it, and then slowly);
+  // the look target is the lot blended toward the middle of the segment it is travelling, and the distance frames
+  // that segment. Corners never turn the camera: only the target and distance ease (spring) to the next segment.
+  const AZ_STEP = [-.55, -.3, -.8, -.45, -.7, -.25];
+  let guidedAz = 0, guidedReady = false, frameDt = 1 / 60;
   function setWant() {
+    if (S.cam !== "guided") guidedReady = false;
     if (S.cam === "free") return;
     const cur = stepAt(S.t);
     if (S.cam === "guided" || S.cam === "follow") {
-      if (S.cam === "guided" && cur.s.intro) { const e = ease(S.R); aim(0, 0, 0, fit() * lerp(1, .9, e), lerp(0, -.5, e), lerp(.001, 1, e)); return; }
-      const p = lotWorld(S.t, S.stack, cameraPoint), d = S.cam === "follow" ? 300 : cur.s.dist * (S.stack > .5 ? 1.05 : 1.2);
-      aim(p.x, p.y, p.z, flat() ? d * 1.5 : d, flat() ? 0 : -.55, flat() ? .001 : .94);
+      if (S.cam === "guided" && cur.s.intro) { const e = ease(S.R); aim(0, 0, 0, fit() * lerp(1, .9, e), lerp(0, -.5, e), lerp(.001, 1, e)); guidedReady = false; return; }
+      const lp = frameLot, p = worldFromLot(lp, S.stack, cameraPoint); let d = S.cam === "follow" ? 300 : cur.s.dist * (S.stack > .5 ? 1.05 : 1.2);
+      if (S.cam === "guided" && cur.sched && lp.lift == null && cur.sched.phases.length) {
+        const a = cur.sched.pts[lp.seg], b = cur.sched.pts[lp.seg + 1];
+        if (a && b) {
+          W(a[0], a[1], S.stack, .8, segmentA); W(b[0], b[1], S.stack, .8, segmentB);
+          const length = segmentA.distanceTo(segmentB); p.lerp(segmentA.lerp(segmentB, .5), .65);
+          d = clamp(length * 1.35, d * .85, d * 1.8);
+        }
+      }
+      const targetAz = S.cam === "follow" ? -.55 : AZ_STEP[cur.i % AZ_STEP.length];
+      if (!guidedReady || flat()) { guidedAz = targetAz; guidedReady = true; } else guidedAz += wrapPi(targetAz - guidedAz) * (1 - Math.exp(-frameDt * 1.3));
+      aim(p.x, p.y, p.z, flat() ? d * 1.5 : d, flat() ? 0 : guidedAz, flat() ? .001 : .94);
     } else if (S.cam === "forklift") {
-      const m = REP.movers[0]; if (!m) return; const p = m.v.getWorldPosition(cameraPoint); aim(p.x, p.y + 12, p.z, 92, m.heading + Math.PI, 1.28);
+      const m = REP.movers[0]; if (!m || !m.v) return; const p = m.v.getWorldPosition(cameraPoint); aim(p.x, p.y + 12, p.z, 92, (m.heading ?? m.v.rotation.y) + Math.PI, 1.28);
     } else if (S.cam === "chase") {
-      const p = lotWorld(S.t, S.stack, cameraPoint), q = lotWorld(Math.min(F().total, S.t + .3), S.stack, cameraAhead), dir = Math.atan2(q.x - p.x, q.z - p.z);
-      aim(p.x, p.y + 8, p.z, 120, q.distanceToSquared(p) > .0025 ? dir + Math.PI : S.c.az, 1.3);
+      const p = worldFromLot(frameLot, S.stack, cameraPoint); aim(p.x, p.y + 8, p.z, 120, frameLot.h + Math.PI, 1.3);
     } else if (S.cam === "overview" || S.cam === "iso") {
       const iso = S.cam === "iso"; aim(0, iso ? 30 : 0, 0, fit() * (iso ? 1.05 : .95), flat() ? 0 : iso ? -.785 : -.55, flat() ? .001 : iso ? .96 : 1);
     } else {
@@ -290,7 +519,7 @@
     } else {
       const sp = Math.sin(want.pol); desiredTarget.set(want.x, want.y, want.z);
       desiredEye.set(want.x + want.dist * sp * Math.sin(want.az), want.y + want.dist * Math.cos(want.pol), want.z + want.dist * sp * Math.cos(want.az));
-      const omega = S.cam === "chase" || S.cam === "forklift" ? 8 : stepAt(S.t).s.intro ? 9 : 5;
+      const omega = S.cam === "chase" || S.cam === "forklift" ? 8 : stepAt(S.t).s.intro ? 9 : S.cam === "guided" ? 3.2 : 5;
       spring(camera.position, eyeVelocity, desiredEye, omega, dt); spring(cameraTarget, targetVelocity, desiredTarget, omega, dt);
       c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z;
       const dx = camera.position.x - c.x, dy = camera.position.y - c.y, dz = camera.position.z - c.z;
@@ -311,28 +540,34 @@
     g2.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < count; i++) g2.lineTo(pts[i][0], pts[i][1]); g2.stroke(); g2.setLineDash(NO_DASH);
   }
   function arrow(a, b, color, size) { const r = Math.atan2(b[1] - a[1], b[0] - a[0]); g2.fillStyle = color; g2.beginPath(); g2.moveTo(b[0], b[1]); g2.lineTo(b[0] - size * Math.cos(r - .45), b[1] - size * Math.sin(r - .45)); g2.lineTo(b[0] - size * Math.cos(r + .45), b[1] - size * Math.sin(r + .45)); g2.fill(); }
-  const MODE = {};
-  for (const [name, color] of Object.entries({ auto: "#ffc000", manual: "#ff5a4f", flow: "#35c6ff" })) MODE[name] = { color, faint: color + "50", past: color + "40", head: color + "44" };
-  let measuredMetres = NaN, measurementText = "", measurementWidth = 0;
+  // One orange route style for every mode. The 3D route is the floor ribbon mesh (see "route light"); this 2D canvas
+  // line carries the flat plan (ribbon alpha 0) and cross-fades with the ribbon as the factory rises.
+  const ROUTE = { core: "#ff9a1f", hot: "#ffd9a0", glow: "#ff8a1f38", faint: "#ff9a1f66", future: "#ff9a1f55" };
+  let measuredMetres = NaN, measurementText = "", measurementWidth = 0, planLine = 1;
   function draw(time) {
     g2.clearRect(0, 0, innerWidth, innerHeight);
     if (S.net) for (let i = 0; i < connections.length; i++) { const c = connections[i]; stroke(poly(c.pts), c.color === "#3B7D23" ? "#3fae5acc" : "#5b8fb9cc", 1.4); }
     const f = F(), cur = frameLot.it;
-    for (let n = 0; n < f.items.length; n++) {
-      const it = f.items[n]; if (!it.path) continue;
-      const p = poly(it.path), col = MODE[it.s.mode];
-      if (it.i > cur.i) stroke(p, col.faint, 2.5);
-      else if (it.i < cur.i) { stroke(p, col.past, 9); stroke(p, col.color, 3.5); if (p.length > 1) arrow(p[p.length - 2], p[p.length - 1], col.color, 12); }
-      else {
-        stroke(p, col.faint, 2.5);
-        if (it.s.lift) { proj(W(E.low[0], E.low[1], S.stack, .8, overlayWorld), liftPoints[0]); proj(lotPoint, liftPoints[1]); stroke(liftPoints, col.color, 5); }
+    if (planLine > .01) {
+      g2.globalAlpha = planLine;
+      for (let n = 0; n < f.items.length; n++) {
+        const it = f.items[n]; if (!it.path) continue;
+        const p = poly(it.path);
+        if (it.i > cur.i) stroke(p, ROUTE.future, 3);
+        else if (it.i < cur.i) { stroke(p, ROUTE.glow, 10); stroke(p, ROUTE.core, 4); if (p.length > 1) arrow(p[p.length - 2], p[p.length - 1], ROUTE.core, 12); }
         else {
-          const m = along(it.path, frameLot.u, pathHead), head = pathInfo(it.path).head;
-          for (let i = 0; i < m.i; i++) { head[i][0] = p[i][0]; head[i][1] = p[i][1]; head[i][2] = p[i][2]; }
-          proj(W(m.x, m.y, S.stack, S.R * 1.5 + .8, overlayWorld), head[m.i]);
-          stroke(head, col.head, 13, NO_DASH, 0, m.i + 1); stroke(head, col.color, 4.5, NO_DASH, 0, m.i + 1); stroke(head, "#ffffffd0", 2, FLOW_DASH, -time * 70, m.i + 1);
+          stroke(p, ROUTE.future, 3);
+          if (it.s.lift) { proj(W(E.low[0], E.low[1], S.stack, .8, overlayWorld), liftPoints[0]); proj(lotPoint, liftPoints[1]); stroke(liftPoints, ROUTE.core, 5); }
+          else {
+            // the bright part ends at the exact schedule distance (frameLot.u = d / length), not at a time fraction
+            const m = along(it.path, frameLot.u, pathHead), head = pathInfo(it.path).head;
+            for (let i = 0; i < m.i; i++) { head[i][0] = p[i][0]; head[i][1] = p[i][1]; head[i][2] = p[i][2]; }
+            proj(W(m.x, m.y, S.stack, S.R * 1.5 + .8, overlayWorld), head[m.i]);
+            stroke(head, ROUTE.glow, 12, NO_DASH, 0, m.i + 1); stroke(head, ROUTE.core, 4.5, NO_DASH, 0, m.i + 1); stroke(head, ROUTE.hot, 1.6, FLOW_DASH, -time * 24, m.i + 1);
+          }
         }
       }
+      g2.globalAlpha = 1;
     }
     if (S.pts.length) {
       const a = proj(S.pts[0], measureA); g2.fillStyle = "#fff"; g2.beginPath(); g2.arc(a[0], a[1], 5, 0, 7); g2.fill();
@@ -356,7 +591,11 @@
   const labelStates = D.flows.map(f => f.items.map(cur => {
     const use = {};
     for (const it of f.items) if (!it.s.intro && (!use[it.s.node] || it.i <= cur.i)) use[it.s.node] = it;
-    return nodes.map(n => { const it = use[n.id], base = "chip" + (it ? "" : " dim"), suffix = it && it.i === cur.i ? " now" : it && it.i < cur.i ? " done" : ""; return { it, off: base + suffix, on: base + (it ? " on" : "") + suffix, text: it ? `${it.i}  ${it.s.title}` : "" }; });
+    // Only six labels are visible, around the current step (two behind, the rest ahead; the window slides at either end).
+    // All 25 chip nodes still exist; the rest are always hidden (hard cap of six, also with "All flows" on: that only adds network routes).
+    const real = f.items.filter(it => !it.s.intro), at = cur.s.intro ? 0 : real.findIndex(it => it.i === cur.i) - 2, lo = clamp(at, 0, Math.max(0, real.length - 6));
+    const near = new Set(real.slice(lo, lo + 6).map(it => it.s.node));
+    return nodes.map(n => { const it = use[n.id], base = "chip" + (it ? "" : " dim"), suffix = it && it.i === cur.i ? " now" : it && it.i < cur.i ? " done" : ""; return { it, near: !!it && near.has(n.id), off: base + suffix, on: base + (it ? " on" : "") + suffix, text: it ? `${it.i}  ${it.s.title}` : "" }; });
   }));
   let labelFlow = -1, labelStep = -1, labelLabels = null, labelState = null;
   function placeLabels() {
@@ -367,7 +606,7 @@
     }
     for (let i = 0; i < nodes.length; i++) {
       const n = nodes[i], chip = chipList[i];
-      if (!labelState[i].it && !S.net) { if (chip.display !== "none") chip.el.style.display = chip.display = "none"; continue; }
+      if (!labelState[i].near) { if (chip.display !== "none") chip.el.style.display = chip.display = "none"; continue; }
       const p = proj(W(n.x, n.y, S.stack, 3 + S.R * 16, overlayWorld), chip.point), x = p[0], y = p[1], z = p[2];
       const display = z < -1 || z > 1 || x < -100 || x > innerWidth + 100 || y < -100 || y > innerHeight + 100 ? "none" : "flex";
       if (display !== chip.display) chip.el.style.display = chip.display = display;
@@ -384,12 +623,13 @@
   /* ---------- player UI ---------- */
   const scrub = $("scrub"), fill = scrub.querySelector(".fl"), hd = scrub.querySelector(".hd");
   const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
-  const card = $("card"), stepPanel = $("steps"), list = $("list"), timeLabel = $("time"), playButton = $("play"), stackControl = $("stack");
+  const card = $("card"), stepPanel = $("steps"), list = $("list"), timeLabel = $("time"), playButton = $("play"), stackControl = $("stack"), elapsedLabel = $("tElapsed"), endLabel = $("tEnd"), stepCount = $("stepNo");
   card.style.contain = stepPanel.style.contain = "layout paint";
+  // The card lives inside the glass bar: a centred title and subtitle, then one quiet line of facts.
   const cardCache = D.flows.map(f => f.items.map(cur => {
     const e = document.createElement("div"); e.style.display = "none";
-    const stat = cur.s.intro ? "" : `<div class="st"><span>${cur.metres ? cur.metres.toFixed(0) + " m this step" : cur.s.lift ? "Between floors" : "At this point"}</span><span>${(cur.run || 0).toFixed(0)} m so far</span></div>`;
-    e.innerHTML = `<b>${cur.s.intro ? "" : cur.i + ". "}${cur.s.title}</b><p>${cur.s.what}</p>${cur.s.intro ? "" : `<span class="m ${cur.s.mode}">${cur.s.mode === "auto" ? "Auto" : cur.s.lift ? "Elevator" : "Step"}</span>`}${stat}`;
+    const stat = cur.s.intro ? "" : `<div class="st"><span class="m ${cur.s.mode}">${cur.s.mode === "auto" ? "Auto" : cur.s.lift ? "Elevator" : "Step"}</span><span>${cur.metres ? cur.metres.toFixed(0) + " m this step" : cur.s.lift ? "Between floors" : "At this point"}</span><span>${(cur.run || 0).toFixed(0)} m so far</span></div>`;
+    e.innerHTML = `<b>${cur.s.intro ? "" : cur.i + ". "}${cur.s.title}</b><p>${cur.s.what}</p>${stat}`;
     return e;
   }));
   let stepRows = [], stepTop = [], stepBottom = [], panelHeight = 0, panelScroll = 0, shown = -1, shownCard = null;
@@ -397,25 +637,30 @@
   function cacheStepLayout() { panelHeight = stepPanel.clientHeight; panelScroll = stepPanel.scrollTop; for (let i = 0; i < stepRows.length; i++) { stepTop[i] = stepRows[i].offsetTop; stepBottom[i] = stepTop[i] + stepRows[i].offsetHeight; } }
   function renderFlow() {
     $("title").textContent = D.slide.title;
-    $("flows").innerHTML = D.flows.map((f, i) => `<button data-f="${i}" class="${i === S.flow ? "on" : ""}">${f.name}</button>`).join("");
+    $("flows").innerHTML = D.flows.map((f, i) => `<button data-f="${i}" class="${i === S.flow ? "on" : ""}" aria-pressed="${i === S.flow}">${f.name}</button>`).join("");
     $("flows").querySelectorAll("button").forEach(b => b.onclick = () => setFlow(+b.dataset.f));
     const f = F(); scrub.querySelectorAll("i").forEach(e => e.remove());
-    f.items.forEach(it => { const m = document.createElement("i"); m.style.left = it.tm / f.total * 100 + "%"; scrub.append(m); });
-    list.innerHTML = f.items.map(it => `<li data-i="${it.i}"><span class="n">${it.s.intro ? "&#9733;" : it.i}</span><span><b>${it.s.title}</b><small>${it.s.intro ? "The replica rises out of the plan." : it.s.what}</small></span></li>`).join("");
+    f.items.forEach(it => { const m = document.createElement("i"); m.style.left = it.tm / f.total * 100 + "%"; m.setAttribute("aria-hidden", "true"); scrub.append(m); });
+    endLabel.textContent = fmt(f.total); renderStep.progress = renderStep.seconds = renderStep.step = null; scrub.setAttribute("aria-valuemax", String(Math.round(f.total)));
+    list.innerHTML = f.items.map(it => `<li data-i="${it.i}" tabindex="0" role="button"><span class="n">${it.s.intro ? "&#9733;" : it.i}</span><span><b>${it.s.title}</b><small>${it.s.intro ? "The replica rises out of the plan." : it.s.what}</small></span></li>`).join("");
     stepRows = Array.from(list.querySelectorAll("li")); stepTop = new Array(stepRows.length); stepBottom = new Array(stepRows.length);
-    stepRows.forEach((row, i) => row.onclick = () => { seek(f.items[i].tm); pause(); });
+    stepRows.forEach((row, i) => { row.onclick = () => { seek(f.items[i].tm); pause(); }; row.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); row.onclick(); } }; });
     if (shownCard) shownCard.style.display = "none"; shownCard = null; shown = -1; card.replaceChildren(...cardCache[S.flow]); cacheStepLayout();
   }
   function renderStep() {
     const f = F(), cur = frameLot.it, progress = Math.round(S.t / f.total * 10000), seconds = Math.floor(S.t);
     if (renderStep.progress !== progress) { fill.style.width = hd.style.left = progress / 100 + "%"; renderStep.progress = progress; }
-    if (renderStep.seconds !== seconds || renderStep.flow !== S.flow || renderStep.step !== cur.i) { timeLabel.textContent = `${fmt(S.t)} / ${fmt(f.total)}  step ${cur.i}/${f.items.length - 1}`; renderStep.seconds = seconds; renderStep.flow = S.flow; renderStep.step = cur.i; }
-    if (renderStep.playing !== S.playing) { playButton.textContent = S.playing ? "❚❚" : "▶"; renderStep.playing = S.playing; }
+    if (renderStep.seconds !== seconds || renderStep.flow !== S.flow || renderStep.step !== cur.i) {
+      timeLabel.textContent = `${fmt(S.t)} / ${fmt(f.total)}  step ${cur.i}/${f.items.length - 1}`; elapsedLabel.textContent = fmt(S.t); stepCount.textContent = cur.s.intro ? "Introduction" : `Step ${cur.i} of ${f.items.length - 1}`;
+      scrub.setAttribute("aria-valuenow", String(seconds)); scrub.setAttribute("aria-valuetext", `${fmt(S.t)} of ${fmt(f.total)}, ${cur.s.intro ? "introduction" : `step ${cur.i} of ${f.items.length - 1}: ${cur.s.title}`}`);
+      renderStep.seconds = seconds; renderStep.flow = S.flow; renderStep.step = cur.i;
+    }
+    if (renderStep.playing !== S.playing) { playButton.classList.toggle("is-playing", S.playing); playButton.setAttribute("aria-label", S.playing ? "Pause" : "Play"); playButton.setAttribute("aria-pressed", String(S.playing)); renderStep.playing = S.playing; }
     if (shown !== cur.i) {
       shown = cur.i;
       for (let i = 0; i < stepRows.length; i++) stepRows[i].className = i === cur.i ? "now" : i < cur.i ? "done" : "";
       if (shownCard) shownCard.style.display = "none"; shownCard = cardCache[S.flow][cur.i]; shownCard.style.display = "block";
-      if (S.panel && !document.body.classList.contains("bare") && panelHeight) {
+      if (S.panel && !bareOn && panelHeight) {
         if (stepTop[cur.i] < panelScroll) panelScroll = stepTop[cur.i]; else if (stepBottom[cur.i] > panelScroll + panelHeight) panelScroll = stepBottom[cur.i] - panelHeight;
         stepPanel.scrollTop = panelScroll;
       }
@@ -426,12 +671,12 @@
   function pause() { S.playing = false; }
   function stepBy(d) { const f = F(), c = stepAt(S.t), atEnd = S.t >= c.tm - .01, i = clamp(c.i + (d > 0 ? (atEnd ? 1 : 0) : (S.t > c.t0 + 1 && !atEnd ? 0 : -1)), 0, f.items.length - 1); seek(f.items[i].tm); pause(); }
   function setFlow(i) { S.flow = i; shown = -1; seek(0); pause(); renderFlow(); }
-  function setView(v) { S.view = v; S.stackUser = null; $("views").querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === v)); if (S.cam === "free") setCam("guided"); }
+  function setView(v) { S.view = v; S.stackUser = null; $("views").querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.v === v); b.setAttribute("aria-pressed", String(b.dataset.v === v)); }); if (S.cam === "free") setCam("guided"); }
   function setCam(c) { S.cam = c; $("cam").value = c; $("cam").querySelector('[value="free"]').hidden = c !== "free"; }
   function setPlan(p) { S.plan = p; $("planBtn").textContent = p === "replica" ? "Plan: replica" : "Plan: original"; }
   function tip(m) { const e = $("tip"); e.textContent = m; e.style.display = "block"; clearTimeout(tip.t); tip.t = setTimeout(() => (e.style.display = "none"), 1900); }
   function toFree() { if (S.cam !== "free") { setCam("free"); tip("Free camera: press G to go back to the guided camera"); } }
-  function setMeasure(on) { S.measure = on; S.pts = []; $("measure").classList.toggle("on", on); if (on) tip("Measure: click two points on the floor"); }
+  function setMeasure(on) { S.measure = on; S.pts = []; $("measure").classList.toggle("on", on); $("measure").setAttribute("aria-pressed", String(on)); if (on) tip("Measure: click two points on the floor"); }
   $("play").onclick = () => (S.playing ? pause() : play()); $("prev").onclick = () => stepBy(-1); $("next").onclick = () => stepBy(1); $("first").onclick = () => { seek(0); pause(); };
   $("speed").onchange = (e) => (S.speed = +e.target.value); $("stepstop").onchange = (e) => (S.stepStop = e.target.checked);
   $("views").querySelectorAll("button").forEach((b) => (b.onclick = () => setView(b.dataset.v)));
@@ -440,15 +685,53 @@
   $("soundBtn").onclick = () => { S.sound = !S.sound; $("soundBtn").classList.toggle("on", S.sound); if (S.sound) audio(); };
   $("planBtn").onclick = () => setPlan(S.plan === "replica" ? "original" : "replica"); $("measure").onclick = () => setMeasure(!S.measure);
   $("stack").oninput = (e) => (S.stackUser = e.target.value / 100);
-  const tog = (id, k, fn) => { const f = () => { S[k] = !S[k]; $(id).classList.toggle("on", S[k]); fn && fn(); }; $(id).onclick = f; return f; };
-  const tLbl = tog("lblBtn", "labels"), tNet = tog("netBtn", "net"), tPanel = tog("panelBtn", "panel", () => { stepPanel.style.display = S.panel ? "" : "none"; if (S.panel) cacheStepLayout(); });
-  $("optBtn").onclick = (e) => { e.stopPropagation(); const o = $("opts"); o.style.display = o.style.display === "flex" ? "none" : "flex"; $("optBtn").classList.toggle("on"); };
+  const tog = (id, k, fn) => { const f = () => { S[k] = !S[k]; $(id).classList.toggle("on", S[k]); $(id).setAttribute("aria-pressed", String(S[k])); fn && fn(); }; $(id).onclick = f; return f; };
+  let bareOn = false, lastActive = performance.now(), faded = false;
+  // Hidden UI must not be clickable or focusable: opacity and pointer-events on the .ui parent are not enough (a child can
+  // set pointer-events:auto, and hidden controls stay in the tab order). H hides every .ui; idle hides all but help/tip/err.
+  const uiPanels = Array.from(document.querySelectorAll(".ui")), UI_ALWAYS = ["help", "tip", "err"];
+  function syncUiHidden() {
+    for (let i = 0; i < uiPanels.length; i++) {
+      const el = uiPanels[i], hide = bareOn || (faded && !UI_ALWAYS.includes(el.id));
+      if (el.inert !== hide) { el.inert = hide; if (hide && el.contains(document.activeElement)) document.activeElement.blur(); }
+    }
+  }
+  const tLbl = tog("lblBtn", "labels"), tNet = tog("netBtn", "net");
+  // Steps list: collapsed by default; the rail/top-bar toggle, P and the Options entry all drive the same state.
+  const tPanel = tog("panelBtn", "panel", () => { stepPanel.style.display = S.panel ? "block" : "none"; $("stepsToggle").classList.toggle("on", S.panel); $("stepsToggle").setAttribute("aria-expanded", String(S.panel)); if (S.panel) { frame.shift = -1; cacheStepLayout(); shown = -1; } else frame.shift = -1; });
+  const tMini = tog("miniBtn", "mini", () => { $("mini").style.display = S.mini ? "block" : "none"; drawMini.last = null; });
+  tog("blurBtn", "blur", () => { syncQualityClasses(); if (S.blur && S.quality === "low") tip("Glass blur stays off on Low quality"); });
+  $("stepsToggle").onclick = tPanel; $("stepsClose").onclick = tPanel;
+  // Glass popovers beside the rail: Options and Camera. One open at a time; Escape or an outside click closes them.
+  const popovers = [["opts", "optBtn", "flex"], ["camPop", "camBtn", "flex"]];
+  function closePopovers(except) { for (const [id, btn, show] of popovers) if (id !== except) { $(id).style.display = "none"; $(btn).classList.remove("on"); $(btn).setAttribute("aria-expanded", "false"); } }
+  for (const [id, btn, show] of popovers) $(btn).onclick = (e) => { e.stopPropagation(); const open = $(id).style.display !== show; closePopovers(open ? id : null); $(id).style.display = open ? show : "none"; $(btn).classList.toggle("on", open); $(btn).setAttribute("aria-expanded", String(open)); };
+  addEventListener("pointerdown", (e) => { if (!e.target.closest("#opts,#camPop,#rail,#help")) closePopovers(null); });
   $("zi").onclick = () => zoom(.8); $("zo").onclick = () => zoom(1.25);
-  const toggleHelp = () => { const h = $("help"); h.style.display = h.style.display === "block" ? "none" : "block"; }; $("helpBtn").onclick = toggleHelp;
+  const toggleHelp = () => { const h = $("help"); const open = h.style.display !== "block"; h.style.display = open ? "block" : "none"; $("helpBtn").classList.toggle("on", open); $("helpBtn").setAttribute("aria-expanded", String(open)); }; $("helpBtn").onclick = toggleHelp;
   const fullscreen = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()); $("full").onclick = fullscreen;
   function zoom(k) { toFree(); S.c.dist = clamp(S.c.dist * k, 30, 4000); }
+  const toggleBare = () => { bareOn = !bareOn; document.body.classList.toggle("bare", bareOn); if (bareOn) closePopovers(null); syncUiHidden(); frame.shift = -1; };
   const scrubTo = (e) => { const r = scrub.getBoundingClientRect(); seek((e.clientX - r.left) / r.width * F().total); };
-  scrub.onpointerdown = (e) => { scrub.setPointerCapture(e.pointerId); scrubTo(e); pause(); scrub.onpointermove = scrubTo; }; scrub.onpointerup = () => (scrub.onpointermove = null);
+  scrub.onpointerdown = (e) => { scrub.setPointerCapture(e.pointerId); scrubTo(e); pause(); scrub.onpointermove = scrubTo; }; scrub.onpointerup = () => { scrub.onpointermove = null; scrub.blur(); };
+  // Timeline keyboard (when it has focus): arrows +-5 s (Shift +-15 s), PageUp/PageDown previous/next step, Home/End.
+  scrub.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.altKey || e.metaKey) return; const k = e.key, big = e.shiftKey ? 15 : 5;
+    const act = { ArrowRight: () => seek(S.t + big), ArrowUp: () => seek(S.t + big), ArrowLeft: () => seek(S.t - big), ArrowDown: () => seek(S.t - big), PageDown: () => stepBy(1), PageUp: () => stepBy(-1), Home: () => seek(0), End: () => seek(F().total) }[k];
+    if (act) { e.preventDefault(); e.stopPropagation(); act(); if (k !== "ArrowRight" && k !== "ArrowLeft" && k !== "ArrowUp" && k !== "ArrowDown") pause(); }
+  });
+  // A mouse click on a button should not keep keyboard focus (Space stays play/pause); keyboard use keeps its focus ring.
+  document.addEventListener("click", (e) => { const b = e.target.closest && e.target.closest("button"); if (b && e.detail > 0) b.blur(); });
+  // Wake the glass UI on any interaction; fade it after 4 s without pointer movement while playing (see tick).
+  const wake = () => { lastActive = performance.now(); };
+  for (const type of ["pointermove", "pointerdown", "wheel", "keydown", "focusin", "touchstart"]) addEventListener(type, wake, { passive: true });
+  function syncPressed() { document.querySelectorAll("button[aria-pressed]").forEach(b => { if (b.id === "play" || b.closest("#flows")) return; const on = b.classList.contains("on"); if (b.getAttribute("aria-pressed") !== String(on)) b.setAttribute("aria-pressed", String(on)); }); }
+  addEventListener("keydown", () => setTimeout(syncPressed, 0)); addEventListener("click", () => setTimeout(syncPressed, 0));
+  function updateFade(now) {
+    const inside = document.activeElement && document.activeElement.closest && document.activeElement.closest(".ui");
+    const want = S.autoFade && S.playing && now - lastActive > 4000 && !inside && !S.measure;
+    if (want !== faded) { faded = want; document.body.classList.toggle("idle", want); syncUiHidden(); }
+  }
 
   const stg = $("stage"); let drag = null;
   const hitFloor = (e) => { const ray = new T.Raycaster(); ray.setFromCamera(new T.Vector2(e.clientX / innerWidth * 2 - 1, 1 - e.clientY / innerHeight * 2), camera); return ray.intersectObjects(floors.map((f) => f.art), false)[0]; };
@@ -467,8 +750,9 @@
   stg.onwheel = (e) => { e.preventDefault(); zoom(e.deltaY > 0 ? 1.12 : .89); };
   stg.ondblclick = (e) => { if (S.measure) return; const hit = hitFloor(e); if (hit) { toFree(); Object.assign(S.c, { x: hit.point.x, y: hit.point.y, z: hit.point.z, dist: S.c.dist * .7 }); } };
   addEventListener("keydown", (e) => {
-    if (e.target.tagName === "SELECT" || e.ctrlKey || e.altKey) return; const k = e.key.toLowerCase();
-    const act = { " ": () => (S.playing ? pause() : play()), arrowright: () => stepBy(1), arrowleft: () => stepBy(-1), home: () => { seek(0); pause(); }, end: () => { seek(F().total); pause(); }, 2: () => setView("2d"), 3: () => setView("3d"), a: () => setView("auto"), g: () => setCam("guided"), l: tLbl, n: tNet, p: tPanel, f: fullscreen, h: () => document.body.classList.toggle("bare"), "?": toggleHelp, "+": () => zoom(.8), "=": () => zoom(.8), "-": () => zoom(1.25), m: () => setMeasure(!S.measure), o: () => setPlan(S.plan === "replica" ? "original" : "replica"), escape: () => setMeasure(false),
+    const tag = e.target.tagName; if (tag === "SELECT" || tag === "INPUT" || tag === "TEXTAREA" || e.ctrlKey || e.altKey || e.metaKey) return; const k = e.key.toLowerCase();
+    if ((k === " " || k === "enter") && (tag === "BUTTON" || e.target.getAttribute("role") === "button")) return;   // native activation for a focused control
+    const act = { " ": () => (S.playing ? pause() : play()), arrowright: () => stepBy(1), arrowleft: () => stepBy(-1), home: () => { seek(0); pause(); }, end: () => { seek(F().total); pause(); }, 2: () => setView("2d"), 3: () => setView("3d"), a: () => setView("auto"), g: () => setCam("guided"), l: tLbl, n: tNet, p: tPanel, f: fullscreen, h: toggleBare, "?": toggleHelp, "+": () => zoom(.8), "=": () => zoom(.8), "-": () => zoom(1.25), m: () => setMeasure(!S.measure), o: () => setPlan(S.plan === "replica" ? "original" : "replica"), escape: () => { setMeasure(false); closePopovers(null); if ($("help").style.display === "block") toggleHelp(); },
       c: () => { const o = [...$("cam").options].filter((x) => !x.hidden).map((x) => x.value); setCam(o[(o.indexOf(S.cam) + 1) % o.length]); } }[k];
     if (act) { e.preventDefault(); act(); }
   });
@@ -510,7 +794,7 @@
       record.programs = renderer.info.programs?.length || 0; record.textures = renderer.info.memory.textures; record.heap = performance.memory?.usedJSHeapSize || 0;
     }
     if (resizePending) { resizePending = false; resize(); }
-    frame(raw, S.t);
+    frame(raw, S.t); updateFade(now);
     // Reuse DFPerf's interval signal and hold period. Lower resolution within High;
     // never rebuild effects or silently overwrite a manually chosen quality.
     governorHold -= raw;
@@ -522,7 +806,7 @@
   }
   function frame(dt, time) {
     const frameStart = performance.now(); let mask = 0;
-    dt = Math.max(0, dt);
+    dt = Math.max(0, dt); frameDt = dt > 0 ? Math.min(dt, .25) : 1 / 60;
     if (S.playing) { const c = stepAt(S.t); let t = S.t + dt * S.speed; if (S.stepStop && S.t < c.tm && t >= c.tm) { t = c.tm; pause(); } S.t = Math.min(t, F().total); if (S.t >= F().total) pause(); }
     time = S.t; // every animated path is a deterministic function of story time
     const cur = stepAt(S.t), intro = cur.s.intro && S.view === "auto";
@@ -542,29 +826,28 @@
     const lo = W(E.low[0], E.low[1], S.stack, .8, liftLow), hi = W(E.high[0], E.high[1], S.stack, .8, liftHigh);
     shaft.visible = cabin.visible = S.stack > .1; shaft.position.copy(lo).lerp(hi, .5); shaft.scale.y = Math.max(1, hi.y - lo.y + 18);
     const lp = lotPos(S.t, frameLot), at = worldFromLot(lp, S.stack, lotPoint), li = liftIndices[S.flow];
-    lot.position.copy(at).setY(at.y + S.R * .2); lot.visible = !cur.s.intro; if (cur.path && !cur.s.lift) {
-      const duration = cur.tm - cur.t0, u = clamp((S.t - cur.t0) / duration, 0, 1), pad = Math.min(.15 / duration, .1);
-      const a = along(cur.path, ease(clamp(u - pad, 0, 1)), headingA), b = along(cur.path, ease(clamp(u + pad, 0, 1)), headingB);
-      if (Math.hypot(b.x - a.x, b.y - a.y) > 1e-6) lot.rotation.y = Math.atan2(b.x - a.x, b.y - a.y);
-    }
+    lot.position.copy(at).setY(at.y + S.R * .2); lot.visible = !cur.s.intro;
+    lot.rotation.y = lp.h;   // pure function of story time: segment direction while moving, eased exact quarter turn at a corner
+    updateRoute(cur, lp);
     cabin.position.copy(lp.lift != null ? at : lo).setY((lp.lift != null ? at.y : (li >= 0 && cur.i > li ? hi.y : lo.y)) - .5);
     beacon.visible = !cur.s.intro; beacon.position.copy(at).setY(at.y + 1.2); const pulse = (time * .8) % 1; beacon.scale.setScalar(.7 + pulse * 1.4); beacon.material.opacity = 1 - pulse;
     // focus: the plan with the lot stays bright, the others step back (colours stay, brightness falls)
     const here = lp.lift != null ? "E2" : plateOf(lp.x, lp.y);
     for (const fl of floors) { const on = !S.focus || cur.s.intro || S.R < .9 || S.cam === "overview" || fl.key === here || (here === "E2" && fl.key !== "E1"); const target = on ? 1 : .42; fl.k = lerp(fl.k ?? 1, target, 1 - Math.exp(-dt * 6)); if (Math.abs(fl.k - target) < .001) fl.k = target;
-      if (fl.lastDim == null || Math.abs(fl.k - fl.lastDim) > .001 || fl.k === target && fl.lastDim !== target) { for (let i = 0; i < fl.dimMaterials.length; i++) fl.dimMaterials[i].color.setScalar(fl.k); fl.planMaterial.color.setRGB(.79 * fl.k, .81 * fl.k, .84 * fl.k); fl.surfaceMaterial.color.setHex(0xc3c7c4).multiplyScalar(fl.k); fl.lastDim = fl.k; metrics.dimUpdates++; }
+      if (fl.lastDim == null || Math.abs(fl.k - fl.lastDim) > .001 || fl.k === target && fl.lastDim !== target) { for (let i = 0; i < fl.dimMaterials.length; i++) { const dm = fl.dimMaterials[i]; if (dm.userData.base) dm.color.copy(dm.userData.base).multiplyScalar(fl.k); else dm.color.setScalar(fl.k); } fl.planMaterial.color.setRGB(.79 * fl.k, .81 * fl.k, .84 * fl.k); fl.surfaceMaterial.color.setHex(0xd0d4d2).multiplyScalar(fl.k); fl.lastDim = fl.k; metrics.dimUpdates++; }
       const material = S.R > .85 && S.plan !== "original" ? fl.surfaceMaterial : fl.planMaterial; if (fl.art.material !== material) { fl.art.material = material; mask |= 2; } }
     cue(cur);
     if (lastLiveTime !== time || lastLiveShow !== (S.R > .92)) {
       if (lastLiveShow !== (S.R > .92)) mask |= 8;
-      REP.live(time * .55, S.R, dt * .55);
+      // physical vehicle API (REP.vehicleAt): story time as-is. Legacy REP.live keeps its original .55 ambient pace.
+      if (physicalVehicles) REP.live(time, S.R, dt); else REP.live(time * .55, S.R, dt * .55);
       lastLiveTime = time; lastLiveShow = S.R > .92;
     }
     if (S.look === "night") atmos?.update(time, camera, innerHeight);
     stage("scene-update", frameStart);
     const cameraStart = profile ? performance.now() : 0;
     setWant(time); moveCam(dt);
-    const shift = S.panel && !document.body.classList.contains("bare") ? 150 : 0;
+    const shift = S.panel && !bareOn ? -140 : 0;   // the steps list opens on the left: nudge the scene right of it
     if (shift !== frame.shift) { frame.shift = shift; camera.setViewOffset(innerWidth, innerHeight, shift, 0, innerWidth, innerHeight); }
     stage("camera", cameraStart);
     // Bake/static shadows only. Optional sun shadow refresh waits for the final pose.
@@ -576,8 +859,8 @@
     stage("render-submit", renderStart);
     const overlayStart = profile ? performance.now() : 0;
     if (shown !== cur.i) mask |= 1;
-    draw(time); placeLabels(); renderStep();
-    if (drawMini.last == null || drawMini.flow !== S.flow || Math.abs(time - drawMini.last) >= .1) { drawMini(); drawMini.last = time; drawMini.flow = S.flow; }
+    draw(time); if (!bareOn) placeLabels(); renderStep();   // H hides every label: no label DOM work while hidden
+    if (S.mini && !bareOn && (drawMini.last == null || drawMini.flow !== S.flow || Math.abs(time - drawMini.last) >= .1)) { drawMini(); drawMini.last = time; drawMini.flow = S.flow; }
     stage("overlay-dom", overlayStart); metrics.lastMask = mask; metrics.lastCPU = performance.now() - frameStart;
   }
   // Read-only, on-demand diagnostics: inspect the renderer's own uniform table, not
@@ -596,7 +879,26 @@
     });
   }
   prepareArt(); buildPost(); renderFlow(); resize(); setLook("studio"); $("quality").value = S.quality; S.c.dist = want.dist = fit(); setCam("guided");
-  window.MF = { floors, S, D, REP, W, proj, seek, play, pause, stepBy, setFlow, setView, setCam, setLook, setPlan, setMeasure, setQuality, setFloorLight, debugFloor, stepAt, frame, want, perf: metrics };   // used by the tests
+  syncQualityClasses(); $("blurBtn").classList.toggle("on", S.blur); $("blurBtn").setAttribute("aria-pressed", String(S.blur));
+  for (const id of ["lblBtn", "netBtn", "panelBtn", "miniBtn", "focusBtn", "soundBtn", "measure"]) $(id).setAttribute("aria-pressed", String($(id).classList.contains("on")));
+  $("views").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.classList.contains("on"))));
+  $("steps").style.display = "none"; $("mini").style.display = "none";
+  // Elevator connector diagnostics (allocates; for tests only). Returns, per lift connector: the mesh's own end points
+  // (position and position + rotated +Z * scale.z), the expected W(E.low) / W(E.high) at the current stack, progress and state.
+  // Mesh ends are from the transform last set by frame(), so call it after MF.frame/seek of the flow being checked.
+  function liftDiagnostics() {
+    return routeLifts.map(L => {
+      const m = L.mesh, start = m.position.clone(), end = new T.Vector3(0, 0, m.scale.z).applyQuaternion(m.quaternion).add(start);
+      return { name: m.name, flow: L.flow, step: L.step, visible: m.visible, state: L.state, progress: L.progress, length: L.length, uLen: L.material.uniforms.uLen.value, uDone: L.material.uniforms.uDone.value, uHead: L.material.uniforms.uHead.value,
+        meshFrom: start.toArray(), meshTo: end.toArray(), expectedFrom: W(E.low[0], E.low[1]).toArray(), expectedTo: W(E.high[0], E.high[1]).toArray() };
+    });
+  }
+  // Test and diagnostic surface. schedule/sampleSchedule/lotPose are pure helpers for synthetic motion checks:
+  //   MF.schedule(path, headingIn) -> { pts, phases[], duration, length, h0, h1 }   (path in slide points, headings in radians)
+  //   MF.sampleSchedule(sched, tau, out) -> out { x, y, h, d, v, k, seg }            (tau = seconds since the step began)
+  //   MF.lotPose(t) -> the lot's pose at flow story time t (same sampler the frame loop uses)
+  window.MF = { floors, S, D, REP, W, proj, seek, play, pause, stepBy, setFlow, setView, setCam, setLook, setPlan, setMeasure, setQuality, setFloorLight, debugFloor, stepAt, frame, want, perf: metrics,   // used by the tests
+    LOOK, PT_M, motion: { V_MAX, RAMP_T, TURN_T }, schedule: buildSchedule, sampleSchedule, cleanPath, lotPose: (t) => { const o = lotPos(t, { x: 0, y: 0, i: 1, u: 0, lift: null, it: null, h: 0, d: 0, v: 0, k: "hold", seg: 0 }); return o; }, route: { uniforms: routeU, flows: routeFlows, lifts: routeLifts, liftState: liftDiagnostics, plateOf }, vehicleAPI: physicalVehicles };
   metrics.reset = () => { metrics.frames = 0; metrics.intervals.fill(0); metrics.stages = {}; metrics.slowCount = 0; };
   metrics.snapshot = () => {
     const frames = Math.min(metrics.frames, metrics.intervals.length), a = Array.from(metrics.intervals.subarray(0, frames)).sort((a, b) => a - b);
@@ -610,6 +912,9 @@
     canvas.style.visibility = "hidden";
     try {
       await Promise.all(originalLoads); await trolleyReady;
+      // Lead's GLB parts: REP.ready resolves once they are instanced. Await it BEFORE any compile, then bind the
+      // (possibly new) materials to the rise sweep and focus dimming; REP.meshes remains the one instanced list.
+      if (REP.ready && typeof REP.ready.then === "function") { await REP.ready; bindReplicaMeshes(); replicaVisible = null; REP.rise(S.R); REP.live(0, 1, 0); }
       // Blender's baked light goes through the floor shader: soft shadows and contact occlusion for no runtime cost
       for (const [key, source] of Object.entries(window.MF_FLOOR_LIGHT || {})) await setFloorLight(key, source);
       for (const m of origs) renderer.initTexture(m.material.map);
