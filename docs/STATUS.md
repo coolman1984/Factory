@@ -24,3 +24,6 @@ Local only: no remote; never commit `private/` or `dist/`; no company data in th
 Implementation and tests stopped. Read [the full saved handoff](PAUSED-2026-11-06.md) before resuming. Camera changes exist but final acceptance is incomplete. Stalls are measured, not fixed. Press/EPS slides were extracted through COM; their players are not built. Polish has not started. Do not resume without the owner asking.
 
 A complete CRC-verified local backup of code, private exports/evidence, built HTML and helper output is at `.herdr/checkpoints/20261106-170416/before-save.zip`. Test limits and exact resume steps are in the handoff. No push occurred.
+
+## Latest owner instruction - 2026-11-07
+Owner requested transfer of all local data, memory and remaining tasks to Claude account 2040, Opus 5.5 Medium, as project LEAD. Full package: [LEAD-TRANSFER-2026-11-07.md](LEAD-TRANSFER-2026-11-07.md). The previous pause remains part of the history; this newer instruction authorizes the leadership handoff. Actual acceptance must be recorded by the receiving leader. Codex will not run implementation/tests alongside it.
