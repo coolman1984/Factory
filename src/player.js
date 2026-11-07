@@ -1141,7 +1141,7 @@ void main() {
   //   MF.schedule(path, headingIn) -> { pts, phases[], duration, length, h0, h1 }   (path in slide points, headings in radians)
   //   MF.sampleSchedule(sched, tau, out) -> out { x, y, h, d, v, k, seg }            (tau = seconds since the step began)
   //   MF.lotPose(t) -> the lot's pose at flow story time t (same sampler the frame loop uses)
-  window.MF = { floors, S, D, REP, W, proj, seek, play, pause, stepBy, setFlow, setView, setCam, setLook, setPlan, setMeasure, setQuality, setFloorLight, debugFloor, stepAt, frame, want, perf: metrics,   // used by the tests
+  window.MF = { lot, floors, S, D, REP, W, proj, seek, play, pause, stepBy, setFlow, setView, setCam, setLook, setPlan, setMeasure, setQuality, setFloorLight, debugFloor, stepAt, frame, want, perf: metrics,   // used by the tests
     LOOK, PT_M, motion: { V_MAX, RAMP_T, TURN_T, DWELL, LIFT_T, STATION_T }, schedule: buildSchedule, sampleSchedule, cleanPath, lotPose: (t) => { const o = lotPos(t, { x: 0, y: 0, i: 1, u: 0, lift: null, it: null, h: 0, d: 0, v: 0, k: "hold", seg: 0 }); return o; }, route: { uniforms: routeU, flows: routeFlows, lifts: routeLifts, liftState: liftDiagnostics, plateOf }, vehicleAPI: physicalVehicles,
     // Round 5: reflection = { state, uniforms, update, warm, set({enabled, every, strength, f0, distort, blur}), summary(), debug(), renderNow() };
     // setSpeed(v) / stepSpeed(+-1) drive the #speed select; setRoof(on) drives S.roof + REP.setRoof (guarded); camera = feed-forward diagnostics.

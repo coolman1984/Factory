@@ -27,3 +27,7 @@ A complete CRC-verified local backup of code, private exports/evidence, built HT
 
 ## Latest owner instruction - 2026-11-07
 Owner requested transfer of all local data, memory and remaining tasks to Claude account 2040, Opus 5.5 Medium, as project LEAD. Full package: [LEAD-TRANSFER-2026-11-07.md](LEAD-TRANSFER-2026-11-07.md). The previous pause remains part of the history; this newer instruction authorizes the leadership handoff. Actual acceptance must be recorded by the receiving leader. Codex will not run implementation/tests alongside it.
+
+
+## PAUSED by owner - 2026-11-07
+The owner stopped the project again after the Claude 2040 takeover and asked to save and wait for orders. Read [PAUSED-2026-11-07.md](PAUSED-2026-11-07.md). Camera is still NOT accepted: clearance passes, but a new whole-journey sight-line test failed (lift exit and some ground moments). Nothing else was started. Do not resume until the owner orders.
