@@ -4,7 +4,7 @@
 <div id="top" class="ui"><button id="stepsToggle" class="ib sm glass" aria-label="Show or hide the steps list (P)" aria-expanded="false" aria-controls="steps" data-tip="Steps list (P)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg></button>
 <h1 id="title" class="glass"></h1><span class="tag" title="The order is read from the slide's arrows and still needs the owner's confirmation">DRAFT ORDER</span>
 <div class="tabs glass" id="flows" role="group" aria-label="Flow"></div><span class="sp"></span>
-<div class="tabs glass" role="group" aria-label="Product lines"><button class="on" aria-pressed="true">Injection</button><button disabled title="Next">Press</button><button disabled title="Next">EPS</button></div></div>
+<div class="tabs glass" id="lines" role="group" aria-label="Product lines"></div></div>
 <div id="tip" class="ui" role="status"></div>
 <div id="mini" class="ui glass" style="display:none"><canvas id="minic" width="420" height="236" aria-label="Mini map of the three floors"></canvas></div>
 <div id="steps" class="ui glass" style="display:none" role="region" aria-label="Steps"><div class="hdr"><b>Steps</b><button id="stepsClose" class="ib xs" aria-label="Collapse the steps list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><ol id="list"></ol></div>
@@ -42,4 +42,11 @@
 <tr><td>2 / 3 / A</td><td>2D / 3D / Auto view</td></tr><tr><td>G / C</td><td>Guided camera / next camera</td></tr><tr><td>M / O</td><td>Measure in metres / replica or original plan</td></tr><tr><td>[ / ]</td><td>Slower / faster playback (0.5x to 8x)</td></tr><tr><td>R</td><td>Roof on or off</td></tr><tr><td>L / N / P</td><td>Labels / all flows / steps list</td></tr><tr><td>F / H</td><td>Full screen / hide every control and label</td></tr><tr><td>Esc</td><td>Close menus and help</td></tr></table>
 <p class="note">While playing, the panels fade after 4 s without movement and return when you move, press a key, focus a control or pause.</p></div>
 <div id="err"></div>
-<script>/*THREE*/</script><script>/*EXTRAS*/</script><script>window.MF_FLOOR_LIGHT=/*LIGHT*/;window.MF_TROLLEY=/*TROLLEY*/;window.MF_DATA=/*DATA*/;window.MF_REPLICA=/*REPLICA*/;window.MF_PLANS=/*PLANS*/;</script><script>/*ATMOS*/</script><script>/*LOOK*/</script><script>/*REPLICAJS*/</script><script>/*PLAYER*/</script></body></html>
+<script>/*THREE*/</script><script>/*EXTRAS*/</script><script>window.MF_TROLLEY=/*TROLLEY*/;
+(function () { // one file, several product lines: the hash picks the project (#inj, #press, #eps); a tab reloads with its hash
+  var P = /*PROJECTS*/, ids = Object.keys(P), id = decodeURIComponent((location.hash || "").slice(1)); if (!P[id]) id = ids[0];
+  var p = P[id]; window.MF_PROJECT = id; window.MF_DATA = p.data; window.MF_REPLICA = p.replica; window.MF_PLANS = p.plans; window.MF_FLOOR_LIGHT = p.light || {};
+  var t = document.getElementById("lines");
+  t.innerHTML = ids.map(function (k) { return '<button data-p="' + k + '" class="' + (k === id ? "on" : "") + '" aria-pressed="' + (k === id) + '">' + P[k].tab + "</button>"; }).join("");
+  t.onclick = function (e) { var b = e.target.closest("button"); if (b && b.dataset.p !== id) { location.hash = b.dataset.p; location.reload(); } };
+})();</script><script>/*ATMOS*/</script><script>/*LOOK*/</script><script>/*REPLICAJS*/</script><script>/*PLAYER*/</script></body></html>

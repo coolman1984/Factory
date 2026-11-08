@@ -7,14 +7,22 @@
   const D = window.MF_DATA, RP = window.MF_REPLICA, T = window.THREE, $ = (id) => document.getElementById(id);
   function fail(m) { const e = $("err"); e.style.display = "grid"; e.textContent = m; }
   if (!T) { fail("The 3D library did not load."); return; }
-  const CX = 480, CY = 290, GAP = 120, DWELL = .7, INTRO = 7, LIFT_T = 2, STATION_T = .01, PT_M = RP.scale;
+  const [CX, CY] = D.center || [480, 290], GAP = 120, DWELL = .7, INTRO = 7, LIFT_T = 2, STATION_T = .01, PT_M = RP.scale;
   // A truly stationary step (no path, or a path with zero motion) lasts DWELL in total: a token STATION_T "move" (so tm > t0 and step-stop
   // still has something to stop at) plus DWELL - STATION_T of dwell. Moving steps and the lift keep move + DWELL.
   // Physical story-time motion (Round 5 baseline): cruise speed, ramp time to/from cruise, and in-place quarter-turn time.
   // Playback speed (S.speed, 0.5x-8x) multiplies story time exactly once, in frame(); nothing below knows about it.
   const V_MAX = 4, RAMP_T = .25, TURN_T = .3, MIN_SEG = 1e-4, TURN_SNAP = 1e-6;
-  const PLATE_X = 553, PLATE_Y = 303;   // plate boundaries in slide points: x < PLATE_X is E1; right of it y >= PLATE_Y is E2-1F, else E2-2F
-  const plateOf = (x, y) => (x < PLATE_X ? "E1" : y >= PLATE_Y ? "E2-1F" : "E2-2F");
+  // Each plate owns a zone [x0, y0, x1, y1] of the project frame (zones never overlap); a point belongs to the plate whose zone
+  // contains it, else to the nearest zone. Projects without zones keep the original Injection rule.
+  const ZONES = Object.entries(D.plates).filter(([, P]) => Array.isArray(P.zone)).map(([k, P]) => [k, P.zone]);
+  const plateOf = ZONES.length ? (x, y) => {
+    let best = ZONES[0][0], bestD = Infinity;
+    for (let i = 0; i < ZONES.length; i++) { const b = ZONES[i][1], dx = Math.max(b[0] - x, 0, x - b[2]), dy = Math.max(b[1] - y, 0, y - b[3]), d = dx * dx + dy * dy; if (d < bestD) { bestD = d; best = ZONES[i][0]; if (d === 0) break; } }
+    return best;
+  } : (x, y) => (x < 553 ? "E1" : y >= 303 ? "E2-1F" : "E2-2F");
+  const zoneOf = (k) => D.plates[k].zone;
+  const CUT_X = ZONES.length ? [...new Set(ZONES.flatMap(([, z]) => [z[0], z[2]]))] : [553], CUT_Y = ZONES.length ? [...new Set(ZONES.flatMap(([, z]) => [z[1], z[3]]))] : [303];
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v)), lerp = (a, b, t) => a + (b - a) * t, ease = (t) => t * t * (3 - 2 * t);
   const wrapPi = (a) => { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; };
   const query = new URLSearchParams(location.search);
@@ -71,7 +79,7 @@
     surfaceMaterial.userData.floorLight.value = window.MFLook.contactLight(T, key, P.box, RP);
     floors.push({ art, slab, key, box: P.box, planMaterial, surfaceMaterial, reflW: 0 }); P.art = art;
   }
-  const REP = window.MFReplica.build({ T, plates, R: RP, CX, CY });
+  const REP = window.MFReplica.build({ T, plates, R: RP, CX, CY, info: D.plates, plateOf });
   // Sweep in the vertex shader: immutable instance buffers throughout the rise.
   const riseUniform = { value: 0 }, riseMaterials = new Set();
   // Idempotent: patches every replica material once. Called now, and again after REP.ready
@@ -160,11 +168,22 @@
     fl.lightPromise = source?.isTexture ? Promise.resolve(apply(source, false)) : new Promise((resolve, reject) => loader.load(source, tex => resolve(apply(tex, true)), undefined, error => { if (request === fl.lightRequest) fl.lightPromise = null; reject(error); }));
     return fl.lightPromise;
   }
-  // the deck that carries E2-2F out to To LCM, and solid destination blocks (schematic)
-  const deck = new T.Group(); plates["E2-2F"].add(deck);
-  for (const f of D.flows) for (const s of f.steps) if (s.title === "To LCM") for (let i = 1; i < s.path.length; i++) { const a = s.path[i - 1], b = s.path[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]) + 9; if (a[0] > 726 && b[0] > 726) continue; const m = new T.Mesh(new T.BoxGeometry(len, 3, 9), new T.MeshStandardMaterial({ color: 0x41506e, roughness: .6, metalness: .3 })); m.position.set((a[0] + b[0]) / 2 - CX, -1.5, (a[1] + b[1]) / 2 - CY); m.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); m.castShadow = true; deck.add(m); }
+  // a deck that carries an upper floor's route out of its plate to a destination beyond it, and solid destination blocks (schematic)
+  const deck = new T.Group();
+  const inZone = (z, p) => z && p[0] >= z[0] && p[0] <= z[2] && p[1] >= z[1] && p[1] <= z[3];
+  for (const f of D.flows) for (const s of f.steps) {
+    const n = D.nodes[s.node]; if (!n || n.kind !== "dest" || !Array.isArray(s.path)) continue;
+    const k = plateOf(s.path[0][0], s.path[0][1]), b = D.plates[k].box, z = [b[0] + 1.5, b[1], b[0] + b[2], b[1] + b[3]]; if (!D.plates[k].lift) continue;   // b = drawn extent [x, y, w, h]
+    if (!deck.parent) plates[k].add(deck);
+    for (let i = 1; i < s.path.length; i++) { const a = s.path[i - 1], b = s.path[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]) + 9; if (inZone(z, a) && inZone(z, b)) continue; const m = new T.Mesh(new T.BoxGeometry(len, 3, 9), new T.MeshStandardMaterial({ color: 0x41506e, roughness: .6, metalness: .3 })); m.position.set((a[0] + b[0]) / 2 - CX, -1.5, (a[1] + b[1]) / 2 - CY); m.rotation.y = -Math.atan2(b[1] - a[1], b[0] - a[0]); m.castShadow = true; deck.add(m); }
+  }
   const gates = Object.values(D.nodes).filter((n) => n.kind === "dest" && n.text !== "Elev 5 2F").map((n) => { const m = new T.Mesh(new T.BoxGeometry(24, 16, 24), new T.MeshStandardMaterial({ color: 0x156082, roughness: .4, metalness: .2 })); m.castShadow = true; m.userData.n = n; scene.add(m); return m; });
-  const E = D.elevator, shaft = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(30, 1, 30)), new T.LineBasicMaterial({ color: 0xffc000 })); scene.add(shaft);
+  // Elevators: a project can have several; each flow uses the elevator its lift step names (at most one lift per flow),
+  // and E is the elevator of the flow on screen (setFlow switches it).
+  const ELEVATORS = D.elevators || (D.elevator ? [D.elevator] : []);
+  const elevatorFor = (f) => { const s = f.steps.find((x) => x.lift); return (s && ELEVATORS.find((e) => e.label === s.elevator)) || ELEVATORS[0] || null; };
+  let E = ELEVATORS[0] || { label: "", low: [CX, CY], high: [CX, CY] };
+  const shaft = new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(30, 1, 30)), new T.LineBasicMaterial({ color: 0xffc000 })); scene.add(shaft);
   const cabin = new T.Mesh(new T.BoxGeometry(19, 1.6, 19), new T.MeshStandardMaterial({ color: 0xffc000, metalness: .4, roughness: .4 })); cabin.castShadow = true; scene.add(cabin);
   const lot = new T.Group(); let trolleyReady, contactBlob = null;
   { // the hero: Blender's trolley with rear covers, 1.4x real size so it stays readable, on a soft contact shadow
@@ -175,7 +194,8 @@
   scene.add(lot);
   const beacon = new T.Mesh(new T.RingGeometry(9, 11, 48).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ color: new T.Color(0x8fdcff).multiplyScalar(3), toneMapped: false, transparent: true, side: T.DoubleSide })); scene.add(beacon);
   // atmosphere: Digital Factory's light shafts and dust
-  const lamps = []; for (let x = 60; x < 520; x += 70) for (let y = 190; y < 480; y += 62) lamps.push([x - CX, 46, y - CY]);
+  const [lx0, ly0, lx1, ly1] = D.lampArea || [60, 190, 520, 480];   // light shafts over the main hall
+  const lamps = []; for (let x = lx0; x < lx1; x += 70) for (let y = ly0; y < ly1; y += 62) lamps.push([x - CX, 46, y - CY]);
   const sceneBeforeAtmos = new Set(scene.children);   // whatever DFAtmos adds to the scene is hidden while the floor reflection renders
   const atmos = window.DFAtmos ? window.DFAtmos.create(T, scene, { lamps, shafts: { height: 46, top: 1.4, bottom: 13, intensity: .05 }, dust: { count: 900, box: [620, 70, 620], size: .16, alpha: .3 } }) : null;
   const atmosObjects = scene.children.filter(o => !sceneBeforeAtmos.has(o));
@@ -294,12 +314,14 @@
     out.x = lerp(p.a[0], p.b[0], k); out.y = lerp(p.a[1], p.b[1], k); out.h = p.h; out.d = p.d0 + k * p.lp; out.v = segmentSpeed(p.p, tau - p.t0); out.k = "move"; return out;
   }
   function buildFlow(f) {
+    f.E = elevatorFor(f);
     f.items = [{ s: { node: f.steps[0].node, title: "From flat plan to factory", what: `Rebuilt from the slide: ${st.racks} rack blocks, ${st.machines} machines, ${st.columns} columns, ${st.walls} walls. Scale 1 slide point = ${PT_M} m.`, mode: "flow", view: "2d", dist: 300, intro: true }, i: 0, path: null, t0: 0, tm: INTRO - .6, t1: INTRO, h0: 0, h1: 0, sched: null, base: 0, run: 0, metres: 0 }];
     let t = INTRO, total = 0, hPrev, waiting = [];
     f.steps.forEach((s, i) => {
       let path = s.path;
-      if (path === "lift") path = [E.low, E.high];
-      if (path === "fromLift") path = [E.high, [D.nodes[s.node].x, E.high[1]], [D.nodes[s.node].x, D.nodes[s.node].y]];
+      const EL = f.E || E;
+      if (path === "lift") path = [EL.low, EL.high];
+      if (path === "fromLift") path = [EL.high, [D.nodes[s.node].x, EL.high[1]], [D.nodes[s.node].x, D.nodes[s.node].y]];
       const sched = path && !s.lift ? buildSchedule(path, hPrev) : null, moving = sched && sched.phases.length > 0;
       const stationary = !path || (!s.lift && !moving), move = s.lift ? LIFT_T : moving ? sched.duration : STATION_T, dwell = stationary ? DWELL - STATION_T : DWELL;
       const metres = path && !s.lift ? pl(path) * PT_M : 0, base = total; total += metres;
@@ -313,6 +335,7 @@
     f.total = t;
   }
   D.flows.forEach(buildFlow);
+  E = D.flows[0].E || E;
   for (const flow of D.flows) for (const it of flow.items) if (it.path) pathInfo(it.path);
   const liftIndices = D.flows.map(f => f.items.findIndex(it => it.s.lift)), plateEntriesForGroups = Object.entries(plates);
   metrics.timeline = D.flows.map(f => f.items.map(it => ({ i: it.i, t0: it.t0, tm: it.tm, t1: it.t1, view: it.s.view })));
@@ -424,7 +447,7 @@ void main() {
       if (it.s.lift) {
         // Landing ring at the lower end too, and one connector mesh in world space (it spans two plates, so it is not
         // parented to either): its transform is set every frame from W(E.low) -> W(E.high), see updateRoute.
-        station(E.low[0], E.low[1], it.i);
+        station((f.E || E).low[0], (f.E || E).low[1], it.i);
         const material = makeLiftMaterial(), mesh = new T.Mesh(liftGeometry, material);
         mesh.renderOrder = 3; mesh.visible = false; mesh.name = "MF route lift flow " + fi + " step " + it.i; scene.add(mesh); meshes.push(mesh);
         lifts.push({ flow: fi, step: it.i, item: it, mesh, material, from: new T.Vector3(), to: new T.Vector3(), progress: 0, state: "future", length: 0 });
@@ -435,9 +458,9 @@ void main() {
       for (let i = 1; i < pts.length; i++) {
         const a = pts[i - 1], b = pts[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len < MIN_SEG) continue;
         const rx = b[0] - a[0], ry = b[1] - a[1], dx = rx / len, dy = ry / len, nx = -dy * hw, ny = dx * hw, e0 = i > 1 ? hw : 0, e1 = i < pts.length - 1 ? hw : 0;
-        // Split at the plate boundaries (x = PLATE_X; right of it y = PLATE_Y) so every portion belongs to the plate it lies on.
+        // Split at every plate-zone edge so every portion belongs to the plate it lies on.
         // Neighbouring pieces on the same plate merge back; aU stays the global distance and only true corners get the joint overlap.
-        const cuts = [0]; { const tc = []; if (rx) { const t = (PLATE_X - a[0]) / rx; if (t > 0 && t < 1) tc.push(t); } if (ry) { const t = (PLATE_Y - a[1]) / ry; if (t > 0 && t < 1) tc.push(t); } tc.sort((p, q) => p - q); cuts.push(...tc, 1); }
+        const cuts = [0]; { const tc = []; if (rx) for (const x of CUT_X) { const t = (x - a[0]) / rx; if (t > 1e-6 && t < 1 - 1e-6) tc.push(t); } if (ry) for (const y of CUT_Y) { const t = (y - a[1]) / ry; if (t > 1e-6 && t < 1 - 1e-6) tc.push(t); } tc.sort((p, q) => p - q); cuts.push(...tc.filter((t, j) => !j || t - tc[j - 1] > 1e-6), 1); }
         const pieces = [];
         for (let k = 1; k < cuts.length; k++) {
           const t0 = cuts[k - 1], t1 = cuts[k], tm = (t0 + t1) / 2, plate = plateOf(a[0] + rx * tm, a[1] + ry * tm), last = pieces[pieces.length - 1];
@@ -492,12 +515,21 @@ void main() {
   }
 
   /* ---------- camera ---------- */
-  const fit = () => { const a = camera.aspect, f = Math.tan((camera.fov * Math.PI) / 360); return Math.max(330 / f, 560 / (f * a)); };
+  const fit = () => { const a = camera.aspect, f = Math.tan((camera.fov * Math.PI) / 360); return Math.max(FIT[0] / f, FIT[1] / (f * a)); }, FIT = D.fit || [330, 560];   // half-height / half-width the overview must show
   const flat = () => S.view === "2d";
-  const PRESET = {
-    e1: [285, 330, 640, -.4, .9], e21: [730, 373, 520, .35, .95], e22: [835, 223, 420, -.5, 1],
-    elev: [E.low[0], E.low[1], 340, -.9, 1.15], machines: [75, 215, 300, -1.05, 1.16], docks: [290, 440, 340, .55, 1.2], racks: [320, 330, 300, -.25, 1.25]
-  };
+  // Camera presets [x, y, dist, az, pol] in the project frame. A project lists its own (D.cameras: key -> {label, at});
+  // otherwise one preset per plate. "elev" always looks at the elevator of the flow on screen.
+  const PRESET = {}, camLabels = [];
+  if (D.cameras) for (const [k, c] of Object.entries(D.cameras)) { PRESET[k] = c.at; camLabels.push([k, c.label]); }
+  else for (const [k, P] of plateEntries) {
+    const b = P.box, size = Math.max(b[2], b[3]); PRESET["p:" + k] = [b[0] + b[2] / 2, b[1] + b[3] / 2, clamp(size * 1.4, 300, 700), P.lift ? -.5 : -.4, .95]; camLabels.push(["p:" + k, P.label]);
+  }
+  if (ELEVATORS.length) camLabels.push(["elev", ELEVATORS.length > 1 ? "Elevator of this flow" : ELEVATORS[0].label]);
+  { // the camera menu lists this project's presets between "Isometric" and "Free camera"
+    const sel = $("cam"), free = sel.querySelector('option[value="free"]');
+    for (const o of [...sel.options]) if (!["guided", "follow", "chase", "forklift", "overview", "iso", "free"].includes(o.value)) o.remove();
+    for (const [k, label] of camLabels) { const o = document.createElement("option"); o.value = k; o.textContent = label; sel.insertBefore(o, free); }
+  }
   function aim(x, y, z, dist, az, pol) { want.x = x; want.y = y; want.z = z; want.dist = dist; want.az = az; want.pol = pol; }
   // Guided camera: the azimuth is a constant per story step (only a step change moves it, and then slowly);
   // the look target is the lot blended toward the middle of the segment it is travelling, and the distance frames
@@ -564,7 +596,7 @@ void main() {
     } else if (S.cam === "overview" || S.cam === "iso") {
       const iso = S.cam === "iso"; aim(0, iso ? 30 : 0, 0, fit() * (iso ? 1.05 : .95), flat() ? 0 : iso ? -.785 : -.55, flat() ? .001 : iso ? .96 : 1);
     } else {
-      const r = PRESET[S.cam]; if (!r) return; const p = W(r[0], r[1], S.stack, .8, cameraPoint); if (S.cam === "elev") p.y += S.stack * GAP / 2;
+      const r = S.cam === "elev" ? [E.low[0], E.low[1], 340, -.9, 1.15] : PRESET[S.cam]; if (!r) return; const p = W(r[0], r[1], S.stack, .8, cameraPoint); if (S.cam === "elev") p.y += S.stack * GAP / 2;
       aim(p.x, p.y, p.z, r[2], flat() ? 0 : r[3], flat() ? .001 : r[4]);
     }
   }
@@ -608,7 +640,7 @@ void main() {
   /* ---------- overlay: flow lines, labels, measuring ---------- */
   const fx = $("fx"), g2 = fx.getContext("2d");
   const projectionPoint = new T.Vector3(), overlayWorld = new T.Vector3(), liftPoints = [[0, 0, 0], [0, 0, 0]], measureA = [0, 0, 0], measureB = [0, 0, 0];
-  const NO_DASH = [], FLOW_DASH = [7, 15], MEASURE_DASH = [6, 5], connections = Object.values(D.conns);
+  const NO_DASH = [], FLOW_DASH = [7, 15], MEASURE_DASH = [6, 5], connections = Object.values(D.conns || {});
   for (const connection of connections) pathInfo(connection.pts);
   function proj(v, out = [0, 0, 0]) { projectionPoint.copy(v).project(camera); out[0] = (projectionPoint.x + 1) * .5 * innerWidth; out[1] = (1 - projectionPoint.y) * .5 * innerHeight; out[2] = projectionPoint.z; return out; }
   function poly(path) { const pts = pathInfo(path).projected; for (let i = 0; i < path.length; i++) proj(W(path[i][0], path[i][1], S.stack, S.R * 1.5 + .8, overlayWorld), pts[i]); return pts; }
@@ -747,7 +779,7 @@ void main() {
   function play() { if (S.t >= F().total) seek(0); S.playing = true; last = performance.now(); }
   function pause() { S.playing = false; }
   function stepBy(d) { const f = F(), c = stepAt(S.t), atEnd = S.t >= c.tm - .01, i = clamp(c.i + (d > 0 ? (atEnd ? 1 : 0) : (S.t > c.t0 + 1 && !atEnd ? 0 : -1)), 0, f.items.length - 1); seek(f.items[i].tm); pause(); }
-  function setFlow(i) { S.flow = i; shown = -1; seek(0); pause(); renderFlow(); }
+  function setFlow(i) { S.flow = i; E = D.flows[i].E || E; shown = -1; seek(0); pause(); renderFlow(); }
   function setView(v) { S.view = v; S.stackUser = null; $("views").querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b.dataset.v === v); b.setAttribute("aria-pressed", String(b.dataset.v === v)); }); if (S.cam === "free") setCam("guided"); }
   function setCam(c) { S.cam = c; $("cam").value = c; $("cam").querySelector('[value="free"]').hidden = c !== "free"; }
   function setPlan(p) { S.plan = p; $("planBtn").textContent = p === "replica" ? "Plan: replica" : "Plan: original"; }
@@ -851,11 +883,15 @@ void main() {
   });
 
   const mc = $("minic").getContext("2d");
+  const MINI = (() => {   // fit every plate's drawn extent into the 420 x 236 mini map
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const [, P] of plateEntries) { const b = P.box; x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]); x1 = Math.max(x1, b[0] + b[2]); y1 = Math.max(y1, b[1] + b[3]); }
+    const k = Math.min(404 / (x1 - x0), 220 / (y1 - y0)); return { k, ox: (420 - (x1 - x0) * k) / 2 - x0 * k, oy: (236 - (y1 - y0) * k) / 2 - y0 * k };
+  })();
   function drawMini() {
-    const k = 420 / 960; mc.clearRect(0, 0, 420, 236);
-    const p = frameLot, here = p.lift != null ? "E2-1F" : plateOf(p.x, p.y);
-    for (const [key, P] of plateEntries) { const b = P.box; mc.fillStyle = key === here ? "#1f6feb" : "#ffffff26"; mc.fillRect(b[0] * k, b[1] * k - 30, b[2] * k, b[3] * k); mc.fillStyle = "#fff"; mc.font = "bold 18px Segoe UI"; mc.fillText(P.label, b[0] * k + 6, b[1] * k - 8); }
-    const x = p.lift != null ? E.low[0] : p.x, y = p.lift != null ? E.low[1] : p.y; mc.fillStyle = "#ffc000"; mc.beginPath(); mc.arc(x * k, y * k - 30, 7, 0, 7); mc.fill();
+    const k = MINI.k, ox = MINI.ox, oy = MINI.oy; mc.clearRect(0, 0, 420, 236);
+    const p = frameLot, here = p.lift != null ? plateOf(E.low[0], E.low[1]) : plateOf(p.x, p.y);
+    for (const [key, P] of plateEntries) { const b = P.box; mc.fillStyle = key === here ? "#1f6feb" : "#ffffff26"; mc.fillRect(b[0] * k + ox, b[1] * k + oy, b[2] * k, b[3] * k); mc.fillStyle = "#fff"; mc.font = "bold 18px Segoe UI"; mc.fillText(P.label, b[0] * k + ox + 6, b[1] * k + oy + 22); }
+    const x = p.lift != null ? E.low[0] : p.x, y = p.lift != null ? E.low[1] : p.y; mc.fillStyle = "#ffc000"; mc.beginPath(); mc.arc(x * k + ox, y * k + oy, 7, 0, 7); mc.fill();
   }
 
   /* ---------- sound: restrained, generated, off until asked for, and silent while scrubbing ---------- */
@@ -1073,8 +1109,8 @@ void main() {
     cabin.position.copy(lp.lift != null ? at : lo).setY((lp.lift != null ? at.y : (li >= 0 && cur.i > li ? hi.y : lo.y)) - .5);
     beacon.visible = !cur.s.intro; beacon.position.copy(at).setY(at.y + 1.2); const pulse = (time * .8) % 1; beacon.scale.setScalar(.7 + pulse * 1.4); beacon.material.opacity = 1 - pulse;
     // focus: the plan with the lot stays bright, the others step back (colours stay, brightness falls)
-    const here = lp.lift != null ? "E2" : plateOf(lp.x, lp.y);
-    for (const fl of floors) { const on = !S.focus || cur.s.intro || S.R < .9 || S.cam === "overview" || fl.key === here || (here === "E2" && fl.key !== "E1"); const target = on ? 1 : .42; fl.k = lerp(fl.k ?? 1, target, 1 - Math.exp(-dt * 6)); if (Math.abs(fl.k - target) < .001) fl.k = target;
+    const riding = lp.lift != null, here = riding ? "" : plateOf(lp.x, lp.y), liftLo = riding ? plateOf(E.low[0], E.low[1]) : "", liftHi = riding ? plateOf(E.high[0], E.high[1]) : "";
+    for (const fl of floors) { const on = !S.focus || cur.s.intro || S.R < .9 || S.cam === "overview" || fl.key === here || (riding && (fl.key === liftLo || fl.key === liftHi)); const target = on ? 1 : .42; fl.k = lerp(fl.k ?? 1, target, 1 - Math.exp(-dt * 6)); if (Math.abs(fl.k - target) < .001) fl.k = target;
       if (fl.lastDim == null || Math.abs(fl.k - fl.lastDim) > .001 || fl.k === target && fl.lastDim !== target) { for (let i = 0; i < fl.dimMaterials.length; i++) { const dm = fl.dimMaterials[i]; if (dm.userData.base) dm.color.copy(dm.userData.base).multiplyScalar(fl.k); else dm.color.setScalar(fl.k); } fl.planMaterial.color.setRGB(.79 * fl.k, .81 * fl.k, .84 * fl.k); fl.surfaceMaterial.color.setHex(0xd0d4d2).multiplyScalar(fl.k); fl.lastDim = fl.k; metrics.dimUpdates++; }
       const material = S.R > .85 && S.plan !== "original" ? fl.surfaceMaterial : fl.planMaterial; if (fl.art.material !== material) { fl.art.material = material; mask |= 2; } }
     cue(cur);

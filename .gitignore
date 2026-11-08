@@ -1,3 +1,6 @@
 private/
 dist/
+# company drawings and decks stay local (owner rule: no company data in git)
+*.pptx
+*.dwg
 

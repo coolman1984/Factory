@@ -7,7 +7,8 @@ window.MFReplica = (function () {
   const M = 1 / 0.3;   // slide points per metre
   function rng(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
 
-  function build({ T, plates, R, CX, CY }) {
+  function build({ T, plates, R, CX, CY, info = {}, plateOf = null }) {
+    const upper = (p) => !!(info[p] ? info[p].lift : p === "E2-2F");   // upper floors: lower ceilings and racks
     const G = { box: new T.BoxGeometry(1, 1, 1), cyl: new T.CylinderGeometry(.5, .5, 1, 14), cylx: new T.CylinderGeometry(.5, .5, 1, 14).rotateZ(Math.PI / 2), cylz: new T.CylinderGeometry(.5, .5, 1, 10).rotateX(Math.PI / 2), cone: new T.ConeGeometry(.5, 1, 14).rotateX(Math.PI) };
     /* Blender models: packed primitives, instanced per plan. place() fits a model inside its take-off rectangle, never beyond it */
     const ASSETS = window.MF_ASSETS || {}, placed = [];
@@ -65,8 +66,8 @@ window.MFReplica = (function () {
       const [ax, ay] = w.a, [bx, by] = w.b, dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy), rot = -Math.atan2(dy, dx), mx = (ax + bx) / 2, my = (ay + by) / 2, H = 3.6 * M;
       box(w.plate, mx, H / 2, my, len + 1.3, H, 1.3, 0xeef0f3, "paint", rot); box(w.plate, mx, .65 * M, my, len + 1.42, 1.3 * M, 1.42, 0x14536f, "paint", rot); box(w.plate, mx, H + .25, my, len + 1.5, .5, 1.5, 0x2f3a4e, "metal", rot);
     }
-    for (const q of R.columns) { const H = (q.plate === "E2-2F" ? 7 : 8.5) * M; box(q.plate, q.p[0], H / 2, q.p[1], 1.9, H, 1.9, 0xc4cad3); box(q.plate, q.p[0], 1.6, q.p[1], 2.9, 3.2, 2.9, c.yellow); }
-    for (const r of R.racks) rack(r, r.plate === "E2-2F" ? 3 : 4, rand);
+    for (const q of R.columns) { const H = (upper(q.plate) ? 7 : 8.5) * M; box(q.plate, q.p[0], H / 2, q.p[1], 1.9, H, 1.9, 0xc4cad3); box(q.plate, q.p[0], 1.6, q.p[1], 2.9, 3.2, 2.9, c.yellow); }
+    for (const r of R.racks) rack(r, upper(r.plate) ? 3 : 4, rand);
     for (const m of R.machines) ({ injection, press, utility, dock, cell: press })[m.type](m);
     R.trucks.forEach(truck);
     for (const q of R.conveyors) for (let k = 1; k < q.pts.length; k++) {
@@ -82,14 +83,16 @@ window.MFReplica = (function () {
 
     // roof steel: portal rafters on the column lines, purlins, and warm strip lights hung below; no cladding, so the view stays open
     MAT.roof = MAT.paint.clone(); MAT.roof.transparent = true; MAT.roofLamp = MAT.glow.clone(); MAT.roofLamp.transparent = true;
-    for (const [p, x0, y0, w, h, H] of [["E1", 49, 157, 500, 303, 8.3], ["E2-1F", 625, 305, 285, 133, 8.3], ["E2-2F", 727, 149, 172, 146, 6.8]]) {
+    // roof areas [plate, x0, y0, w, h, height m]: from the data, else each plate's drawn extent
+    const roofs = R.roofs || Object.entries(info).map(([p, P]) => [p, P.box[0], P.box[1], P.box[2], P.box[3], P.lift ? 6.8 : 8.3]);
+    for (const [p, x0, y0, w, h, H] of roofs) {
       const y = H * M, d = .42 * M;
       for (let x = x0 + 8; x < x0 + w; x += 26.7) { add(p, "box", "roof", x, y, y0 + h / 2, .75, d, h, 0x38424f); add(p, "box", "roof", x, y + d * .55, y0 + h / 2, 1, .22, h, 0x2c3540); add(p, "box", "roof", x, y - d * .55, y0 + h / 2, 1, .22, h, 0x2c3540); }
       for (let z = y0 + 13; z < y0 + h; z += 26.7) add(p, "box", "roof", x0 + w / 2, y + d * .75, z, w, .4, .4, 0x4b5563);
       for (let x = x0 + 21; x < x0 + w - 6; x += 53.4) for (let z = y0 + 20; z < y0 + h; z += 40) { add(p, "box", "roofLamp", x, y - 1.4 * M, z, 1, .25, 14, 0xfff3dc); add(p, "box", "roof", x, y - 1.33 * M, z, 1.4, .35, 14.4, 0xd8dde3); for (const s of [-6, 6]) add(p, "box", "roof", x, y - .7 * M, z + s, .1, 1.3 * M, .1, 0x5a6472); }
     }
     for (const q of R.pallets || []) place("pallet", q, { max: 1.1, h: 1.05 });
-    function plateAt(p) { return p[0] < 553 ? "E1" : p[1] >= 303 ? "E2-1F" : "E2-2F"; }
+    function plateAt(p) { return plateOf ? plateOf(p[0], p[1]) : p[0] < 553 ? "E1" : p[1] >= 303 ? "E2-1F" : "E2-2F"; }
     /* finalise: one InstancedMesh per plan, geometry and material */
     // each plan owns its materials, so one floor can stay bright while the others step back (focus)
     const owned = {}, matFor = (plate, k) => { const key = plate + k; if (!owned[key]) { owned[key] = MAT[k].clone(); owned[key].userData.dim = k !== "glass" && k !== "glow"; owned[key].userData.plate = plate; } return owned[key]; };
