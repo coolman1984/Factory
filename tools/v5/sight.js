@@ -1,76 +1,140 @@
-  /* ---------- V5 sight line: the camera must always SEE the trolley (inserted by tools/build-v5.mjs) ----------
-     Every solid of the replica and the V5 devices becomes a box (plan rectangle + real top height, plate frame) in a uniform grid.
-     clearLine() tests the exact segment eye -> trolley against those boxes (slab test), so a wall right beside the trolley, a rack
-     row or a column between camera and trolley is found exactly, not estimated. The guided camera keeps its preferred angle while
-     that line is clear; when it is not, it turns to the nearest clear angle (or rises), and keeps that choice while it stays clear
-     (hysteresis: no flicker). The chase camera only rises. Cost: one segment against the boxes of the cells it crosses. */
+  /* Visibility uses full-height instance bounds, indexed once in each plate's local frame.
+     Test every visible plate, preserving empty space beneath desks and between lift parts.
+     Guided angles have a wall-clock hold and look ahead before the trolley reaches a wall. */
   const SIGHT = (() => {
-    const CELL = 16, MM = 1 / PT_M, grid = new Map(), boxes = [];
-    const upperP = (p) => !!(D.plates[p] && D.plates[p].lift);
-    function add(plate, x0, y0, x1, y1, top) {
-      const b = { plate, x0: x0 - CX, z0: y0 - CY, x1: x1 - CX, z1: y1 - CY, top, stamp: 0 }; boxes.push(b);
-      for (let i = Math.floor(x0 / CELL); i <= Math.floor(x1 / CELL); i++) for (let j = Math.floor(y0 / CELL); j <= Math.floor(y1 / CELL); j++) {
-        const k = plate + ":" + i + ":" + j; let c = grid.get(k); if (!c) grid.set(k, (c = [])); c.push(b);
+    const CELL = 16, MM = 1 / PT_M, boxes = [], grids = [];
+    let built = false, stamp = 0;
+    function add(plate, x0, z0, x1, z1, top, bottom = 0) {
+      let g = grids.find(g => g.plate === plate);
+      if (!g) { g = { plate, cells: new Map() }; grids.push(g); }
+      const b = { plate, x0, z0, x1, z1, top, bottom, stamp: 0 }; boxes.push(b);
+      for (let i = Math.floor((x0 + CX) / CELL); i <= Math.floor((x1 + CX) / CELL); i++) for (let j = Math.floor((z0 + CY) / CELL); j <= Math.floor((z1 + CY) / CELL); j++) {
+        const key = i + j * 65536; let c = g.cells.get(key); if (!c) g.cells.set(key, c = []); c.push(b);
       }
+      return b;
     }
-    let built = false;   // built on first use: the device add-on (DEV) is created after this module
     function build() {
       built = true;
-      for (const w of RP.walls || []) { const t = .75; add(w.plate, Math.min(w.a[0], w.b[0]) - t, Math.min(w.a[1], w.b[1]) - t, Math.max(w.a[0], w.b[0]) + t, Math.max(w.a[1], w.b[1]) + t, 3.6 * MM + .5); }
-      for (const r of RP.racks || []) add(r.plate, r.x, r.y, r.x + r.w, r.y + r.h, ((upperP(r.plate) ? 3 : 4) * 1.75 + .6) * MM);
-      for (const q of RP.columns || []) add(q.plate, q.p[0] - 1.45, q.p[1] - 1.45, q.p[0] + 1.45, q.p[1] + 1.45, (upperP(q.plate) ? 7 : 8.5) * MM);
-      for (const m of RP.machines || []) add(m.plate, m.x, m.y, m.x + m.w, m.y + m.h, (m.type === "dock" ? .6 : 3) * MM);
-      for (const l of RP.lifts || []) add(l.plate, l.x, l.y, l.x + l.w, l.y + l.h, (upperP(l.plate) ? 6.2 : 7.4) * MM);
-      for (const q of RP.pallets || []) add(q.plate, q.x, q.y, q.x + q.w, q.y + q.h, 1.3 * MM);
-      if (DEV) for (const p of DEV.solids) { const hx = Math.max(p.sx, p.sz) / 2; add((DEV.list[0] && DEV.list[0].plate) || "1F", p.x - hx, p.z - hx, p.x + hx, p.z + hx, p.y + p.sy / 2); }
-    }
-    let stamp = 0;
-    const off = new T.Vector3(), a = new T.Vector3(), b = new T.Vector3();
-    // true if nothing solid crosses the segment from the eye A to the target L (world). ignore = plan radius around L left out
-    // (the trolley's own surroundings: the gate it drives through, the floor marks).
-    function clearLine(A, L, plate, ignore = 3) {
-      if (!built) build();
-      const g = plates[plate]; off.copy(g ? g.position : a.set(0, 0, 0));
-      a.copy(A).sub(off); b.copy(L).sub(off); stamp++;
-      const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, plan = Math.hypot(dx, dz), n = Math.max(2, Math.ceil(plan / (CELL * .5)));
-      for (let s = 0; s <= n; s++) {
-        const x = a.x + dx * s / n + CX, z = a.z + dz * s / n + CY, k = plate + ":" + Math.floor(x / CELL) + ":" + Math.floor(z / CELL), c = grid.get(k); if (!c) continue;
-        for (const bx of c) {
-          if (bx.stamp === stamp) continue; bx.stamp = stamp;
-          const ex = Math.max(bx.x0 - b.x, 0, b.x - bx.x1), ez = Math.max(bx.z0 - b.z, 0, b.z - bx.z1); if (Math.hypot(ex, ez) < ignore) continue;
-          // slab test of the segment against the box [x0,x1] x [0,top] x [z0,z1]
-          let t0 = 0, t1 = .97;
-          for (const [p0, d0, lo, hi] of [[a.x, dx, bx.x0, bx.x1], [a.y, dy, 0, bx.top], [a.z, dz, bx.z0, bx.z1]]) {
-            if (Math.abs(d0) < 1e-9) { if (p0 < lo || p0 > hi) { t0 = 2; break; } continue; }
-            let u0 = (lo - p0) / d0, u1 = (hi - p0) / d0; if (u0 > u1) { const t = u0; u0 = u1; u1 = t; }
-            t0 = Math.max(t0, u0); t1 = Math.min(t1, u1); if (t0 > t1) break;
+      // Replica instance matrices may be collapsed by the rise sweep: restore their stored full-height Y rows.
+      if (typeof REP !== 'undefined' && REP.meshes) {
+        const matrix = new T.Matrix4(), bound = new T.Box3();
+        for (const { im, base } of REP.meshes) {
+          if (im.material.transparent) continue;
+          const plate = im.material.userData.plate; if (!plates[plate]) continue;
+          if (!im.geometry.boundingBox) im.geometry.computeBoundingBox();
+          for (let i = 0; i < im.count; i++) {
+            im.getMatrixAt(i, matrix);
+            if (base) { const e = matrix.elements; e[1] = base[i * 4]; e[5] = base[i * 4 + 1]; e[9] = base[i * 4 + 2]; e[13] = base[i * 4 + 3]; }
+            bound.copy(im.geometry.boundingBox).applyMatrix4(matrix);
+            add(plate, bound.min.x, bound.min.z, bound.max.x, bound.max.z, bound.max.y, bound.min.y);
           }
-          if (t0 <= t1) return false;
+        }
+      } else {
+        // CPU fixture / legacy fallback; production uses actual parts, including open lift cages.
+        for (const w of RP.walls || []) add(w.plate, Math.min(w.a[0], w.b[0]) - CX - .75, Math.min(w.a[1], w.b[1]) - CY - .75, Math.max(w.a[0], w.b[0]) - CX + .75, Math.max(w.a[1], w.b[1]) - CY + .75, 3.6 * MM + .5);
+        for (const key of ['racks', 'machines', 'pallets']) for (const r of RP[key] || []) add(r.plate, r.x - CX, r.y - CY, r.x + r.w - CX, r.y + r.h - CY, (key === 'racks' ? 7.6 : key === 'pallets' ? 1.3 : 3) * MM);
+      }
+      if (typeof floors !== 'undefined') for (const floor of floors) for (const mesh of [floor.art, floor.slab]) {
+        // Keep slab openings: their triangles, rather than a filled floor bounding rectangle, block a sight line.
+        const geometry = mesh.geometry, positions = geometry.attributes.position, index = geometry.index;
+        mesh.updateMatrix();
+        const count = index ? index.count : positions.count;
+        for (let i = 0; i < count; i += 3) {
+          const tri = [];
+          for (let k = 0; k < 3; k++) tri.push(new T.Vector3().fromBufferAttribute(positions, index ? index.getX(i + k) : i + k).applyMatrix4(mesh.matrix));
+          const [a, b, c] = tri;
+          const box = add(floor.key, Math.min(a.x, b.x, c.x), Math.min(a.z, b.z, c.z), Math.max(a.x, b.x, c.x), Math.max(a.z, b.z, c.z), Math.max(a.y, b.y, c.y), Math.min(a.y, b.y, c.y));
+          box.tri = tri;
+        }
+      }
+      if (DEV) for (const p of DEV.solids) {
+        const c = Math.abs(Math.cos(p.yaw)), s = Math.abs(Math.sin(p.yaw)), hx = (c * p.sx + s * p.sz) / 2, hz = (s * p.sx + c * p.sz) / 2;
+        add(p.plate || '1F', p.x - CX - hx, p.z - CY - hz, p.x - CX + hx, p.z - CY + hz, p.y + p.sy / 2, p.y - p.sy / 2);
+      }
+    }
+    function intersects(a, dx, dy, dz, b, end) {
+      let lo = 0, hi = end, u, v;
+      for (let axis = 0; axis < 3; axis++) {
+        const p = axis === 0 ? a.x : axis === 1 ? a.y : a.z, d = axis === 0 ? dx : axis === 1 ? dy : dz;
+        const min = axis === 0 ? b.x0 : axis === 1 ? b.bottom : b.z0, max = axis === 0 ? b.x1 : axis === 1 ? b.top : b.z1;
+        if (Math.abs(d) < 1e-10) { if (p < min || p > max) return false; continue; }
+        u = (min - p) / d; v = (max - p) / d; if (u > v) { const t = u; u = v; v = t; }
+        lo = Math.max(lo, u); hi = Math.min(hi, v); if (lo > hi) return false;
+      }
+      if (b.tri) {
+        ray.origin.copy(a); ray.direction.set(dx, dy, dz).normalize();
+        const hit = ray.intersectTriangle(b.tri[0], b.tri[1], b.tri[2], false, triangleHit);
+        return !!hit && hit.distanceTo(a) <= Math.hypot(dx, dy, dz) * end;
+      }
+      return true;
+    }
+    const ray = new T.Ray(), triangleHit = new T.Vector3();
+    const a = new T.Vector3(), b = new T.Vector3();
+    function clearLine(A, L, plate, ignore = .5) {
+      if (!built) build();
+      const length = A.distanceTo(L), end = Math.max(0, 1 - ignore / Math.max(.001, length));
+      for (const g of grids) {
+        const group = plates[g.plate]; if (!group || group.visible === false) continue;
+        a.copy(A).sub(group.position); b.copy(L).sub(group.position); stamp++;
+        const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        let i = Math.floor((a.x + CX) / CELL), j = Math.floor((a.z + CY) / CELL);
+        const ei = Math.floor((b.x + CX) / CELL), ej = Math.floor((b.z + CY) / CELL), si = dx > 0 ? 1 : -1, sj = dz > 0 ? 1 : -1;
+        const tx = Math.abs(dx) < 1e-10 ? Infinity : CELL / Math.abs(dx), tz = Math.abs(dz) < 1e-10 ? Infinity : CELL / Math.abs(dz);
+        let nx = Math.abs(dx) < 1e-10 ? Infinity : ((i + (si > 0 ? 1 : 0)) * CELL - CX - a.x) / dx;
+        let nz = Math.abs(dz) < 1e-10 ? Infinity : ((j + (sj > 0 ? 1 : 0)) * CELL - CY - a.z) / dz;
+        const limit = Math.abs(ei - i) + Math.abs(ej - j) + 3;
+        for (let k = 0; k < limit; k++) {
+          const cell = g.cells.get(i + j * 65536);
+          if (cell) for (const box of cell) { if (box.stamp === stamp) continue; box.stamp = stamp; if (intersects(a, dx, dy, dz, box, end)) return false; }
+          if (i === ei && j === ej) break;
+          if (nx < nz) { i += si; nx += tx; } else { j += sj; nz += tz; }
         }
       }
       return true;
     }
-    const eye = new T.Vector3(), L = new T.Vector3();
+    const eye = new T.Vector3(), L = new T.Vector3(), future = new T.Vector3(), futurePose = {};
     const eyeAt = (p, d, az, pol, out) => out.set(p.x + d * Math.sin(pol) * Math.sin(az), p.y + d * Math.cos(pol), p.z + d * Math.sin(pol) * Math.cos(az));
-    const OFFS = [0, .26, -.26, .52, -.52, .79, -.79, 1.05, -1.05, 1.31, -1.31, 1.57, -1.57, 2.09, -2.09, 2.62, -2.62, Math.PI];
-    let last = null; const stats = { tests: 0, forced: 0, blockedActual: 0 };
-    // guided: p = look target (world), d = distance, pref = preferred azimuth, cur = current azimuth, lp = the lot's pose
+    const OFFS = [0, .26, -.26, .52, -.52, .79, -.79, 1.05, -1.05, 1.57, -1.57, Math.PI], POLS = [.94, .72, .5, 1.15, 1.3, 1.45, 1.53, .3, .12, .001];
+    const choice = { az: 0, pol: .94, forced: false, at: 0 }, stats = { tests: 0, forced: 0, blockedActual: 0 };
+    let ready = false, clock = 0, prefSince = -1, chaseLast = 1.3;
+    function targets(lp) {
+      worldFromLot(lp, S.stack, L); L.y += 2; future.copy(L);
+      if (typeof lotPos === 'function' && S.playing) { lotPos(Math.min(F().total, S.t + .8 * Math.max(1, S.speed)), futurePose); worldFromLot(futurePose, S.stack, future); future.y += 2; }
+    }
+    const ok = (p, d, az, pol) => { eyeAt(p, d, az, pol, eye); return clearLine(eye, L) && clearLine(eye, future); };
+    const visibleNow = (p, d, az, pol) => clearLine(eyeAt(p, d, az, pol, eye), L);
     function choose(p, d, pref, cur, lp) {
-      worldFromLot(lp, S.stack, L); L.y += 2; const plate = lp.lift != null ? E.lowPlate : plateOf(lp.x, lp.y); stats.tests++;
-      const ok = (az, pol) => clearLine(eyeAt(p, d, az, pol, eye), L, plate);
-      if (!clearLine(camera.position, L, plate)) stats.blockedActual++;
-      if (last && last.forced && S.t - last.at < 1.5 && ok(last.az, last.pol)) return last;   // hold a forced choice briefly
-      if (ok(pref, .94)) return (last = { az: pref, pol: .94, forced: false, at: S.t });
-      if (last && last.forced && ok(last.az, last.pol)) return last;
-      for (const pol of [.94, .72, .5, .3]) for (const o of OFFS) { const az = cur + o; if (ok(az, pol)) { stats.forced++; return (last = { az, pol, forced: true, at: S.t }); } }
-      return (last = { az: cur, pol: .12, forced: true, at: S.t });   // nothing clear: look straight down
+      targets(lp); clock += frameDt; stats.tests++;
+      if (!clearLine(camera.position, L)) stats.blockedActual++;
+      const prefOk = ok(p, d, pref, .94);
+      if (prefOk) { if (prefSince < 0) prefSince = clock; } else prefSince = -1;
+      if (ready && choice.forced && ok(p, d, choice.az, choice.pol) && (clock - choice.at < 1.5 || !prefOk || clock - prefSince < 1.2)) return choice;
+      let az = pref, pol = .94, forced = !prefOk;
+      if (forced) {
+        let found = false;
+        for (const q of POLS) { for (const o of OFFS) if (ok(p, d, cur + o, q)) { az = cur + o; pol = q; found = true; break; } if (found) break; }
+        // A lift can put the current and predicted target on opposite sides of a slab.
+        // Prefer a clear current view over an impossible two-target view; never blindly choose overhead.
+        if (!found) for (const q of POLS) { for (const o of OFFS) if (visibleNow(p, d, cur + o, q)) { az = cur + o; pol = q; found = true; break; } if (found) break; }
+        if (!found) { az = cur; pol = .001; }
+        stats.forced++;
+      }
+      choice.az = az; choice.pol = pol; choice.forced = forced; choice.at = clock; ready = true; return choice;
     }
-    // chase: keep the azimuth, rise only as much as needed; never drop faster than .6 rad of polar angle per second
-    let chaseLast = 1.3;
+    // The interpolated angle also needs clearance: a safe destination does not imply a safe orbit to it.
+    function transitionPol(p, d, az, pol, lp) {
+      targets(lp);
+      if (ok(p, d, az, pol)) return pol;
+      for (const q of POLS) if (ok(p, d, az, q)) return q;
+      for (const q of POLS) if (visibleNow(p, d, az, q)) return q;
+      return .001;
+    }
     function chasePol(p, d, az, lp) {
-      worldFromLot(lp, S.stack, L); L.y += 2; const plate = plateOf(lp.x, lp.y);
-      let pol = .2; for (const q of [1.3, 1.15, 1.0, .85, .7, .55, .4]) if (clearLine(eyeAt(p, d, az, q, eye), L, plate)) { pol = q; break; }
-      chaseLast = pol < chaseLast ? pol : Math.min(pol, chaseLast + .6 * frameDt * Math.max(1, S.speed)); return chaseLast;
+      targets(lp); let pol = .2;
+      for (let q = 1.3; q >= .39; q -= .15) if (ok(p, d, az, q)) { pol = q; break; }
+      chaseLast = pol < chaseLast ? pol : Math.min(pol, chaseLast + .6 * frameDt); return chaseLast;
     }
-    return { clearLine, choose, chasePol, boxes, stats, reset() { last = null; chaseLast = 1.3; } };
+    return { clearLine, choose, transitionPol, chasePol, boxes, stats,
+      rebuild() { built = false; boxes.length = 0; grids.length = 0; },
+      reset() { ready = false; prefSince = -1; clock = 0; chaseLast = 1.3; } };
   })();

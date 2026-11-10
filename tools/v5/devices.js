@@ -25,13 +25,14 @@
     function part(d, geo, mat, lx, ly, lz, sx, sy, sz, color, s, extra = {}) {
       const c = Math.cos(d.yaw), sn = Math.sin(d.yaw), x = d.x + (lx * c + lz * sn) * s * M, z = d.y + (-lx * sn + lz * c) * s * M;
       const key = (d.plate || "1F") + "|" + geo + "|" + mat; let b = buckets.get(key); if (!b) buckets.set(key, (b = { plate: d.plate || "1F", geo, mat, list: [] }));
-      const p = { x, y: ly * s * M, z, sx: sx * s * M, sy: sy * s * M, sz: sz * s * M, color, yaw: d.yaw + (extra.yaw || 0), roll: extra.roll || 0, pitch: extra.pitch || 0, dyn: extra.dyn };
+      const p = { plate: d.plate || "1F", x, y: ly * s * M, z, sx: sx * s * M, sy: sy * s * M, sz: sz * s * M, color, yaw: d.yaw + (extra.yaw || 0), roll: extra.roll || 0, pitch: extra.pitch || 0, dyn: extra.dyn };
       b.list.push(p); if (extra.solid !== false && mat !== "glow" && mat !== "screen") out.solids.push(p); return p;
     }
     const FACE = { e: Math.PI / 2, w: -Math.PI / 2, n: Math.PI, s: 0 };
     const KIND_FILL = { result: "#7030A0", mapping: "#7030A0", quality: "#7030A0" };
     for (const d of list) {
       if (d.type === "pc") {
+        const K = d.k || DD.K;   // per-device display scale (big icons; smaller only where the space needs it)
         d.yaw = FACE[d.face || "e"]; const o = -.107;   // centre the desk + tower footprint on the device point
         part(d, "box", "steel", o, .78, 0, 1.2, .04, .6, 0x8a949e, K);                                         // desk top (light: reads on the pale floor)
         for (const sx of [-.57, .57]) part(d, "box", "steel", o + sx, .38, 0, .04, .76, .56, 0x4a535c, K);       // slab legs
@@ -47,12 +48,13 @@
         part(d, "box", "plastic", tx, .385, .197, .15, .025, .008, 0x34383d, K);                                  // drive strip
         d.led = part(d, "box", "glow", tx + .06, .352, .199, .014, .014, .006, 0x66cfff, K, { dyn: true });       // power LED
         const fill = d.fill || KIND_FILL[d.kind] || "#7030A0";                                                     // the slide's symbol on the floor
-        part(d, d.kind === "result" ? "cyl" : d.kind === "quality" ? "hex" : "box", "plastic", o - .95, .012, .18, .42, .024, .42, new T.Color(fill).getHex(), K, { solid: false });
+        // Floor symbol spans .39-.53 units: above plan .3, below ribbon .65.
+        part(d, d.kind === "result" ? "cyl" : d.kind === "quality" ? "hex" : "box", "plastic", o - .95, .46 / (K * M), .18, .42, .14 / (K * M), .42, new T.Color(fill).getHex(), K, { solid: false });
       } else if (d.type === "rfid-auto") {
         d.yaw = d.axis === "x" ? Math.PI / 2 : 0;   // local z = along the lane
         const g = DD.DIMS ? DD.DIMS["rfid-auto"].gap / M : 2.2, top = 8.0;
         d.gap = g; d.top = top;
-        for (const sx of [-g, g]) { part(d, "box", "steel", sx, top / 2, 0, .12, top, .12, 0x66717c, 1); part(d, "box", "steel", sx, .01, 0, .3, .02, .3, 0x5a636d, 1); }
+        for (const sx of [-g, g]) { part(d, "box", "steel", sx, top / 2, 0, .12, top, .12, 0x66717c, 1); part(d, "box", "steel", sx, .12, 0, .3, .06, .3, 0x5a636d, 1); }
         part(d, "box", "steel", 0, top, 0, 2 * g + .2, .16, .10, 0x66717c, 1);                                   // crossbar
         d.leds = [];
         for (const side of [-1, 1]) {
@@ -62,15 +64,16 @@
           part(d, "box", "plastic", px, top - .26, 0, .32 * K, .035 * K, .32 * K, 0xf3f4f3, 1, { roll });          // antenna face
           d.leds.push(part(d, "box", "glow", px - side * .1, top - .3, 0, .05, .02, .05, 0x48bdd5, K, { roll, dyn: true }));
         }
-        for (const z of [-.9, .9]) part(d, "box", "plastic", 0, .006, z, 2 * g - .3, .012, .08, 0xffc000, 1, { solid: false });   // the slide's yellow marks
+        for (const z of [-.9, .9]) part(d, "box", "plastic", 0, .13, z, 2 * g - .3, .03, .1, 0xffc000, 1, { solid: false });   // the slide's yellow marks (above the floor layers)
       } else if (d.type === "rfid-manual") {
-        const s = { w: [-1, 0], e: [1, 0], n: [0, -1], s: [0, 1] }[d.side || "w"], off = DD.DIMS ? DD.DIMS["rfid-manual"].offset : 2 * M;
-        d.lane = [d.x, d.y]; d.x += s[0] * off; d.y += s[1] * off; d.yaw = Math.atan2(-s[0], -s[1]);           // front = toward the lane
-        part(d, "box", "steel", 0, .01, 0, .32, .02, .32, 0x4a535c, K); part(d, "box", "steel", 0, .5, 0, .05, 1.0, .05, 0x56616b, K);
+        const K = d.k || DD.K;
+        if (!d.lane) { const s = { w: [-1, 0], e: [1, 0], n: [0, -1], s: [0, 1] }[d.side || "w"]; d.lane = [d.x, d.y]; d.x += s[0] * 2 * M; d.y += s[1] * 2 * M; }
+        d.yaw = Math.atan2(d.lane[0] - d.x, d.lane[1] - d.y);   // front = toward the lane
+        part(d, "box", "steel", 0, .05, 0, .36, .1, .36, 0x4a535c, K); part(d, "box", "steel", 0, .5, 0, .05, 1.0, .05, 0x56616b, K);
         part(d, "box", "steel", 0, 1.0, 0, .30, .025, .25, 0x56616b, K); part(d, "box", "plastic", 0, 1.024, 0, .11, .025, .13, 0x24272b, K);   // top + cradle
-        // the slide's red marks across the lane, at the scan stop
-        const lane = { x: d.lane[0], y: d.lane[1], yaw: d.yaw, plate: d.plate };
-        for (const z of [-.9, .9]) part(lane, "box", "plastic", 0, .006, z, 2.6, .012, .08, 0xc00000, 1, { solid: false });
+        // the slide's red marks: two stripes across the lane, along the path direction
+        const lane = { x: d.lane[0], y: d.lane[1], yaw: d.yaw + Math.PI / 2, plate: d.plate };
+        for (const z of [-.9, .9]) part(lane, "box", "plastic", 0, .13, z, 2.6, .03, .1, 0xc00000, 1, { solid: false });
       }
     }
     // finalise: one InstancedMesh per plate | geometry | material
@@ -85,7 +88,9 @@
     }
     // ---- manual scanners: one merged mesh each (vertex colours), animated from the cradle to the trolley and back
     const scanMat = new T.MeshStandardMaterial({ roughness: .5, metalness: .1, vertexColors: true }); scanMat.name = "MF V5 scanner";
-    function mergedScanner() {
+    const scanGeos = new Map();   // one merged geometry per display scale
+    function mergedScanner(K) {
+      if (scanGeos.has(K)) return scanGeos.get(K);
       const parts = [[0, .06, 0, .035, .12, .045, 0x24272b], [0, .13, .03, .075, .055, .11, 0x24272b], [0, .1, .03, .015, .03, .02, 0x1a1c1f], [0, .13, .087, .06, .035, .006, 0x10151b]];
       const P = [], N = [], C = [], I = []; const tmp = new T.BoxGeometry(1, 1, 1), c = new T.Color();
       for (const [x, y, z, sx, sy, sz, hexc] of parts) {
@@ -93,34 +98,39 @@
         P.push(...g.attributes.position.array); N.push(...g.attributes.normal.array); c.set(hexc); for (let i = 0; i < g.attributes.position.count; i++) C.push(c.r, c.g, c.b);
         I.push(...Array.from(g.index.array, (v) => v + n));
       }
-      const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(P, 3)); g.setAttribute("normal", new T.Float32BufferAttribute(N, 3)); g.setAttribute("color", new T.Float32BufferAttribute(C, 3)); g.setIndex(I); g.computeBoundingSphere(); return g;
+      const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(P, 3)); g.setAttribute("normal", new T.Float32BufferAttribute(N, 3)); g.setAttribute("color", new T.Float32BufferAttribute(C, 3)); g.setIndex(I); g.computeBoundingSphere();
+      const strip = new T.BoxGeometry(.06 * K * M, .006 * K * M, .02 * K * M).translate(0, .16 * K * M, .03 * K * M);
+      scanGeos.set(K, { g, strip }); return scanGeos.get(K);
     }
-    const scanGeo = mergedScanner(), stripGeo = new T.BoxGeometry(.06 * K * M, .006 * K * M, .02 * K * M).translate(0, .16 * K * M, .03 * K * M);
     const beamMat = new T.ShaderMaterial({ transparent: true, depthWrite: false, side: T.DoubleSide, uniforms: { uA: { value: 0 }, uC: { value: new T.Color(0xff5555) } },
       vertexShader: "varying vec2 vP; void main(){ vP = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
       fragmentShader: "uniform float uA; uniform vec3 uC; varying vec2 vP; void main(){ float u = vP.y; float w = abs(vP.x) / max(.02, u * .22 + .02); float a = (1.0 - smoothstep(.55, 1.0, w)) * (1.0 - u * .55) * uA; gl_FragColor = vec4(uC * 1.6, a); }" });
     beamMat.name = "MF V5 scan beam";
     const beamGeo = new T.BufferGeometry(); beamGeo.setAttribute("position", new T.Float32BufferAttribute([-.5, 0, 0, .5, 0, 0, .5, 1, 0, -.5, 1, 0], 3)); beamGeo.setIndex([0, 1, 2, 0, 2, 3]);
     const scanners = list.filter((d) => d.type === "rfid-manual").map((d) => {
-      const g = groupOf(d.plate || "1F"), head = new T.Group(), body = new T.Mesh(scanGeo, scanMat), strip = new T.Mesh(stripGeo, new T.MeshBasicMaterial({ color: 0x426dff, toneMapped: false })), beam = new T.Mesh(beamGeo, beamMat.clone());
+      const k = d.k || DD.K, geo = mergedScanner(k), g = groupOf(d.plate || "1F"), head = new T.Group(), body = new T.Mesh(geo.g, scanMat), strip = new T.Mesh(geo.strip, new T.MeshBasicMaterial({ color: 0x426dff, toneMapped: false })), beam = new T.Mesh(beamGeo, beamMat.clone());
       head.add(body, strip); g.add(head); beam.visible = false; beam.frustumCulled = false; g.add(beam); out.effects.push(beam);
-      head.name = "MF V5 scanner " + d.label; beam.name = "MF V5 scan beam " + d.label;
-      return { d, head, strip, beam, rest: new T.Vector3(d.x - CX, 1.04 * K * M, d.y - CY) };
+      head.name = "MF V5 scanner " + d.label; beam.name = "MF V5 scan beam " + d.label; beam.renderOrder = 6;
+      return { d, k, head, strip, beam, rest: new T.Vector3(d.x - CX, 1.04 * k * M, d.y - CY) };
     });
     // ---- auto gate effects: ONE merged mesh, ONE shader. Per gate: a quad across the lane, a quad along it, a floor read zone.
-    const gates = list.filter((d) => d.type === "rfid-auto"), NG = Math.min(gates.length, 8);
-    const EP = [], EA = [], EK = [], EG = [], EI = [];
+    const gates = list.filter((d) => d.type === "rfid-auto"), NG = gates.length;
+    if (NG > 8) throw new Error("RFID shader supports at most 8 gates per project");
+    const gateIndices = new Map();
+    const EP = [], EA = [], EK = [], EG = [];
     gates.slice(0, NG).forEach((d, gi) => {
       const c = Math.cos(d.yaw), sn = Math.sin(d.yaw), g = d.gap, h = d.top - .3;
+      const plate = d.plate || "1F"; if (!gateIndices.has(plate)) gateIndices.set(plate, []);
+      const indices = gateIndices.get(plate);
       const w = (lx, ly, lz) => [d.x - CX + (lx * c + lz * sn) * M, ly * M, d.y - CY + (-lx * sn + lz * c) * M];
-      const quad = (pts, local, kind) => { const n = EP.length / 3; for (let i = 0; i < 4; i++) { EP.push(...w(...pts[i])); EA.push(...local[i]); EK.push(kind); EG.push(gi); } EI.push(n, n + 1, n + 2, n, n + 2, n + 3); };
+      const quad = (pts, local, kind) => { const n = EP.length / 3; for (let i = 0; i < 4; i++) { EP.push(...w(...pts[i])); EA.push(...local[i]); EK.push(kind); EG.push(gi); } indices.push(n, n + 1, n + 2, n, n + 2, n + 3); };
       quad([[-g + .2, 0, 0], [g - .2, 0, 0], [g - .2, h, 0], [-g + .2, h, 0]], [[-g + .2, 0], [g - .2, 0], [g - .2, h], [-g + .2, h]], 0);   // across the lane
       quad([[0, 0, -1.4], [0, 0, 1.4], [0, h, 1.4], [0, h, -1.4]], [[-1.4, 0], [1.4, 0], [1.4, h], [-1.4, h]], 1);                          // along the lane
-      quad([[-g + .25, .018, -.9], [g - .25, .018, -.9], [g - .25, .018, .9], [-g + .25, .018, .9]], [[-g + .25, -.9], [g - .25, -.9], [g - .25, .9], [-g + .25, .9]], 2);   // floor
+      quad([[-g + .25, .16, -.9], [g - .25, .16, -.9], [g - .25, .16, .9], [-g + .25, .16, .9]], [[-g + .25, -.9], [g - .25, -.9], [g - .25, .9], [-g + .25, .9]], 2);   // floor
     });
     const waveU = { uTime: { value: 0 }, uAct: { value: new Float32Array(8) }, uRead: { value: new Float32Array(8) }, uGap: { value: gates[0] ? gates[0].gap : 2.2 }, uTop: { value: gates[0] ? gates[0].top - .3 : 7.7 }, uAlpha: { value: 0 } };
     if (NG) {
-      const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(EP, 3)); geo.setAttribute("aL", new T.Float32BufferAttribute(EA, 2)); geo.setAttribute("aK", new T.Float32BufferAttribute(EK, 1)); geo.setAttribute("aG", new T.Float32BufferAttribute(EG, 1)); geo.setIndex(EI); geo.computeBoundingSphere();
+      const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(EP, 3)); geo.setAttribute("aL", new T.Float32BufferAttribute(EA, 2)); geo.setAttribute("aK", new T.Float32BufferAttribute(EK, 1)); geo.setAttribute("aG", new T.Float32BufferAttribute(EG, 1)); geo.computeBoundingSphere();
       const mat = new T.ShaderMaterial({ uniforms: waveU, transparent: true, depthWrite: false, depthTest: true, side: T.DoubleSide,
         vertexShader: "attribute vec2 aL; attribute float aK; attribute float aG; varying vec2 vL; varying float vK; varying float vG; void main(){ vL = aL; vK = aK; vG = aG; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
         fragmentShader: `uniform float uTime, uGap, uTop, uAlpha; uniform float uAct[8]; uniform float uRead[8]; varying vec2 vL; varying float vK; varying float vG;
@@ -149,62 +159,82 @@ void main(){
   }
   a += vK > 1.5 ? rd * .35 : rd * .12 * smoothstep(0.0, .02, a);   // the green read pulse brightens the zone and the bands
   vec3 c = mix(cyan, green, clamp(rd * 1.4, 0.0, 1.0));
-  gl_FragColor = vec4(c, clamp(a, 0.0, .85) * uAlpha);
+  float alpha = clamp(a, 0.0, .85) * uAlpha; if (alpha < .003) discard;
+  gl_FragColor = vec4(c, alpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
 }` });
       mat.name = "MF V5 RFID waves";
-      const fx = new T.Mesh(geo, mat); fx.name = "MF V5 RFID read zones"; fx.renderOrder = 5; fx.frustumCulled = false; fx.visible = false; groupOf(gates[0].plate || "1F").add(fx); out.effects.push(fx);
+      for (const [plate, indices] of gateIndices) {
+        const pg = geo.clone(); pg.setIndex(indices);
+        const fx = new T.Mesh(pg, mat); fx.name = "MF V5 RFID read zones " + plate; fx.renderOrder = 5; fx.frustumCulled = false; fx.visible = false; groupOf(plate).add(fx); out.effects.push(fx);
+      }
+      geo.dispose();
     }
     // ---- events, all pure functions of story time: gate crossings, manual scan windows, PC activity
     const flows = D.flows.map((f) => {
-      const reads = [];   // { g, t }
+      const reads = [], passes = [];   // gate reads { g, t }, drive-by manual scans { s, t }
+      for (const sc of scanners) sc._m = null;
       for (const it of f.items) {
         if (!it.sched || !it.sched.phases.length) continue;
         const o = { x: 0, y: 0 }, steps = Math.max(8, Math.ceil(it.sched.duration * 60));
-        let prev = null;
+        let prevX = 0, prevY = 0, hasPrev = false;
+        const plate = D.nodes[it.s.node].plate;
+        const held = new Set();
+        for (const phase of it.sched.phases) if (phase.k === "scan") {
+          const sc = scanners.find(sc => sc.d.plate === plate && sc.d.sym === phase.scanner);
+          if (sc) { held.add(sc); passes.push({ s: sc, t: it.t0 + phase.t0 + .6 }); }
+        }
         for (let k = 0; k <= steps; k++) {
           const tau = it.sched.duration * k / steps; sampleSchedule(it.sched, tau, o);
-          if (prev) gates.forEach((d, gi) => {
-            const alongY = d.axis !== "x", a0 = alongY ? prev.y - d.y : prev.x - d.x, a1 = alongY ? o.y - d.y : o.x - d.x, across = alongY ? Math.abs(o.x - d.x) : Math.abs(o.y - d.y);
-            if (a0 * a1 <= 0 && a0 !== a1 && across < d.gap * M) reads.push({ g: gi, t: it.t0 + tau - (it.sched.duration / steps) * (Math.abs(a1) / (Math.abs(a0) + Math.abs(a1))) });
+          // drive-by scans: a manual point the trolley passes without stopping (closest approach under 4.5 units)
+          for (const sc of scanners) if (!held.has(sc) && !sc.d.node && sc.d.routeBound !== false && sc.d.plate === plate) { const dd = Math.hypot(o.x - sc.d.lane[0], o.y - sc.d.lane[1]); const m = sc._m || (sc._m = { best: Infinity, t: 0, it: null }); if (dd < m.best && dd < 4.5) { m.best = dd; m.t = it.t0 + tau; m.it = it; } else if (m.best < 4.5 && dd > m.best + 2) { passes.push({ s: sc, t: m.t }); m.best = Infinity; } }
+          if (hasPrev) gates.forEach((d, gi) => {
+            if (d.plate !== plate) return;
+            const alongY = d.axis !== "x", a0 = alongY ? prevY - d.y : prevX - d.x, a1 = alongY ? o.y - d.y : o.x - d.x, across = alongY ? Math.abs(o.x - d.x) : Math.abs(o.y - d.y);
+            if (((a0 < 0 && a1 >= 0) || (a0 > 0 && a1 <= 0)) && across < d.gap * M) reads.push({ g: gi, t: it.t0 + tau - (it.sched.duration / steps) * (Math.abs(a1) / (Math.abs(a0) + Math.abs(a1))) });
           });
-          prev = { x: o.x, y: o.y };
+          prevX = o.x; prevY = o.y; hasPrev = true;
         }
+        for (const sc of scanners) { if (sc._m && sc._m.best < 4.5) passes.push({ s: sc, t: sc._m.t }); sc._m = null; }
       }
       const scans = f.items.filter((it) => !it.s.intro && scanners.some((s) => s.d.node === it.s.node)).map((it) => ({ it, s: scanners.find((s) => s.d.node === it.s.node) }));
-      return { reads, scans };
+      const pcDone = new Map(); for (const it of f.items) if (!it.s.intro) pcDone.set(it.s.node, Math.min(pcDone.get(it.s.node) ?? Infinity, it.t1));
+      return { reads, scans, passes, pcDone };
     });
     out.state.reads = flows.map((f) => f.reads.map((r) => ({ gate: r.g, t: +r.t.toFixed(3) })));
+    out.state.scans = flows.map(f => [...f.scans.map(j => ({ scanner: j.s.d.sym, start: j.it.tm, end: j.it.t1 })), ...f.passes.map(p => ({ scanner: p.s.d.sym, start: p.t - .6, end: p.t + 1.2 }))]);
     // ---- toasts: small "done" chips above a device (DOM, two at most, positions cached like the node chips)
     const toasts = [0, 1].map(() => { const el = document.createElement("div"); el.className = "v5toast"; el.style.display = "none"; labels.append(el); return { el, text: "", shown: false, px: NaN, py: NaN }; });
     const tp = new T.Vector3(), tOut = [0, 0, 0];
     function toast(k, text, x, y, h, color) {
       const t = toasts[k]; if (!text) { if (t.shown) { t.el.style.display = "none"; t.shown = false; } return; }
       if (t.text !== text) { t.el.textContent = t.text = text; } if (t.color !== color) { t.el.style.setProperty("--c", color); t.color = color; }
-      proj(W(x, y, S.stack, h, tp), tOut); const vis = tOut[2] > -1 && tOut[2] < 1;
+      proj(W(x, y, S.stack, h, tp), tOut); const vis = tOut[2] > -1 && tOut[2] < 1 && tOut[0] > -100 && tOut[0] < innerWidth + 100 && tOut[1] > -100 && tOut[1] < innerHeight + 100;
       if (vis !== t.shown) { t.el.style.display = vis ? "block" : "none"; t.shown = vis; }
-      if (vis) { const px = Math.round(tOut[0] * 2) / 2, py = Math.round(tOut[1] * 2) / 2; if (px !== t.px || py !== t.py) { t.px = px; t.py = py; t.el.style.transform = `translate(${px}px,${py}px) translate(-50%,-100%)`; } }
+      if (vis) { const px = tOut[0], py = tOut[1]; if (px !== t.px || py !== t.py) { t.px = px; t.py = py; t.el.style.transform = `translate(${px}px,${py}px) translate(-50%,-100%)`; } }
     }
     const SCREEN = { idle: new T.Color(0x1d3348), live: new T.Color(0x7fd6ff), done: new T.Color(0x9ff0c8) }, LED = { idle: new T.Color(0x48bdd5), read: new T.Color(0x55d6a0) };
-    const camDir = new T.Vector3(), aimTo = new T.Vector3(), restQ = new T.Quaternion(), tmpV = new T.Vector3(), headQ = new T.Quaternion();
+    const camDir = new T.Vector3(), aimTo = new T.Vector3(), tmpV = new T.Vector3(), headQ = new T.Quaternion(), lens = new T.Vector3(), beamUp = new T.Vector3(0, 1, 0);
+    const deviceGroups = Object.values(groups), pcs = list.filter(d => d.type === "pc"), waveMeshes = out.effects.filter(fx => fx.name.startsWith("MF V5 RFID"));
+    const scanChip = {}, pcChip = {}, gateChip = { text: "✓ RFID read", color: "#1f9d6b" };
     let lastRise = -1;
     out.frame = (cur, lp, dt, time) => {
       const R = S.R, show = R > .02;
-      for (const g of Object.values(groups)) { g.visible = show; if (show && Math.abs(R - lastRise) > 1e-4) g.scale.y = Math.max(.002, R * R * (3 - 2 * R)); }
+      for (const g of deviceGroups) { g.visible = show; if (show && Math.abs(R - lastRise) > 1e-4) g.scale.y = Math.max(.002, R * R * (3 - 2 * R)); }
       lastRise = R;
       if (!show) { toast(0, ""); toast(1, ""); return; }
-      const fl = flows[S.flow], now = performance.now() / 1000, effA = clamp((R - .6) / .3, 0, 1);
+      const fl = flows[S.flow], now = S.t, effA = clamp((R - .6) / .3, 0, 1);
       waveU.uTime.value = now; waveU.uAlpha.value = effA;
-      for (const fx of out.effects) if (fx.name.startsWith("MF V5 RFID")) fx.visible = effA > .01;
+      for (const fx of waveMeshes) fx.visible = effA > .01;
       // gates: inside the read zone (act) and the read confirmation (rd), from story time
-      const hold = .9 * Math.max(1, S.speed), riding = lp.lift == null && !cur.s.intro;
+      const hold = .9 * Math.max(1, S.speed), riding = lp.lift == null && !cur.s.intro, activePlate = D.nodes[cur.s.node].plate;
       let toastGate = -1, toastAge = 1e9;
       gates.forEach((d, gi) => {
         if (gi >= 8) return;
         const along = d.axis !== "x" ? lp.y - d.y : lp.x - d.x, across = d.axis !== "x" ? Math.abs(lp.x - d.x) : Math.abs(lp.y - d.y);
-        const target = riding && across < d.gap * M && Math.abs(along) < 3.2 * M ? 1 : 0, a = waveU.uAct.value;
-        a[gi] += (target - a[gi]) * (1 - Math.exp(-dt * 8)); if (Math.abs(a[gi] - target) < .002) a[gi] = target;
+        const target = riding && d.plate === activePlate && across < d.gap * M ? ease(clamp((3.2 * M - Math.abs(along)) / (1.2 * M), 0, 1)) : 0, a = waveU.uAct.value;
+        a[gi] = target;   // seekable: independent of prior frames and playback speed
         let rd = 0; for (const r of fl.reads) if (r.g === gi && S.t >= r.t && S.t < r.t + hold) { const age = S.t - r.t; rd = Math.max(rd, 1 - age / hold); if (age < toastAge) { toastAge = age; toastGate = gi; } }
         waveU.uRead.value[gi] = rd;
         for (const led of d.leds) setDyn(led, rd > .01 ? LED.read : LED.idle, rd > .01 ? 1.6 : 1);
@@ -212,37 +242,41 @@ void main(){
       // manual scanners: lift from the cradle, aim at the trolley's tag, beam, green confirmation, back to the cradle
       let scanToast = null;
       for (const sc of scanners) {
-        const job = fl.scans.find((j) => j.s === sc && cur === j.it);
+        let job = null; for (const j of fl.scans) if (j.s === sc && cur === j.it) { job = j; break; }
         let u = -1; if (job && S.t >= job.it.tm) u = clamp((S.t - job.it.tm) / Math.max(.2, job.it.t1 - job.it.tm), 0, 1);
+        if (u < 0) for (const p of fl.passes) if (p.s === sc && S.t >= p.t - .6 && S.t <= p.t + 1.2) u = (S.t - (p.t - .6)) / 1.8;   // drive-by
         const lift = u < 0 ? 0 : u < .25 ? ease(u / .25) : u < .85 ? 1 : 1 - ease((u - .85) / .15);
         tmpV.set(sc.d.lane[0] - CX, 1.05 * 1.4 * M, sc.d.lane[1] - CY);   // the trolley's tag (side panel, about 1.05 m at 1.4x)
-        aimTo.copy(sc.rest).lerp(tmpV, .38 * lift); aimTo.y = sc.rest.y + lift * .32 * K * M;
+        aimTo.copy(sc.rest).lerp(tmpV, .38 * lift); aimTo.y = sc.rest.y + lift * .32 * sc.k * M;
         sc.head.position.copy(aimTo);
         camDir.subVectors(tmpV, aimTo); const yaw = Math.atan2(camDir.x, camDir.z), pitch = -Math.atan2(camDir.y, Math.hypot(camDir.x, camDir.z));
         headQ.setFromEuler(e.set(lerp(-.26, pitch, lift), lift > .01 ? yaw : sc.d.yaw, 0, "YXZ")); sc.head.quaternion.copy(headQ);
         const beamOn = u > .3 && u < .62, done = u >= .62;
         sc.beam.visible = beamOn && show;
         if (beamOn) {
-          const lens = tmpV.clone().sub(aimTo), L = lens.length(); sc.beam.position.copy(aimTo).add(lens.clone().multiplyScalar(.04));
-          sc.beam.scale.set(.6 * M, L * .96, 1); sc.beam.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), lens.normalize());
+          lens.subVectors(tmpV, aimTo); const L = lens.length(); sc.beam.position.copy(aimTo).addScaledVector(lens, .04);
+          sc.beam.scale.set(.6 * M, L * .96, 1); sc.beam.quaternion.setFromUnitVectors(beamUp, lens.normalize());
           const k = (u - .3) / .32; sc.beam.material.uniforms.uA.value = .55 * Math.sin(Math.PI * k) + .25;
         }
         sc.strip.material.color.set(done ? 0x55d6a0 : beamOn ? 0xff5555 : 0x426dff);
-        if (u >= 0) scanToast = { text: done ? "✓ " + (sc.d.done || "RFID scanned") : "Scanning…", x: sc.d.lane[0], y: sc.d.lane[1], color: done ? "#1f9d6b" : "#c03a3a" };
+        if (u >= 0) { scanToast = scanChip; scanChip.text = done ? "✓ " + (sc.d.done || "RFID scanned") : "Scanning…"; scanChip.x = sc.d.lane[0]; scanChip.y = sc.d.lane[1]; scanChip.color = done ? "#1f9d6b" : "#c03a3a"; }
       }
       // PCs: the PC of the current stop lights up when the trolley has arrived; "done" once its step is complete
       let pcToast = null;
-      for (const d of list) if (d.type === "pc") {
-        const here = !cur.s.intro && cur.s.node === d.node && S.t >= cur.tm, past = F().items.some((it) => !it.s.intro && it.s.node === d.node && it.t1 <= S.t);
+      for (const d of pcs) {
+        const here = !cur.s.intro && cur.s.node === d.node && S.t >= cur.tm, past = (fl.pcDone.get(d.node) ?? Infinity) <= S.t;
         setDyn(d.screen, here ? (S.t - cur.tm > (cur.t1 - cur.tm) * .45 ? SCREEN.done : SCREEN.live) : past ? SCREEN.done : SCREEN.idle, here ? 1.5 : 1);
-        if (here) pcToast = { text: (S.t - cur.tm > (cur.t1 - cur.tm) * .45 ? "✓ " : "") + (d.done || d.label), x: d.x, y: d.y, color: "#2f6fb0" };
+        if (here) { pcToast = pcChip; pcChip.text = (S.t - cur.tm > (cur.t1 - cur.tm) * .45 ? "✓ " : "") + (d.done || d.label); pcChip.x = d.x; pcChip.y = d.y; pcChip.color = "#2f6fb0"; }
       }
       // at most two chips: the current event first (scan, PC), then a gate read
-      const chips = [scanToast, pcToast, toastGate >= 0 ? { text: "✓ RFID read", x: gates[toastGate].x, y: gates[toastGate].y, color: "#1f9d6b", h: (gates[toastGate].top + .5) * M } : null].filter(Boolean);
-      for (let k = 0; k < 2; k++) { const c = chips[k]; if (c) toast(k, c.text, c.x, c.y, c.h || 3.2 * K * M, c.color); else toast(k, ""); }
+      let gateToast = null;
+      if (toastGate >= 0) { const d = gates[toastGate]; gateToast = gateChip; gateChip.x = d.x; gateChip.y = d.y; gateChip.h = (d.top + .5) * M; }
+      emit(0, scanToast || pcToast || gateToast);
+      emit(1, scanToast ? pcToast || gateToast : pcToast ? gateToast : null);
       for (const p of dyn) if (p.dirty) { p.im.instanceColor.needsUpdate = true; p.dirty = false; }
     };
-    function setDyn(p, c, gain) { if (!p) return; col.copy(c).multiplyScalar(gain); const a = p.im.instanceColor.array, o = p.i * 3; if (a[o] !== col.r || a[o + 1] !== col.g || a[o + 2] !== col.b) { p.im.setColorAt(p.i, col); p.dirty = true; } }
+    function emit(k, c) { if (c) toast(k, c.text, c.x, c.y, c.h || 3.2 * K * M, c.color); else toast(k, ""); }
+    function setDyn(p, c, gain) { if (!p) return; col.copy(c).multiplyScalar(gain); col.r = Math.fround(col.r); col.g = Math.fround(col.g); col.b = Math.fround(col.b); const a = p.im.instanceColor.array, o = p.i * 3; if (a[o] !== col.r || a[o + 1] !== col.g || a[o + 2] !== col.b) { p.im.setColorAt(p.i, col); p.dirty = true; } }
     out.gates = gates; out.scanners = scanners; out.groups = groups; out.waves = waveU;
     return out;
   })();

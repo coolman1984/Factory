@@ -57,3 +57,16 @@ Built by `node tools/build-v5.mjs` from the owner's approved `dist/Material_Flow
 - Checks: `node tools/v5-check.mjs` OK (min trolley gap 0.37 m); camera `node tools/test-camera-v5.mjs dist/Material_Flow_Player_v5.html`: chase PASS 0% occluded at 1x/3x, guided FAIL ~10% of samples occluded (open); perf `node tools/perf-file.mjs dist/Material_Flow_Player_v5.html inj1 1 40`: 58.5 fps (V4 50.6), 3x 56.8 fps, ~2.5% frames over 17 ms (open).
 - Found: V4's old perf tool ran uncapped and produced fake multi-second stalls; capped numbers are the real ones.
 - Open: guided-camera occlusion, last 2-3% missed frames, Sol 6.1 review, owner's confirmation of step 5 (empty return) and the INJ headcount (19 vs 20).
+
+
+## V6 local review — 2026-11-10
+
+Owner-authorized direct Codex review/fixes completed without git, bridge, agents or browsers. V4 remains read-only; `tools/build-v6.mjs` builds V6 with deterministic exactly-once patches. `v6-check.mjs` OK, 13 CPU regressions pass, and the actual-replica CPU sight audit selects clear views in all 2,469 samples across 10 configured paths. Fixed plan overlap, transparency depth writes, device projection/allocation/colour-upload issues, governor hunting, floor-aware camera sight selection, and stationary route-bound manual scans. Overall acceptance remains open: lead must run GPU/FPS, rendered camera and flicker checks; reconcile 10 versus requested 11 paths, 14 inactive scanner symbols, large stop snaps and INJ 2 replica-forced detours. Full findings, limits and exact browser commands: [delegate report](../private/v6/sol-answer.md). CAD workstream unchanged.
+
+V6 handoff documentation check returned exit 1 for the separate CAD evidence error "Native Excel receipt belongs to a different workbook". No Markdown/link errors were listed, and no CAD artifacts were changed. Receipt: `private/v6/docs-check-result.json`.
+
+## V6 - 2026-11-11 (owner: all processes; Sol 6.1 High reviewed and fixed, lead verified)
+`node tools/v6/make.mjs` (owner's 10 paths: INJ 1 x2, INJ 2 x2, EPS x4, Press x2, routed on the V4 replica with `tools/v6/router.mjs`; edits in `tools/v6/edits.mjs`), then `node tools/build-v6.mjs` -> `dist/Material_Flow_Player_v6.html` (copy in `dist/versions/`, sha256 f850701e5c47da04...).
+- Owner fixes: flicker sources removed (floor items below the floor layers, duplicate plan layer, depth-writing beacon, chips one frame late, governor resolution pops); light-shaft cones and the two dark rooms beside Kitting removed; PCs and scanners 2.4x (big icons); manual scans now stop the trolley.
+- Verified by the lead: `tools/v6-check.mjs` OK (min gap 0.17 m); `tools/v6-review-test.mjs` 13 PASS; all tabs and paths render with no page/GL error; real GPU 1080p: 59.3-59.8 fps at 0.5x-3x on every tab, 0.6-2.4% frames over 17 ms (V4: 50.6 fps, 15%).
+- Open: guided camera 1.2-3.9% of samples occluded (transient: intro fly-in, fast corners), chase 0-0.7%; INJ 2 routes detour ~380 m because the CAD replica has no opening where the owner's slide line crosses (walls x=540/567 near y 556-571, vestibule stubs suggest a door) - needs the owner's confirmation before opening it; 14 slide RFID points lie on no configured path (listed in Sol's answer, private/v6/sol-answer.md).
