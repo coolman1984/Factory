@@ -1,3 +1,11 @@
+# Current workstreams — 2026-11-09
+
+- **CAD readable package:** completed data extraction and independent validation; local output at `dist/SEEG_Y26_AI_Package/`. All source/DB counts and exported labels checked; original hashes unchanged. Native Excel opened the workbook. Its preview PDFs are NASCA protected, so native visual QA remains unavailable. Source PDF text/reconciliation is not extracted; its Foxit window was closed at the owner's request. See [case/evidence](history/2026-11-09-cad-extraction.md).
+- **Documentation/skills:** project entry point, map, runbooks, decisions, detailed case history and reusable skills added. Read [START_HERE.md](START_HERE.md); maintain them using [MAINTENANCE.md](MAINTENANCE.md).
+- **Player implementation:** not resumed by this extraction/documentation task. Latest application checkpoint is the Nov 8 three-project plan/build record below; Press alignment, screenshots, camera visibility and performance acceptance remain open. No fresh player tests were run here.
+
+## Preserved application history and checkpoints
+
 # Material Flow Player: status and open work (2026-11-06)
 
 Read first: `D:\WORK\Software Development\GitHub\HERDR\docs\PLAYBOOK-INTERACTIVE-FACTORY.md`.
@@ -41,3 +49,11 @@ Owner requested transfer of all local data, memory and remaining tasks to Claude
 
 ## PAUSED by owner - 2026-11-07
 The owner stopped the project again after the Claude 2040 takeover and asked to save and wait for orders. Read [PAUSED-2026-11-07.md](PAUSED-2026-11-07.md). Camera is still NOT accepted: clearance passes, but a new whole-journey sight-line test failed (lift exit and some ground moments). Nothing else was started. Do not resume until the owner orders.
+
+## V5 - 2026-11-10 (owner: INJ 1 true trolley path, PCs, RFID)
+Built by `node tools/build-v5.mjs` from the owner's approved `dist/Material_Flow_Player_v4.html` (built on another PC) into `dist/Material_Flow_Player_v5.html` (copy in `dist/versions/`). V4 look kept; steel roof removed in all projects (owner).
+- INJ 1 path (owner's order): Item Slip -> Final Scan -> manual RFID scan -> Inj. W/H -> TO Mapping / GI -> Kitting (AGV) -> Main Line (AGV). Data: `tools/v5/inj1-data.mjs` from `Trolley Paths -261110-Update2.pptx` slide 1 (COM, `private/v5/s1`), transform X=1.14369x+0.26, Y=2.18066y-91.62.
+- Devices (`tools/v5/devices.js`): black desktop PCs at every PC symbol, auto RFID gates (ceiling antennas on posts, radar-wave read zone, green "RFID read"), manual handheld scanners (lift, beam, confirm). Astra 6 High gave the design/perf second opinion.
+- Checks: `node tools/v5-check.mjs` OK (min trolley gap 0.37 m); camera `node tools/test-camera-v5.mjs dist/Material_Flow_Player_v5.html`: chase PASS 0% occluded at 1x/3x, guided FAIL ~10% of samples occluded (open); perf `node tools/perf-file.mjs dist/Material_Flow_Player_v5.html inj1 1 40`: 58.5 fps (V4 50.6), 3x 56.8 fps, ~2.5% frames over 17 ms (open).
+- Found: V4's old perf tool ran uncapped and produced fake multi-second stalls; capped numbers are the real ones.
+- Open: guided-camera occlusion, last 2-3% missed frames, Sol 6.1 review, owner's confirmation of step 5 (empty return) and the INJ headcount (19 vs 20).
