@@ -29,6 +29,7 @@ const opt = (k, d) => options[k] ?? d;
 const STAGES = {
   "7.1": { groups: [["scene-ui.js"]], css: ["scene-ui.css"] },
   "7.7.1": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
+  "7.7.2": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
   "7.7": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
   "7.6": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
 };

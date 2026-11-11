@@ -96,7 +96,7 @@
       var id = next++; idOf[s.id] = id;
       nodes[id] = { id: id, sceneId: s.id, x: toU(s.x), y: toU(s.y), plate: s.floor, kind: s.symbol || "area", mode: "manual", fill: s.color || "#156082", text: s.name || s.id, target: [toU(s.x), toU(s.y)] };
     });
-    if (opts.applyLayout !== false) applyLayoutEdits(scene.layoutEdits || [], layout.replica, issues);
+    if (opts.applyLayout !== false) { stampLayout(layout.replica); applyLayoutAdds(scene.layoutAdds || [], layout.replica, issues); applyLayoutEdits(scene.layoutEdits || [], layout.replica, issues); }
     var sym = 1, devices = (scene.devices || []).map(function (d) {
       var o;
       if (d.type === "pc") {
@@ -150,6 +150,69 @@
       if (kind === "walls") { var mx = (o.a[0] + o.b[0]) / 2 + dx, my = (o.a[1] + o.b[1]) / 2 + dy, r = rot * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r); var t = function (p) { var x = p[0] + dx - mx, y = p[1] + dy - my; return [mx + x * c - y * sn, my + x * sn + y * c]; }; o.a = t(o.a); o.b = t(o.b); }
       else if (kind === "columns") o.p = [o.p[0] + dx, o.p[1] + dy];
       else { o.x += dx; o.y += dy; if (rot === 90 || rot === 270) { var cx = o.x + o.w / 2, cy = o.y + o.h / 2, w = o.w; o.w = o.h; o.h = w; o.x = cx - o.w / 2; o.y = cy - o.h / 2; if (kind === "machines" && o.type === "injection") o.vertical = !o.vertical; } }
+  }
+  /* layoutAdds: new layout items written as data (owner, 2026-11-11). They become ordinary replica objects (solid for the router
+     and the validator, drawn by the 3D and the plan, movable in the Studio), with ids <kind>:<ADD_BASE + 1000 * index + part>.
+     Simple blocks: one clear style per kind; models: injection / press / utility (copies of the built-in machine models). */
+  var ADD_BASE = 100000;
+  var ADD_KINDS = {
+    "injection": { into: "machines", type: "injection", w: 2.74, d: 13.6 },
+    "press": { into: "machines", type: "press", w: 4, d: 3 },
+    "utility": { into: "machines", type: "utility", w: 3.6, d: 1.8 },
+    "machine": { into: "machines", type: "block", h: 2.2, color: "#5b6b82" },
+    "line": { into: "machines", type: "block", h: 1.3, color: "#8fa3bf" },
+    "conveyor": { into: "machines", type: "block", h: 0.9, color: "#3f4754", stripe: "#f4c20d" },
+    "table": { into: "machines", type: "block", h: 0.85, color: "#c19a6b" },
+    "rack": { into: "racks" },
+    "storage": { into: "marks" },
+    "wall": { into: "walls" }
+  };
+  var PALLET = { w: 1.15, d: 0.88 };
+  function addRect(a) { var k = ADD_KINDS[a.kind] || {}, w = a.w != null ? a.w : k.w, d = a.d != null ? a.d : k.d; if (norm360(a.turn || 0) % 180 === 90) { var t = w; w = d; d = t; } return { x: a.x, y: a.y, w: w, d: d }; }
+  function applyLayoutAdds(adds, replica, issues) {
+    (adds || []).forEach(function (a, i) {
+      var k = a && ADD_KINDS[a.kind], oid = ADD_BASE + 1000 * i, where = "layoutAdds[" + (a && a.id || i) + "]";
+      if (!k) { issues && issues.push({ level: "error", where: where + ".kind", msg: "one of " + Object.keys(ADD_KINDS).join(", ") }); return; }
+      if (k.into === "walls") {
+        if (!Array.isArray(a.a) || !Array.isArray(a.b)) { issues && issues.push({ level: "error", where: where, msg: "a wall needs a: [x, y] and b: [x, y] in metres" }); return; }
+        (replica.walls || (replica.walls = [])).push({ a: [toU(a.a[0]), toU(a.a[1])], b: [toU(a.b[0]), toU(a.b[1])], plate: a.floor, _oid: oid, _add: a.id }); return;
+      }
+      var r = addRect(a); if (!(r.w > 0 && r.d > 0)) { issues && issues.push({ level: "error", where: where, msg: "w and d (metres) must be more than 0" }); return; }
+      var o = { x: toU(r.x), y: toU(r.y), w: toU(r.w), h: toU(r.d), plate: a.floor, _oid: oid, _add: a.id };
+      if (k.into === "machines") {
+        o.type = k.type; if (k.type === "injection") o.vertical = o.h > o.w;
+        if (k.type === "block") { o.hm = toU(a.h != null ? a.h : k.h); o.col = a.color || k.color; if (k.stripe) o.stripe = k.stripe; o.style = a.kind; }
+        (replica.machines || (replica.machines = [])).push(o);
+      } else if (k.into === "racks") (replica.racks || (replica.racks = [])).push(o);
+      else {   // storage field: floor marking grid (not solid) + one low pallet stack per cell (solid)
+        var rows = Math.max(1, Math.min(60, Math.round(a.rows || 1))), cols = Math.max(1, Math.min(60, Math.round(a.cols || 1)));
+        o.rows = rows; o.cols = cols; (replica.marks || (replica.marks = [])).push(o);
+        if (a.pallets !== false) {
+          var cw = o.w / cols, ch = o.h / rows, pw = Math.min(cw * 0.8, toU(PALLET.w)), ph = Math.min(ch * 0.8, toU(PALLET.d)), n = 0;
+          for (var rr = 0; rr < rows; rr++) for (var cc = 0; cc < cols; cc++) { if (n >= 999) break; (replica.pallets || (replica.pallets = [])).push({ x: o.x + cw * (cc + 0.5) - pw / 2, y: o.y + ch * (rr + 0.5) - ph / 2, w: pw, h: ph, plate: a.floor, _oid: oid + 1 + n++, _add: a.id }); }
+        }
+      }
+    });
+  }
+  // validator rules for layoutAdds (field checks; the trolley sweep then treats the added items like any other solid)
+  function checkAdds(adds, floors, layout, E) {
+    var seen = Object.create(null), fin = function (v) { return typeof v === "number" && isFinite(v); };
+    adds.forEach(function (a, i) {
+      var w = "layoutAdds[" + (a && typeof a.id === "string" && a.id ? a.id : i) + "]";
+      if (!a || typeof a !== "object") { E(w, "must be an object"); return; }
+      if (typeof a.id !== "string" || !a.id) E(w + ".id", "missing id (a short unique text)"); else if (seen[a.id]) E(w, "duplicate id"); else seen[a.id] = 1;
+      if (!ADD_KINDS[a.kind]) { E(w + ".kind", "one of " + Object.keys(ADD_KINDS).join(", ")); return; }
+      if (floors.indexOf(a.floor) < 0) { E(w + ".floor", "unknown floor " + JSON.stringify(a.floor) + " (floors: " + floors.join(", ") + ")"); return; }
+      var z = zoneU(layout, a.floor), inZone = function (x, y) { return toU(x) >= z[0] - 3 && toU(x) <= z[2] + 3 && toU(y) >= z[1] - 3 && toU(y) <= z[3] + 3; };
+      if (a.kind === "wall") { if (!Array.isArray(a.a) || !Array.isArray(a.b) || ![a.a[0], a.a[1], a.b[0], a.b[1]].every(fin)) E(w, "a wall needs a: [x, y] and b: [x, y] in metres"); else if (!inZone(a.a[0], a.a[1]) || !inZone(a.b[0], a.b[1])) E(w, "the wall is outside floor " + a.floor); return; }
+      if (!fin(a.x) || !fin(a.y)) { E(w, "x and y (the north-west corner, metres) must be numbers"); return; }
+      ["w", "d", "h"].forEach(function (f) { if (a[f] != null && !(fin(a[f]) && a[f] > 0 && a[f] < 200)) E(w + "." + f, "metres, more than 0"); });
+      if (a.turn != null && [0, 90, 180, 270].indexOf(norm360(a.turn)) < 0) E(w + ".turn", "0, 90, 180 or 270");
+      if (a.color != null && !/^#[0-9a-fA-F]{6}$/.test(a.color)) E(w + ".color", "a colour like #5b6b82");
+      ["rows", "cols"].forEach(function (f) { if (a[f] != null && !(fin(a[f]) && a[f] >= 1 && a[f] <= 60)) E(w + "." + f, "1 to 60"); });
+      var r = addRect(a); if (!(r.w > 0 && r.d > 0)) { E(w, "w and d (metres) are required for kind " + a.kind); return; }
+      if (!inZone(r.x, r.y) || !inZone(r.x + r.w, r.y + r.d)) E(w, "the item (" + r.x + ", " + r.y + ") to (" + (r.x + r.w) + ", " + (r.y + r.d) + ") is outside floor " + a.floor + " (x " + toM(z[0]) + " to " + toM(z[2]) + ", y " + toM(z[1]) + " to " + toM(z[3]) + " m)");
+    });
   }
   function applyLayoutEdits(edits, replica, issues) {
     stampLayout(replica);
@@ -284,7 +347,7 @@
     var finite = function (v) { return typeof v === "number" && isFinite(v); };
     var point = function (v) { return Array.isArray(v) && v.length === 2 && v.every(finite); };
     if (!obj(scene)) { E("scene", "not a JSON object"); return { errors: errors, warnings: warnings }; }
-    ["stops", "devices", "objects", "layoutEdits", "paths", "takes", "viewpoints"].forEach(function (k) {
+    ["stops", "devices", "objects", "layoutEdits", "layoutAdds", "paths", "takes", "viewpoints"].forEach(function (k) {
       if (scene[k] == null) return;
       if (!Array.isArray(scene[k])) { E(k, "must be a list"); return; }
       scene[k].forEach(function (v, i) { if (!obj(v) && !(k === "viewpoints" && v === null)) E(k + "[" + i + "]", "must be an object"); });
@@ -343,7 +406,7 @@
     var stopIds = uniq(stops, "stops"); uniq(devices, "devices"); uniq(objects, "objects"); uniq(paths, "paths");
     var stopOf = Object.create(null); stops.forEach(function (s) { stopOf[s.id] = s; inFloor("stops[" + s.id + "]", s.floor, s.x, s.y); if (s.symbol != null && SYMBOLS.indexOf(s.symbol) < 0) E("stops[" + s.id + "].symbol", "one of " + SYMBOLS.join(", ")); if (s.color != null && !isColor(s.color)) E("stops[" + s.id + "].color", "a colour like #7030A0"); });
     edits.forEach(function (e, i) { var w = "layoutEdits[" + i + "]"; if (e.move && !(Array.isArray(e.move) && e.move.length === 2 && isNum(e.move[0]) && isNum(e.move[1]))) E(w + ".move", "[dx, dy] in metres"); if (e.turn != null && [0, 90, 180, 270].indexOf(norm360(e.turn)) < 0) E(w + ".turn", "0, 90, 180 or 270"); });
-    var issues = []; applyLayoutEdits(edits, layout.replica, issues); issues.forEach(function (x) { E(x.where, x.msg); });
+    var issues = []; stampLayout(layout.replica); checkAdds(arr("layoutAdds"), floors, layout, E); applyLayoutAdds(arr("layoutAdds"), layout.replica, null); applyLayoutEdits(edits, layout.replica, issues); issues.forEach(function (x) { E(x.where, x.msg); });
     devices.forEach(function (d) {
       var w = "devices[" + d.id + "]";
       if (d.type === "pc") { inFloor(w, d.floor, d.x, d.y); if (d.kind != null && PC_KINDS.indexOf(d.kind) < 0) E(w + ".kind", "one of " + PC_KINDS.join(", ")); if (d.heading != null && !isNum(d.heading)) E(w + ".heading", "degrees, 0 = north, clockwise"); if (d.serves != null && !stopIds[d.serves]) E(w + ".serves", "unknown stop " + JSON.stringify(d.serves)); }
@@ -464,6 +527,6 @@
     return { errors: errors, warnings: warnings, stats: { stops: stops.length, devices: devices.length, paths: paths.length, steps: paths.reduce(function (n, p) { return n + (p.steps || []).length; }, 0) } };
   }
 
-  var api = { FORMAT: FORMAT, VERSION: VERSION, UNIT: U, DIMS: DIMS, MAX_GATES: MAX_GATES, fromInternal: fromInternal, toInternal: toInternal, validate: validate, layoutOf: layoutOf, stampLayout: stampLayout, applyLayoutEdits: applyLayoutEdits, applyLayoutOp: applyLayoutOp, gap: gap, makeRouter: makeRouter, solidsU: solidsU, footprintsU: footprintsU, floorOfU: floorOfU, simplify: simplify, CLEAR_ERROR: CLEAR_ERROR, CLEAR_WARN: CLEAR_WARN };
+  var api = { FORMAT: FORMAT, VERSION: VERSION, UNIT: U, DIMS: DIMS, MAX_GATES: MAX_GATES, fromInternal: fromInternal, toInternal: toInternal, validate: validate, layoutOf: layoutOf, stampLayout: stampLayout, applyLayoutEdits: applyLayoutEdits, applyLayoutAdds: applyLayoutAdds, ADD_KINDS: ADD_KINDS, ADD_BASE: ADD_BASE, applyLayoutOp: applyLayoutOp, gap: gap, makeRouter: makeRouter, solidsU: solidsU, footprintsU: footprintsU, floorOfU: floorOfU, simplify: simplify, CLEAR_ERROR: CLEAR_ERROR, CLEAR_WARN: CLEAR_WARN };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.MFScene = api;
 })(typeof window !== "undefined" ? window : this);

@@ -36,7 +36,7 @@ function fromScene(scene) {
   Object.assign(replica, fromLayoutEdits(scene.layoutEdits || []));
   const director = clone(scene.director || {}); for (const d of Object.values(director)) if (d.keys) d.keys.sort((a, b) => a.t - b.t);
   return {
-    notes: scene.notes || "", layout: scene.layout || scene.project, layoutEdits: clone(scene.layoutEdits || []),
+    notes: scene.notes || "", layout: scene.layout || scene.project, layoutEdits: clone(scene.layoutEdits || []), adds: clone(scene.layoutAdds || []),
     format: "mf7-work", project: PROJECT, title: scene.title || PROJECT, nodes: res.data.nodes, flows: res.data.flows, devices: res.data.devices,
     props: (scene.objects || []).map((o) => ({ id: o.id, type: PROP_OF_OBJ[o.type] || o.type, name: o.name || "", x: o.x / U7, y: o.y / U7, plate: o.floor, rot: o.heading || 0, w: o.w, d: o.d, h: o.h, color: o.color, text: o.text })),
     replica, doors: clone((scene.layoutEdits || []).filter((e) => e.door)), director, takes: clone(scene.takes || []), bookmarks: clone(scene.viewpoints || []),
@@ -58,10 +58,26 @@ function toScene() {
       sc.layoutEdits.push(door);
     }
   }
+  foldAdds(sc);
   sc.director = clone(doc.director); sc.takes = clone(doc.takes); sc.viewpoints = clone(doc.bookmarks); sc.studio = clone(doc.settings);
   return sc;
 }
-const FLOW_KEYS0 = ["id", "name", "color", "steps", "trolleys", "headway"];
+/* layoutAdds: a move or turn of an added item (id >= ADD_BASE, part 0) is written into its layoutAdds entry, not as a layout edit.
+   doc.adds is the list as loaded; doc.replica ops are totals from the loaded data, so folding is recomputed on every save. */
+function foldAdds(sc) {
+  const BASE = SCN.ADD_BASE || 100000, adds = clone(doc.adds || []); sc.layoutAdds = adds;
+  sc.layoutEdits = (sc.layoutEdits || []).filter((e) => {
+    const m = /^([a-z]+):(\d+)$/.exec(e.target || ""); if (!m || +m[2] < BASE || e.delete || e.door) return true;
+    const n = +m[2] - BASE, a = adds[Math.floor(n / 1000)]; if (!a || n % 1000 !== 0 || a.kind === "storage") return true;
+    const dx = e.move ? e.move[0] : 0, dy = e.move ? e.move[1] : 0;
+    if (a.kind === "wall") { if (e.turn) return true; const t = (p) => [+(p[0] + dx).toFixed(3), +(p[1] + dy).toFixed(3)]; a.a = t(a.a); a.b = t(a.b); return false; }
+    const K = (SCN.ADD_KINDS || {})[a.kind] || {}, dims = (turn) => { let w = a.w != null ? a.w : K.w, d = a.d != null ? a.d : K.d; if (((turn % 360) + 360) % 180 === 90) [w, d] = [d, w]; return [w, d]; };
+    const [w0, d0] = dims(a.turn || 0), cx = a.x + w0 / 2 + dx, cy = a.y + d0 / 2 + dy;
+    if (e.turn) a.turn = ((a.turn || 0) + e.turn) % 360; const [w1, d1] = dims(a.turn || 0);
+    a.x = +(cx - w1 / 2).toFixed(3); a.y = +(cy - d1 / 2).toFixed(3); return false;
+  });
+}
+const FLOW_KEYS0 =["id", "name", "color", "steps", "trolleys", "headway"];
 const STEP_KEYS0 = ["node", "title", "what", "mode", "view", "dist", "path", "dwell", "lift", "elevator", "speed", "sceneId"];
 const cleanStep = (s) => { const o = {}; for (const k of STEP_KEYS0) if (s[k] !== undefined) o[k] = s[k]; return o; };
 const doc = fromScene(MF7.scene || SCN.fromInternal(PROJECT, D));

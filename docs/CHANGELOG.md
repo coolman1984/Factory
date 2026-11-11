@@ -3,6 +3,16 @@
 Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (older ones kept). Newest first.
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
+## V7.7.2 (in progress) - layout accuracy round - 2026-11-11
+- Added: `layoutAdds` scene section (machines, lines, conveyors, tables, racks, storage grids, walls as data; validator, 3D, plan,
+  Studio move / turn / add). Owner's scenes: missing machines, lines, storage fields, tables added from the slides.
+- Fixed: INJ 2 To LCM (2F) detour 457 m -> 94 m (door in the corridor end wall); INJ 2 doorway widened 0.45 m.
+- Added: calm guided camera (wider, higher, held angle and framing, look-ahead, 20 deg/s turn limit): 95th-percentile turn speed
+  about halved; the trolley is never hidden (camera test, all 10 paths).
+- Added: `mf congestion`, `mf shots --at/--look`, `tools/v7/aisle-scan.mjs`, `camera-calm.mjs`, `compare-shots.mjs`.
+- Fixed: `mf straighten` left slanted legs; `mf route` / `straighten` refused to write while another path was broken;
+  `mf shots --only stops` showed the intro (found by the Phase E proof agent).
+
 ## V7.7.1 - 2026-11-11
 - Added: preparing screen - the opening is dry-run behind a cover (3x), the camera's sight model and per-segment viewing angles are computed up front; it releases at t = 0 when the last 20 frames were fast (skip the rise after 6 s). Path changes compute the angles at once. Fresh starts: 1 of 20 with one slow frame (was 2 of 4). `MF.prepared`.
 - Fixed: drive C: filled by 207 leftover test browser profiles (4.7 GB); the test driver now removes stale ones.

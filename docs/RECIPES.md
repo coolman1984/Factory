@@ -10,7 +10,7 @@ and after, anything you could not do). Never edit engine code for these requests
 ## 1. A new path (with a manual scan in the middle)
 Edit: append to `paths` a new `id`, a `name` with the next number, a first step `"route": {"type": "stay"}` at the start stop, then
 one step per stop with `"route": {"type": "auto"}`. For the scan: `mf route` the leg, then add a scanner with `"stops": true`, `at`
-on that leg (between two corners) and `stand` 1.2 m beside it; if the validator says the stand overlaps something, put it on the other side.
+on that leg (between two corners) and `stand` 0.6 to 1.5 m beside it (any side); if the validator says the stand overlaps something, put it on the other side.
 Example: [examples/new-path-with-scan.scene.json](examples/new-path-with-scan.scene.json) (path `sample-2`, scanner `scanner-mid`).
 ```
 node tools/mf.mjs validate docs/examples/new-path-with-scan.scene.json
@@ -19,7 +19,11 @@ docs/examples/new-path-with-scan.scene.json: OK 0 error(s), 0 warning(s)
 
 ## 2. Move a stop and straighten
 Edit: change the stop's `x` / `y` (metres; "3 m east" = x + 3). Then the step ending there and the step leaving it must be re-joined:
-`mf route` both (or `mf fix-links`), then `mf straighten`.
+`mf route` both (or `mf fix-links`), then `mf straighten`. When several paths use the stop, run `mf fix-links` first (it
+re-joins every path at once; `route` also writes when only other paths are still broken and lists them as `STILL OPEN`).
+The router snaps to a 0.15 m grid, so its points can carry tiny jogs; `mf straighten` removes them and squares every leg.
+Check the printed points (or `mf diff`): an L-shaped step should have 3 points. The CLI does not straighten by itself; the
+Studio does when you drag a stop.
 ```
 node tools/mf.mjs route <scene> --path sample-1 --step s3
 node tools/mf.mjs route <scene> --path sample-1 --step s4
@@ -34,6 +38,13 @@ node tools/mf.mjs diff docs/examples/sample.scene.json docs/examples/move-stop.s
 Find the wall id in `private/v7/LAYOUT_REFERENCE.md` (`node tools/mf.mjs layout-ref`): the wall the owner's line crosses. Edit:
 `"layoutEdits": [{ "target": "wall:165", "door": [61.65, 65.25] }]` (`[from, to]` along the wall, about 3.6 m wide), then a `points`
 route through it (or `auto`; see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) if auto still detours). Example: [examples/door.scene.json](examples/door.scene.json).
+(New paths, all recipes: when the owner already drew the same trip in another path, copy those exact `points` instead of
+`auto`; an auto route can take a parallel aisle and miss a stopping scanner on the drawn lane. After `auto`, check with
+`mf numbers` that the step still includes the scans you expect.)
+Keep the door clear of columns (check the column rows of the reference) and add a `note` saying why. `layout-ref` may always be
+run (it only rewrites the generated reference). Check that the door matters: validate a copy without the edit; it must fail.
+If no path has the two places as consecutive steps, do not reorder the owner's process: add a new path for the crossing and
+say so in the report (the owner decides whether an existing path should change).
 ```
 node tools/mf.mjs numbers docs/examples/door.scene.json
 west: 83.7 m, 24.2 s per trip, 1188 trips per 8 h shift
@@ -66,8 +77,11 @@ Edit the path: `"trolleys": 3, "headway": 12`. Example: [examples/trolleys.scene
 node tools/mf.mjs numbers docs/examples/trolleys.scene.json
 sample-1: 85.9 m, 37.9 s per trip, 2277 trips per 8 h shift (3 trolleys)
 ```
-To see congestion: `mf shots` / the player's Numbers tab while playing (closest distance under 3 m = congestion). A shorter
-`headway` than the slowest step's time makes trolleys catch up.
+Congestion report (closest distance under 3 m = congestion; when in story seconds, where in metres, which steps):
+`node tools/mf.mjs congestion <scene> --path sample-1 --picture` (the picture is 1 s before the closest moment; for any other
+moment: `mf shots <scene> --path id --at <s> --look x,y`). A shorter `headway` than the slowest step's time makes trolleys catch
+up; two-way traffic in one aisle makes them pass head-on (they do not wait: OPEN_ISSUES 6). Positions from the player's
+`MF.lotPose(t)` are plan units (x 0.3 = metres).
 
 ## 7. A camera shot
 ```

@@ -158,6 +158,29 @@ export const playerPatches = [
   }
   function v7Devices(full) { disposeDEV(); DEV = makeDEV(); window.MF.devices = DEV; reflection.rehide(); SIGHT.rebuild(); if (full) prepareChaseEnvelope(); }
   window.MF = { prepared: PREP.promise, x: { rebuild: v7Rebuild, rebuildDevices: v7Devices, rebuildPlanArt, renderer, camera, cameraTarget, frameLot: () => frameLot, F, stepAt, lotPos: (t, o) => lotPos(t, o), worldFromLot, plateOf, hitFloor, floors, plates, scene, labels, getE: () => E, ELEVATORS, GAP, CX, CY, INTRO, glideY, prepareChaseEnvelope, tip, toFree, setSpeed, renderFlow, resize, flat, fit, bare: () => bareOn }, devices: DEV, sight: SIGHT,`, "studio internals"],
+  /* V7.7.2 calm guided camera (layout round, step 5): wider and higher, one viewing angle held over runs of short legs (the
+     angle of the nearest long leg of the step), a framing distance held per step (its longest leg), a gentle look-ahead along
+     the leg, and a turn-rate limit with easing (20 deg/s normally; a turn the sight check forces is not limited, so the trolley never stays hidden). The sight
+     rescue (SIGHT.ensure) still runs after all of this, so the trolley is never left hidden. */
+  ["  const AZ_STEP = [-.55, -.3, -.8, -.45, -.7, -.25];",
+   "  const AZ_STEP = [-.55, -.3, -.8, -.45, -.7, -.25];\n" +
+   "  const CALM = { long: 40, turn: .35, forced: 99, ease: .9, pol: .82, near: 1.25, far: 1.45, ahead: 20, aheadShare: .35 }, calmD = new Map(), calmS = new Map();\n" +
+   "  const segLen = (P, k) => P[k + 1] ? Math.hypot(P[k + 1][0] - P[k][0], P[k + 1][1] - P[k][1]) : 0;\n" +
+   "  function calmSeg(cur, seg) { const key = S.flow + ':' + cur.i + ':' + seg; if (calmS.has(key)) return calmS.get(key); const P = cur.sched.pts; let k = seg;\n" +
+   "    if (segLen(P, seg) < CALM.long) { let best = -1; for (let q = seg - 1; q >= 0; q--) if (segLen(P, q) >= CALM.long) { best = q; break; } if (best < 0) for (let q = seg + 1; q < P.length - 1; q++) if (segLen(P, q) >= CALM.long) { best = q; break; } if (best >= 0) k = best; }\n" +
+   "    calmS.set(key, k); return k; }\n" +
+   "  function calmDist(cur, d) { const key = S.flow + ':' + cur.i; let L = calmD.get(key); if (L == null) { L = 0; const P = cur.sched.pts; for (let k = 0; k < P.length - 1; k++) L = Math.max(L, segLen(P, k)); calmD.set(key, L); } return clamp(L * 1.1, d, d * 1.8); }",
+   "calm camera helpers"],
+  ["let d = S.cam === \"follow\" ? 300 : cur.s.dist * (S.stack > .5 ? 1.05 : 1.2), share = 1;", "let d = S.cam === \"follow\" ? 300 : cur.s.dist * (S.stack > .5 ? CALM.near : CALM.far), share = 1;", "calm camera: wider"],
+  ["          d = clamp(length * 1.35, d * .85, d * 1.8);", "          d = calmDist(cur, d); void length;\n          { const ahead = Math.min(CALM.ahead, Math.hypot(segmentB.x - p.x, segmentB.z - p.z)); if (ahead > .5) { const ux = (segmentB.x - p.x), uz = (segmentB.z - p.z), n = Math.hypot(ux, uz) || 1; p.x += ux / n * ahead * CALM.aheadShare; p.z += uz / n * ahead * CALM.aheadShare; } }", "calm camera: held framing and look-ahead"],
+  ["const goalAz = vis ? vis.az : targetAz, goalPol = vis ? SIGHT.transitionPol(p, d, guidedAz, vis.pol, lp) : .94, rate = vis && vis.forced ? 3.2 : 1.3;", "const goalAz = vis ? vis.az : targetAz, goalPol = vis ? SIGHT.transitionPol(p, d, guidedAz, Math.min(vis.pol, CALM.pol), lp) : CALM.pol, rate = vis && vis.forced ? 3.2 : CALM.ease;", "calm camera: higher, eased"],
+  ["guidedAz += wrapPi(goalAz - guidedAz) * (1 - Math.exp(-frameDt * rate * camScale()));", "{ const dAz = wrapPi(goalAz - guidedAz) * (1 - Math.exp(-frameDt * rate * camScale())), cap = (vis && vis.forced ? CALM.forced : CALM.turn) * frameDt * camScale(); guidedAz += clamp(dAz, -cap, cap); }", "calm camera: turn-rate limit"],
+  ["const key=S.flow+':'+cur.i+':'+lp.seg;", "const sg=calmSeg(cur,lp.seg),key=S.flow+':'+cur.i+':'+sg;", "calm camera: angle held over short legs (key)"],
+  // one base viewing angle for the whole path (it used to change per step); leave it only when the view is clearly blocked
+  ["if(!cur.sched||lp.lift!=null)return AZ_STEP[cur.i%AZ_STEP.length];", "if(!cur.sched||lp.lift!=null)return AZ_STEP[0];", "calm camera: one base angle (rides)"],
+  ["base=AZ_STEP[cur.i%AZ_STEP.length];let best=[Infinity,base];", "base=AZ_STEP[0];let best=[Infinity,base];", "calm camera: one base angle"],
+  ["Math.abs(wrapPi(az-base))*.001", "Math.abs(wrapPi(az-base))*.06", "calm camera: prefer the base angle"],
+  ["const a=cur.sched.pts[lp.seg],b=cur.sched.pts[lp.seg+1]||a,p=[(a[0]+b[0])/2,(a[1]+b[1])/2];", "const a=cur.sched.pts[sg],b=cur.sched.pts[sg+1]||a,p=[(a[0]+b[0])/2,(a[1]+b[1])/2];", "calm camera: angle held over short legs (scored leg)"],
 ];
 
 // Replica builder (window.MFReplica.build): tag every instance with the plan object it came from ("racks:12"), so the Studio can
@@ -169,7 +192,22 @@ export const replicaPatches = [
   ["    for (const w of R.walls) {\n      const [ax, ay] = w.a,", "    for (const w of R.walls) {\n      TAG = tagOf(\"walls\", w, R.walls.indexOf(w));\n      const [ax, ay] = w.a,", "wall tags"],
   ["    for (const q of R.columns) { const H", "    for (const q of R.columns) { TAG = tagOf(\"columns\", q, R.columns.indexOf(q)); const H", "column tags"],
   ["    for (const r of R.racks) rack(r, upper(r.plate) ? 3 : 4, rand);", "    for (const r of R.racks) { TAG = tagOf(\"racks\", r, R.racks.indexOf(r)); rack(r, upper(r.plate) ? 3 : 4, rand); }", "rack tags"],
-  ["    for (const m of R.machines) ({ injection, press, utility, dock, cell: press })[m.type](m);", "    for (const m of R.machines) { TAG = tagOf(\"machines\", m, R.machines.indexOf(m)); ({ injection, press, utility, dock, cell: press })[m.type](m); }\n    TAG = null;", "machine tags"],
+  ["    for (const m of R.machines) ({ injection, press, utility, dock, cell: press })[m.type](m);", "    for (const m of R.machines) { TAG = tagOf(\"machines\", m, R.machines.indexOf(m)); ({ injection, press, utility, dock, cell: press, block: mfBlock })[m.type](m); }\n    TAG = null;", "machine tags"],
+  // layoutAdds (V7.8): simple blocks (machine / line / conveyor / table: one clear style per kind) and storage floor markings
+  ["    for (const d of R.decks) box(d.plate, d.x + d.w / 2, .5, d.y + d.h / 2, d.w, 1, d.h, 0x56627a, \"paint\");",
+   "    for (const d of R.decks) box(d.plate, d.x + d.w / 2, .5, d.y + d.h / 2, d.w, 1, d.h, 0x56627a, \"paint\");\n" +
+   "    function mfBlock(r) { const p = r.plate, cx = r.x + r.w / 2, cz = r.y + r.h / 2, H = r.hm || 6, col = parseInt(String(r.col || \"#5b6b82\").slice(1), 16), long = r.w >= r.h;\n" +
+   "      box(p, cx, H / 2, cz, r.w, H, r.h, col, \"paint\");\n" +
+   "      if (r.stripe) for (const s of [-1, 1]) box(p, long ? cx : cx + s * (r.w / 2 - .25), H + .08, long ? cz + s * (r.h / 2 - .25) : cz, long ? r.w : .5, .16, long ? .5 : r.h, parseInt(r.stripe.slice(1), 16), \"paint\");\n" +
+   "      else box(p, cx, H + .05, cz, long ? r.w * .96 : r.w * .3, .1, long ? r.h * .3 : r.h * .96, 0xdfe5ee, \"paint\"); }\n" +
+   "    for (const q of R.marks || []) { const p = q.plate, t = .6, y = .12, cw = q.w / q.cols, ch = q.h / q.rows;\n" +
+   "      for (let i = 0; i <= q.rows; i++) box(p, q.x + q.w / 2, y, q.y + ch * i, q.w + t, .12, t, c.yellow, \"paint\");\n" +
+   "      for (let j = 0; j <= q.cols; j++) box(p, q.x + cw * j, y, q.y + q.h / 2, t, .12, q.h + t, c.yellow, \"paint\"); }",
+   "layout adds 3D"],
+  ["for (const m of on(R.machines)) { g.fillStyle = m.type === \"dock\" ? (dark ? \"#23406e\" : \"#aab4c6\") : (dark ? \"#1b4f8f\" : \"#6f9be0\");",
+   "for (const q of on(R.marks || [])) { g.strokeStyle = dark ? \"#d8b500\" : \"#c99a00\"; g.lineWidth = 2; for (let i = 0; i <= q.rows; i++) { g.beginPath(); g.moveTo(X(q.x), Y(q.y + q.h * i / q.rows)); g.lineTo(X(q.x + q.w), Y(q.y + q.h * i / q.rows)); g.stroke(); } for (let j = 0; j <= q.cols; j++) { g.beginPath(); g.moveTo(X(q.x + q.w * j / q.cols), Y(q.y)); g.lineTo(X(q.x + q.w * j / q.cols), Y(q.y + q.h)); g.stroke(); } }\n" +
+   "    for (const m of on(R.machines)) { g.fillStyle = m.col || (m.type === \"dock\" ? (dark ? \"#23406e\" : \"#aab4c6\") : (dark ? \"#1b4f8f\" : \"#6f9be0\"));",
+   "layout adds plan"],
   ["    for (const q of R.pallets || []) place(\"pallet\", q, { max: 1.1, h: 1.05 });", "    for (const q of R.pallets || []) { TAG = tagOf(\"pallets\", q, R.pallets.indexOf(q)); place(\"pallet\", q, { max: 1.1, h: 1.05 }); }\n    TAG = null;", "pallet tags"],
   ["      plates[b.plate].add(im); meshes.push({ im, base, xs });", "      plates[b.plate].add(im); meshes.push({ im, base, xs, tags: b.list.map((o) => o.tag) });", "box mesh tags"],
   ["plates[plate].add(im); meshes.push({ im, base, xs });", "plates[plate].add(im); meshes.push({ im, base, xs, tags: list.map((o) => o.tag) });", "model mesh tags"],

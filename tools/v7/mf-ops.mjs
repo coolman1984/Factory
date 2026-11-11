@@ -48,19 +48,31 @@ export const storyStart = (scene, P, pathId, stepId, moment = "arrive") => {   /
 const elbow = (a, b, hFirst) => (Math.abs(a[0] - b[0]) < 1e-9 || Math.abs(a[1] - b[1]) < 1e-9 ? [a, b] : hFirst ? [a, [b[0], a[1]], b] : [a, [a[0], b[1]], b]);
 function orthogonalize(P) { const out = [P[0].slice()]; for (let k = 1; k < P.length; k++) { const a = out[out.length - 1], b = P[k]; if (Math.abs(a[0] - b[0]) > 1e-9 && Math.abs(a[1] - b[1]) > 1e-9) { const prevH = out.length > 1 && Math.abs(out[out.length - 2][1] - a[1]) < 1e-9; out.push(prevH ? [a[0], b[1]] : [b[0], a[1]]); } out.push(b.slice()); } return SC.simplify(out); }
 /** straightenPoints(points metres, jog metres = 3): remove short jogs between parallel legs, square slanted legs; ends stay */
+// drop repeated points and every middle point on a straight horizontal / vertical run, also when the run doubles back
+// (a jog going 0.15 m south and then 29 m north): after this the legs alternate horizontal / vertical
+const EPS = 1e-6, same = (a, b) => Math.abs(a - b) < EPS;
+function tidy(P) {
+  let Q = P.map((p) => [r3(p[0]), r3(p[1])]), changed = true;
+  while (changed) { changed = false; for (let k = 1; k < Q.length - 1; k++) { const a = Q[k - 1], b = Q[k], c = Q[k + 1]; if ((same(a[0], b[0]) && same(a[1], b[1])) || (same(a[0], b[0]) && same(b[0], c[0])) || (same(a[1], b[1]) && same(b[1], c[1]))) { Q.splice(k, 1); changed = true; break; } } }
+  if (Q.length === 2 && same(Q[0][0], Q[1][0]) && same(Q[0][1], Q[1][1])) Q.pop();
+  return Q;
+}
 export function straightenPoints(points, jog = 3) {
-  let Q = orthogonalize(SC.simplify(points.map((p) => p.slice())));
-  for (let guard = 0; guard < 40; guard++) {
+  let Q = tidy(orthogonalize(tidy(points)));
+  for (let guard = 0; guard < 60; guard++) {
     let changed = false;
-    for (let k = 1; k < Q.length - 2; k++) {
-      const a = Q[k], b = Q[k + 1]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) >= jog) continue;
-      if (k + 2 < Q.length - 1) { const dx = a[0] - b[0], dy = a[1] - b[1]; Q[k + 1] = [b[0] + dx, b[1] + dy]; Q[k + 2] = [Q[k + 2][0] + dx, Q[k + 2][1] + dy]; }
-      else if (k - 1 > 0) { const dx = b[0] - a[0], dy = b[1] - a[1]; Q[k - 1] = [Q[k - 1][0] + dx, Q[k - 1][1] + dy]; Q[k] = [a[0] + dx, a[1] + dy]; }
+    for (let k = 0; k < Q.length - 1; k++) {
+      const a = Q[k], b = Q[k + 1], len = Math.hypot(b[0] - a[0], b[1] - a[1]); if (len >= jog || len < EPS) continue;
+      // remove the short leg a-b by sliding the next leg (b..c) back by b-a; c-d is parallel to a-b, so it stays square
+      if (k + 2 <= Q.length - 2) { const dx = a[0] - b[0], dy = a[1] - b[1]; Q[k + 1] = a.slice(); Q[k + 2] = [Q[k + 2][0] + dx, Q[k + 2][1] + dy]; }
+      // at the end: slide the previous leg (z..a) forward by b-a instead (the end point never moves)
+      else if (k - 1 >= 1) { const dx = b[0] - a[0], dy = b[1] - a[1]; Q[k] = b.slice(); Q[k - 1] = [Q[k - 1][0] + dx, Q[k - 1][1] + dy]; }
       else continue;
-      Q = SC.simplify(Q); changed = true; break;
+      Q = tidy(Q); changed = true; break;
     }
     if (!changed) break;
   }
+  Q = tidy(orthogonalize(Q));   // guarantee: no slanted leg leaves this function
   return Q.map((p) => [r3(p[0]), r3(p[1])]);
 }
 const findPath = (scene, id) => { const p = scene.paths.find((q) => q.id === id); if (!p) throw new Error(`unknown path ${id} (paths: ${scene.paths.map((q) => q.id).join(", ")})`); return p; };
@@ -70,7 +82,8 @@ export function straighten(scene, P, pathId, stepId) {
   const p = findPath(scene, pathId), changed = [], kept = [];
   for (const s of stepId ? [findStep(p, stepId)] : p.steps) {
     if (!s.route || s.route.type !== "points" || s.route.points.length < 3) continue;
-    const old = s.route.points, nu = straightenPoints(old); if (JSON.stringify(nu) === JSON.stringify(old)) continue;
+    const old = s.route.points, nu = straightenPoints(old);
+    if (nu.length === old.length && nu.every((p, k) => Math.abs(p[0] - old[k][0]) < 0.002 && Math.abs(p[1] - old[k][1]) < 0.002)) continue;   // same within 2 mm: leave the exact points alone
     const before = clashCount(scene, P, p.id, s.id); s.route.points = nu;
     if (clashCount(scene, P, p.id, s.id) > before) { s.route.points = old; kept.push(s.id); } else changed.push(s.id);
   }

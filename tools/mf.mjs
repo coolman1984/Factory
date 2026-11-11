@@ -18,6 +18,19 @@ const die = (m) => { console.log("ERROR " + m); process.exit(1); };
 const readScene = (f) => { if (!f || !existsSync(f)) die(`scene file not found: ${f}`); try { const s = JSON.parse(readFileSync(f, "utf8")); if (s.format !== "mf-scene") die(`${f}: not a scene file (format must be "mf-scene")`); return s; } catch (e) { die(`${f}: ${e.message}`); } };
 const writeScene = (f, s) => { writeFileSync(f, JSON.stringify(s, null, 1) + "\n"); console.log(`wrote ${f}`); };
 const projects = () => { const p = opt.player || PLAYER; if (!existsSync(p)) die(`player not found: ${p} (build it: node tools/build-v7.mjs ${STAGE})`); return readProjects(p); };
+// path tools: write when the edited path / step itself is clean; errors elsewhere (another path still broken after a stop moved)
+// are listed but do not block, so several paths can be repaired one at a time (or all at once with fix-links)
+const writeIfOwnClean = (f, s, P, pathId, stepId) => {
+  const r = SC.validate(s, layoutFor(P, s.project)), mine = r.errors.filter((e) => e.where.startsWith(`paths[${pathId}]` + (stepId ? `.steps[${stepId}]` : "")) || !e.where.startsWith("paths["));
+  if (mine.length) { for (const e of mine) console.log(`ERROR ${e.where}: ${e.msg}`); die(`not written: ${mine.length} error(s) in ${pathId}${stepId ? "/" + stepId : ""}`); }
+  writeScene(f, s); const rest = r.errors.length; if (rest) { for (const e of r.errors) console.log(`STILL OPEN ${e.where}: ${e.msg}`); console.log(`written; ${rest} error(s) remain in other paths (fix them next, or run fix-links)`); }
+};
+// one picture at story second t: free camera above `look` ([x, y] metres; null = the lead trolley), distance metres, tilted 50 deg
+async function shotAt(pg, pi, t, look, distance, file) {
+  await pg.ev(`(() => { MFX.setPad(false); MF.setFlow(${pi}); MF.seek(${Math.max(0, t)}); MF.pause(); let x, y; ${look ? `x = ${look[0]} / .3; y = ${look[1]} / .3;` : `const p = MF.lotPose(MF.S.t); x = p.x; y = p.y;`}
+    const w = MF.W(x, y, MF.S.stack, 0); MF.setCam("free"); Object.assign(MF.S.c, { x: w.x, y: w.y, z: w.z, dist: ${distance} / .3, az: 0, pol: .7 }); MFX.cam.inited = false; return 1; })()`);
+  await pg.wait(1800); const r = await pg.call("Page.captureScreenshot", { format: "png" }); writeFileSync(file, Buffer.from(r.data, "base64"));
+}
 const validateOrDie = (s, P, label = "scene") => { const r = SC.validate(s, layoutFor(P, s.project)); if (r.errors.length) { for (const e of r.errors) console.log(`ERROR ${e.where}: ${e.msg}`); die(`${label} has ${r.errors.length} error(s)`); } return r; };
 // a player file with this scene baked in (other tabs from private/v7/scenes), for screenshots, play checks and takes
 function bakeTemp(sceneFile, s) {
@@ -34,8 +47,8 @@ const run = {
   bake() { const args = ["tools/build-v7.mjs", STAGE]; if (opt.out) args.push("--out", opt.out); if (pos.length) args.push("--bake", ...pos); try { console.log(execFileSync(process.execPath, args, { encoding: "utf8" }).trim().split("\n").pop()); } catch (e) { die((e.stdout || "") + (e.stderr || e.message)); } },
   numbers() { const s = readScene(pos[0]), P = projects(), shift = +(opt.shift || 8); for (const n of numbers(s, P)) { console.log(`${n.id}: ${n.metres.toFixed(1)} m, ${n.seconds.toFixed(1)} s per trip, ${tripsPerShift(n, shift)} trips per ${shift} h shift${n.trolleys > 1 ? ` (${n.trolleys} trolleys)` : ""}`); for (const st of n.steps) console.log(`  ${st.id} ${st.title}: ${st.metres.toFixed(1)} m, ${st.seconds.toFixed(1)} s`); } },
   diff() { if (pos.length < 2) die("diff <a.json> <b.json>"); const a = readScene(pos[0]), b = readScene(pos[1]), lines = diff(a, b, a.project === b.project ? projects() : null); console.log(lines.length ? lines.join("\n") : "no differences"); },
-  straighten() { const f = pos[0], s = readScene(f), P = projects(); if (!opt.path) die("--path id"); const r = straighten(s, P, opt.path, opt.step); console.log(`straightened: ${r.changed.join(", ") || "none"}${r.kept.length ? `; kept (straight would collide, use route): ${r.kept.join(", ")}` : ""}`); validateOrDie(s, P); writeScene(f, s); },
-  route() { const f = pos[0], s = readScene(f), P = projects(); if (!opt.path || !opt.step) die("--path id --step id"); try { const p = route(s, P, opt.path, opt.step); console.log(`routed ${opt.path}/${opt.step}: ${p.length} points`); } catch (e) { die(e.message); } validateOrDie(s, P); writeScene(f, s); },
+  straighten() { const f = pos[0], s = readScene(f), P = projects(); if (!opt.path) die("--path id"); const r = straighten(s, P, opt.path, opt.step); writeIfOwnClean(f, s, P, opt.path, opt.step); console.log(`straightened: ${r.changed.join(", ") || "none"}${r.kept.length ? `; kept (straight would collide, use route): ${r.kept.join(", ")}` : ""}`); },
+  route() { const f = pos[0], s = readScene(f), P = projects(); if (!opt.path || !opt.step) die("--path id --step id"); let p; try { p = route(s, P, opt.path, opt.step); } catch (e) { die(e.message); } writeIfOwnClean(f, s, P, opt.path, opt.step); console.log(`routed ${opt.path}/${opt.step}: ${p.length} points`); },
   "fix-links"() { const f = pos[0], s = readScene(f), P = projects(), fixed = fixLinks(s, P); console.log(`fixed: ${fixed.join(", ") || "nothing to fix"}`); validateOrDie(s, P); writeScene(f, s); },
   key() {
     const f = pos[0], s = readScene(f), P = projects(); if (!opt.path) die("--path id");
@@ -56,11 +69,32 @@ const run = {
     const pg = await page(bakeTemp(f, s), s.project), only = opt.only, names = [];
     const snap = async (name) => { await pg.wait(1600); const r = await pg.call("Page.captureScreenshot", { format: "png" }); writeFileSync(`${out}/${name}.png`, Buffer.from(r.data, "base64")); names.push(name); };
     try {
-      await pg.ev(`(() => { MFX.setPad(false); return 1; })()`);
-      if (!only || only === "overview") { await pg.ev(`(() => { MF.setFlow(0); MF.seek(MF.D.flows[0].items[1].t0); MF.pause(); MFX.viewPreset("reset"); return 1; })()`); await snap("overview"); }
+      if (opt.at != null) { const pi = Math.max(0, s.paths.findIndex((p) => p.id === opt.path)); const look = opt.look ? String(opt.look).split(",").map(Number) : null; const file = `${out}/at-${s.paths[pi].id}-${(+opt.at).toFixed(1)}s.png`; await shotAt(pg, pi, +opt.at, look, +(opt.distance || 40), file); console.log(`1 screenshot: ${file}`); return; }
+      await pg.ev(`(() => { MFX.setPad(false); MF.setFlow(0); MF.seek(MF.D.flows[0].items[1].t0); MF.pause(); return 1; })()`);   // past the intro for every kind of shot
+      if (!only || only === "overview") { await pg.ev(`(() => { MFX.viewPreset("reset"); return 1; })()`); await snap("overview"); }
       if (!only || only === "stops") for (const st of s.stops) { await pg.ev(`(() => { const w = MF.W(${st.x / .3}, ${st.y / .3}, MF.S.stack, 0); MFX.flyTo({ x: w.x, y: w.y, z: w.z, dist: 120, pol: .75 }, .1); return 1; })()`); await snap("stop-" + st.id); }
       if (!only || only === "steps") for (const [pi, p] of s.paths.entries()) for (const [si, st] of p.steps.entries()) { await pg.ev(`(() => { MF.setFlow(${pi}); MF.setCam("guided"); MF.seek(MF.D.flows[${pi}].items[${si + 1}].tm); MF.pause(); return 1; })()`); await snap(`path-${p.id}-${st.id}`); }
       console.log(`${names.length} screenshots in ${out}: ${names.join(", ")}`); if (pg.errors.length) die("page errors: " + pg.errors.slice(0, 3).join(" | "));
+    } finally { await pg.close(); }
+  },
+  // several trolleys of one path: the player's fleet rules (copy k runs at story t - k * headway, shown while intro < its t <= total)
+  async congestion() {
+    const f = pos[0], s = readScene(f), P = projects(); validateOrDie(s, P); if (!opt.path) die("--path id"); const pi = s.paths.findIndex((p) => p.id === opt.path); if (pi < 0) die("unknown path " + opt.path);
+    const pg = await page(bakeTemp(f, s), s.project);
+    try {
+      const r = await pg.ev(`(() => { MF.setFlow(${pi}); const f = MF.D.flows[${pi}], n = Math.min(12, f.trolleys || 1), hw = f.headway || 30, IN = MF.x.INTRO, total = f.total;
+        const pose = (t) => { const p = MF.lotPose(Math.min(t, total)); return [p.x * .3, p.y * .3]; }, step = (t) => { const it = MF.stepAt(Math.min(t, total)); return it && it.s ? it.s.title : "?"; };
+        let best = null, under = 0; const pairs = {};
+        for (let T = 0; T <= total + 1e-9; T += .05) { const ps = []; for (let k = 0; k < n; k++) { const t = T - k * hw; ps.push(k === 0 || (t > IN && t <= total) ? { k, t, p: pose(t) } : null); }
+          let m = Infinity; for (let a = 0; a < n; a++) for (let b = a + 1; b < n; b++) { if (!ps[a] || !ps[b]) continue; const d = Math.hypot(ps[a].p[0] - ps[b].p[0], ps[a].p[1] - ps[b].p[1]); m = Math.min(m, d); const key = (a + 1) + " and " + (b + 1), o = { d, T, a: a + 1, b: b + 1, at: [(ps[a].p[0] + ps[b].p[0]) / 2, (ps[a].p[1] + ps[b].p[1]) / 2], sa: step(ps[a].t), sb: step(ps[b].t) }; if (!pairs[key] || d < pairs[key].d) pairs[key] = o; if (!best || d < best.d) best = o; }
+          if (m < 3) under += .05; }
+        return { n, hw, total, best, pairs: Object.values(pairs), under }; })()`);
+      if (r.n < 2) { console.log(`${opt.path}: one trolley (set "trolleys" and "headway" on the path)`); return; }
+      const fm = (o) => `${o.d.toFixed(2)} m at story ${o.T.toFixed(1)} s, at (${o.at[0].toFixed(1)}, ${o.at[1].toFixed(1)}) m; trolley ${o.a} in "${o.sa}", trolley ${o.b} in "${o.sb}"`;
+      console.log(`${opt.path}: ${r.n} trolleys, ${r.hw} s apart; closest ${fm(r.best)}${r.best.d < 3 ? " - CONGESTION (under 3 m)" : ""}`);
+      for (const p of r.pairs) console.log(`  trolleys ${p.a} and ${p.b}: ${fm(p)}`);
+      console.log(`  time with two trolleys under 3 m apart: ${r.under.toFixed(1)} s (they do not wait for each other: OPEN_ISSUES 6)`);
+      if (opt.picture) { const out = typeof opt.picture === "string" ? opt.picture : `dist/test/congestion-${s.project}-${opt.path}.png`; await shotAt(pg, pi, r.best.T - 1, r.best.at, 40, out); console.log(`  picture 1 s before the closest moment: ${out}`); }
     } finally { await pg.close(); }
   },
   async play() {

@@ -37,10 +37,18 @@ build the player with these scenes baked in (default: private/v7/scenes/*, out: 
 ### `mf shots`
 
 ```
-node tools/mf.mjs shots <scene.json> [--out dir] [--only overview|stops|steps]
+node tools/mf.mjs shots <scene.json> [--out dir] [--only overview|stops|steps] [--path id --at s [--look x,y] [--distance m]]
 ```
 
-render named screenshots for self-review: overview, every stop, every step of every path.
+render named screenshots for self-review: overview, every stop, every step of every path; --at: one picture at that story second (looking at x,y metres, else the trolley).
+
+### `mf congestion`
+
+```
+node tools/mf.mjs congestion <scene.json> --path id [--picture]
+```
+
+several trolleys (trolleys / headway): closest distance between them, when (story s), where (metres) and in which steps; --picture saves a shot of that moment.
 
 ### `mf play`
 
@@ -146,3 +154,23 @@ node tools/mf.mjs docs-check
 
 fail if docs are out of date: schema fields, commands, keys, recipe examples, links, changelog.
 <!-- /GENERATED:cli -->
+
+## Things to know (from the agent proof runs)
+
+- **`mf bake` without `--out` rewrites the owner's current player** (`dist/Material_Flow_Player_v<stage>.html`). Only do that
+  for the owner's real scenes in `private/v7/scenes/`. For a copy, a test or a proof, always pass `--out dist/test/<name>.html`.
+- **`shots`, `play` and `take` write a temporary player** `dist/test/mf-<tab>.html` (overwritten each time; safe to ignore). It
+  contains your scene for that tab and `private/v7/scenes/*` for the other tabs.
+- **Play time vs `numbers` time:** `play` reports story time, which starts with an intro of about 7 s (the camera rises and
+  the first card shows) before the trolley moves. `numbers` is the trolley's own time (no intro). Director keys and captions
+  use story time; `mf key --step` / `mf caption --step` convert for you.
+- **Manual scans in `numbers`:** a scanner with `stops: true` on a leg adds its 1.8 s stop inside that step's time; there is
+  no separate line for it.
+- **Seeing a moment between stops:** `shots` renders stops and step ends only. For a moment mid-leg (for example a scan),
+  record a short clip: `mf take <scene> --path id --from <s> --to <s+4>` (story seconds; `play` prints the total).
+- **`private/v7/LAYOUT_REFERENCE.md` describes the built-in scenes** at the time it was written; your scene's stops may have
+  moved. The scene file is the truth for stops; the reference is for walls, racks, elevators and floor extents.
+- **Names:** ids are lower-case with dashes, `<tab>-<what>` for paths (`inj2-kit-elev5`) and `<type>-<where>` for devices
+  (`scanner-kitting-elev5`); path names start with the next number and ` · ` (`3 · Kitting to Elev 5`).
+- **Proof or scratch copies** (anything outside `private/v7/scenes/` and `docs/examples/`) need no changelog or lessons entry;
+  the rule "update docs, changelog and lessons in the same commit" applies to changes the lead commits.

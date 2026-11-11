@@ -374,9 +374,13 @@ const ADD = {
   stop: { label: "Stop point" },
 };
 for (const [k, v] of Object.entries(PROP_TYPES)) ADD["prop-" + k] = { label: v.name, prop: k };
+// layout items (scene layoutAdds): part of the factory layout, solid for routes; the 3D is rebuilt by reloading the page
+const LAY_SIZES = { injection: { w: 2.74, d: 13.6, name: "Injection machine" }, machine: { w: 3, d: 3, name: "Machine block" }, line: { w: 12, d: 1.5, name: "Production line" }, conveyor: { w: 10, d: .8, name: "Conveyor" }, table: { w: 1.6, d: .8, name: "Table" }, rack: { w: 10, d: 1.1, name: "Rack row" }, storage: { w: 6, d: 4, rows: 2, cols: 3, name: "Floor storage" } };
+for (const [k, v] of Object.entries(LAY_SIZES)) ADD["lay-" + k] = { label: v.name + " (layout)", lay: k };
 function startPlace(kind) { if (typeof lastPlace !== "undefined" && kind !== "stop") lastPlace = kind; ed.drawing = null; ed.placing = { kind, label: ADD[kind].label, at: null, rect: [0, 0, 0, 0], ok: true }; X.tip("Click the floor to place: " + ADD[kind].label + " (Shift keeps the tool, Esc stops)"); emit("tool"); }
 function placeRect(kind, x, y) {
   const a = ADD[kind]; if (a.prop) return propRect(Object.assign({ x, y, rot: 0 }, PROP_TYPES[a.prop]));
+  if (a.lay) { const s = LAY_SIZES[a.lay], hw = s.w * M / 2, hd = s.d * M / 2; return [x - hw, y - hd, x + hw, y + hd]; }
   if (a.dev) { const d = Object.assign({ x, y, k: DIMS.K }, a.dev); if (d.type === "rfid-manual") { d.lane = [x, y]; d.x = x - 2 * M; } const fp = footprints(d); return fp.reduce((p, q) => [Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.max(p[2], q[2]), Math.max(p[3], q[3])], [Infinity, Infinity, -Infinity, -Infinity]); }
   return [x - 3, y - 3, x + 3, y + 3];
 }
@@ -384,6 +388,12 @@ function rectClash(r, plate) { for (const o of solidsOf(plate).near((r[0] + r[2]
 function placeAt(h, keep) {
   const kind = ed.placing.kind, a = ADD[kind], x = snapV(h.x), y = snapV(h.y), plate = h.plate;
   if (a.prop) { const p = Object.assign({ id: uid("prop"), type: a.prop, x, y, plate, rot: 0 }, clone(PROP_TYPES[a.prop])); p.name = PROP_TYPES[a.prop].name; commit("add " + p.name, () => doc.props.push(p), "props"); select({ kind: "prop", id: p.id }); }
+  else if (a.lay) {
+    const s = LAY_SIZES[a.lay], it = { id: uid(a.lay), kind: a.lay, floor: plate, x: +((x * PT_M) - s.w / 2).toFixed(2), y: +((y * PT_M) - s.d / 2).toFixed(2), w: s.w, d: s.d };
+    if (s.rows) { it.rows = s.rows; it.cols = s.cols; }
+    doc.adds = doc.adds || []; doc.adds.push(it); undoStack.push({ label: "add " + s.name, json: JSON.stringify(Object.assign(JSON.parse(snapshot()), { adds: doc.adds.slice(0, -1) })), rebuild: "all" });
+    saveNow(); ed.placing = null; X.tip(s.name + " added to the layout; rebuilding the 3D…"); setTimeout(() => location.reload(), 700); return;
+  }
   else if (a.dev) {
     if (a.dev.type === "rfid-auto" && doc.devices.filter((d) => d.type === "rfid-auto").length >= SCN.MAX_GATES) { X.tip(`At most ${SCN.MAX_GATES} auto RFID gates per project`); ed.placing = null; return; }
     const d = Object.assign({ x, y, plate, k: DIMS.K, sym: newId() }, clone(a.dev));
