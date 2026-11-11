@@ -191,7 +191,7 @@ function pick3D(e) {
 }
 
 /* ---------- screen-space handles: stops, path vertices and segments, gizmo ---------- */
-function nodeHandles() { const out = []; for (const n of nodeList()) { const p = scr(n.x, n.y, 3, [0, 0, 0]); if (onScreen(p)) out.push({ n, p }); } return out; }
+function nodeHandles() { const out = []; if (!ed.open || !(ed.tab === "objects" || ed.tab === "paths" || ed.tab === "steps")) return out; for (const n of nodeList()) { const p = scr(n.x, n.y, 3, [0, 0, 0]); if (onScreen(p)) out.push({ n, p }); } return out; }
 const flowPaths = () => { const f = curFlow(); return f ? f.steps.map((s, i) => ({ s, i, P: Array.isArray(s.path) ? s.path : null })) : []; };
 function pathHandles() {   // only the selected step's path is editable
   const f = curFlow(), i = ed.stepSel, s = f && f.steps[i]; if (!s || !Array.isArray(s.path)) return null;
@@ -200,7 +200,7 @@ function pathHandles() {   // only the selected step's path is editable
 const near = (p, x, y, r) => onScreen(p) && Math.hypot(p[0] - x, p[1] - y) <= r;
 function segDist(px, py, a, b) { const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy || 1, t = clamp(((px - a[0]) * dx + (py - a[1]) * dy) / L2, 0, 1); return [Math.hypot(px - a[0] - t * dx, py - a[1] - t * dy), t]; }
 function gizmo() {   // screen centre + rotate knob of the selection
-  const info = selInfo(); if (!info || ed.sel.kind === "node") return null;
+  const info = selInfo(); if (!info || ed.sel.kind === "node" || ed.tab !== "objects") return null;
   const c = scr(info.x, info.y, info.h * .5, [0, 0, 0]); if (!onScreen(c)) return null;
   const o = selObj(), k = ed.sel.kind; let ang = 0;
   if (k === "prop") ang = (o.rot || 0) * Math.PI / 180;

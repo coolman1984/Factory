@@ -137,3 +137,20 @@ table.num7{width:100%;border-collapse:collapse;font-size:11.5px;margin:6px 0}tab
 #keys7 .cols{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:4px 22px}#keys7 h4{margin:8px 0 4px;font-size:12.5px;color:#ffd65a}#keys7 table{width:100%;border-collapse:collapse;font-size:11.5px}#keys7 td{padding:2px 0;vertical-align:top}#keys7 td:first-child{width:46%;padding-right:8px}
 #keys7 kbd{font:600 11px var(--font);background:rgba(255,255,255,.16);border:1px solid var(--edge);border-radius:6px;padding:1px 6px;white-space:nowrap}
 
+
+/* round 3: lighter step markers, context menu, hint line, search, small pad */
+#sm7 .smk{top:5px;width:6px;height:10px;margin-left:-3px;border-radius:3px;background:rgba(255,255,255,.55);border:0;box-shadow:0 0 0 1px rgba(11,23,48,.45)}
+#sm7 .smk:hover{background:#ffd65a;height:14px;top:3px}
+#scrub .hd{z-index:2}
+#ctx7{position:fixed;display:none;flex-direction:column;min-width:200px;padding:6px;border-radius:14px;z-index:40;background:linear-gradient(180deg,rgba(40,92,160,.97),rgba(12,36,78,.98))}
+#ctx7 .t{font-size:12px;padding:4px 10px 6px;border-bottom:1px solid var(--edge);margin-bottom:4px}
+#ctx7 button{text-align:left;border-radius:9px;padding:6px 10px;font-size:12.5px}#ctx7 button.danger{color:#ffc2c2}
+#hint7{flex:none;padding:6px 12px 9px;font-size:11px;color:var(--ink2);border-top:1px solid var(--edge);background:rgba(6,20,46,.35)}
+.find7{margin:6px 0 2px}
+#pad7.mini{width:auto}#pad7.mini .sticks,#pad7.mini .sl,#pad7.mini .row,#pad7.mini .read{display:none}
+#pad7 .seg button{font-size:11px;padding:3px 5px}
+#pad7 .shots #padPhoto{flex:0 0 auto}
+@media (max-width:1500px){#pad7{width:318px}#pad7 .sticks{grid-template-columns:84px 84px 1fr 1fr}#pad7 .stick{width:84px;height:84px}#pad7 .rocker{height:84px}body.pad7 #bar{left:calc((100vw - 400px) / 2);width:min(760px,calc(100vw - 440px))}body.ed7.pad7 #bar{left:calc(380px + (100vw - 780px) / 2);width:min(760px,calc(100vw - 800px))}}
+
+#pad7 .hd{flex-wrap:wrap}#pad7 .hd b{flex:1}#pad7 .seg{order:3;flex:1 1 100%}#pad7 .seg button{flex:1 1 0}#pad7 .shots button{flex:0 0 26px}#pad7 .shots .key,#pad7 .shots #padPhoto{flex:1 1 auto}
+

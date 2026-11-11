@@ -30,7 +30,7 @@ id with its rectangle) before editing. Status and history: [docs/STATUS.md](../.
 | preload (scene -> player data, floor-light repair) | `tools/v7/preload-scene.js` |
 | scene file manager (open/save/drop/undo) | `tools/v7/scene-ui.js` |
 | Studio (camera pad, editor, director, numbers) | `tools/v7/studio-*.js`, `studio.css` |
-| tests | `tools/v7/smoke-76.mjs` (API smoke), `tools/v7/mouse-test.mjs` (real mouse/keys), `tools/v7/validator-test.mjs`, `tools/v7/identity-test.mjs`, `tools/v7/stage1-test.mjs` |
+| tests | `tools/v7/tour.mjs` (screenshots of every panel, 2 sizes: look at them for visual bugs), `tools/v7/ui-check.mjs` (right-click menu, search, photo, numbers), `tools/v7/smoke-76.mjs` (API smoke), `tools/v7/mouse-test.mjs` (real mouse/keys), `tools/v7/validator-test.mjs`, `tools/v7/identity-test.mjs`, `tools/v7/stage1-test.mjs` |
 | visual probe (find what draws an artefact) | `node tools/v7/shot-probe.mjs <html> <tab> <flow> <item> <x m> <y m> <dist m> <az°> <pol°> <outDir>` |
 | headless Chrome driver | `tools/v7/cdp.mjs` (`openPage(file, tab)` -> `ev`, `call`, `errors`, `close`) |
 

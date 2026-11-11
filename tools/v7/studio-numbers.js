@@ -14,7 +14,7 @@ function flowNumbers(flows) {   // built player flows (items) or scene-converted
 }
 const sceneFlows = (sc) => SCN.toInternal(clone(sc), { plates: D.plates, elevators: X.ELEVATORS || [], replica: RP }, { applyLayout: false }).data.flows;
 function renderNumbers() {
-  const shift = doc.settings.shift || 8, now = flowNumbers(MF.D.flows), base = flowNumbers(sceneFlows(MF7.base || toScene()));
+  const shift = doc.settings.shift || 8, now = flowNumbers(sceneFlows(toScene())), base = flowNumbers(sceneFlows(MF7.base || toScene()));
   const trips = (r) => Math.floor(shift * 3600 / Math.max(1, r.time)) * r.trolleys;
   const delta = (a, b, unit) => { const x = a - b; if (Math.abs(x) < .05) return ""; return ' <em class="' + (x < 0 ? "ok7" : "bad") + '">' + (x > 0 ? "+" : "") + x.toFixed(unit ? 1 : 0) + (unit || "") + "</em>"; };
   const rows = now.map((r) => {

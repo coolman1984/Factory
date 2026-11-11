@@ -18,7 +18,7 @@ rail.insertBefore(h('<span class="rule" aria-hidden="true"></span>'), padBtn);
 
 /* ---------- camera pad ---------- */
 const pad = h(`<div id="pad7" class="ui glass" role="group" aria-label="Camera pad">
-  <div class="hd"><b>Camera</b><div class="seg" id="padMode"><button data-m="free">Free</button><button data-m="lock">Orbit trolley</button><button data-m="guided">Guided</button><button data-m="chase">Ride</button><button data-m="director">Director</button></div><button class="ib xs" id="padClose" aria-label="Close the camera pad">${ICON.x}</button></div>
+  <div class="hd"><b>Camera</b><div class="seg" id="padMode"><button data-m="free">Free</button><button data-m="lock" title="The camera keeps the trolley in the middle while you turn around it">Orbit</button><button data-m="guided">Guided</button><button data-m="chase">Ride</button><button data-m="director">Director</button></div><button class="ib xs" id="padMin" title="Make the pad small / big">▁</button><button class="ib xs" id="padClose" aria-label="Close the camera pad">${ICON.x}</button></div>
   <div class="sticks">
     <div class="stick" data-k="orbit" title="Orbit: drag to turn around the target (double-click: isometric)"><div class="ring"><i>N</i><i>E</i><i>S</i><i>W</i></div><div class="knob"></div><small>Orbit</small></div>
     <div class="stick sq" data-k="pan" title="Move: drag to travel over the floor"><div class="cross"></div><div class="knob"></div><small>Move</small></div>
@@ -29,7 +29,7 @@ const pad = h(`<div id="pad7" class="ui glass" role="group" aria-label="Camera p
   <label>Speed <input type="range" id="padSpeed" min="0.15" max="3" step="0.05"><span id="padSpeedV"></span></label>
   <label>Smooth <input type="range" id="padSmooth" min="0" max="1" step="0.05"><span id="padSmoothV"></span></label></div>
   <div class="row"><button data-p="top">Top</button><button data-p="front">Front</button><button data-p="side">Side</button><button data-p="iso">Iso</button><button data-p="trolley">Trolley</button><button data-p="reset">Reset</button></div>
-  <div class="row shots" title="Shots: click to fly there; Shift+click or right-click to save the current view"><span>Shots</span>${[1, 2, 3, 4, 5, 6].map((i) => `<button data-b="${i - 1}">${i}</button>`).join("")}<button id="padKey" class="key" title="Add a director camera key here (K)">+ Key</button></div>
+  <div class="row shots" title="Shots: click to fly there; Shift+click or right-click to save the current view"><span>Shots</span>${[1, 2, 3, 4, 5, 6].map((i) => `<button data-b="${i - 1}">${i}</button>`).join("")}<button id="padKey" class="key" title="Add a director camera key here (K)">+ Key</button><button id="padPhoto" title="Save a picture of this view (PNG)">Photo</button></div>
   <div class="read" id="padRead"></div></div>`);
 document.body.appendChild(pad);
 function setPad(open) { pad.style.display = open ? "flex" : "none"; padBtn.classList.toggle("on", open); padBtn.setAttribute("aria-pressed", String(open)); document.body.classList.toggle("pad7", open); try { localStorage.setItem("mf7:pad", open ? "1" : "0"); } catch (e) {} }
@@ -63,7 +63,7 @@ speedEl.oninput = () => { cam.speed = +speedEl.value; syncPad(); }; smoothEl.oni
 const shotBtns = [...pad.querySelectorAll(".shots [data-b]")];
 function saveShot(i) { const c = currentPose(); commit("save shot " + (i + 1), () => { doc.bookmarks[i] = { x: c.x, y: c.y, z: c.z, dist: c.dist, az: c.az, pol: c.pol, fov: c.fov }; }, "director"); X.tip("Shot " + (i + 1) + " saved"); syncPad(); }
 shotBtns.forEach((b, i) => { b.onclick = (e) => { if (e.shiftKey || !doc.bookmarks[i]) return saveShot(i); cam.lock = false; flyTo(doc.bookmarks[i], 1.2); }; b.oncontextmenu = (e) => { e.preventDefault(); saveShot(i); }; });
-$("padKey").onclick = () => addKey();
+$("padKey").onclick = () => addKey(); $("padPhoto").onclick = () => { photoPending = true; }; $("padMin").onclick = () => pad.classList.toggle("mini");
 function syncPad() {
   const mm = Math.round(lensMM(cam.goal.fov)); lensEl.value = mm; $("padLensV").textContent = mm + " mm"; speedEl.value = cam.speed; $("padSpeedV").textContent = cam.speed.toFixed(2) + "x"; smoothEl.value = cam.smooth; $("padSmoothV").textContent = Math.round(cam.smooth * 100) + "%";
   const mode = S.cam === "free" ? (cam.lock ? "lock" : "free") : S.cam; pad.querySelectorAll("#padMode button").forEach((b) => b.classList.toggle("on", b.dataset.m === mode));
@@ -115,7 +115,7 @@ edBtn.onclick = () => setEditor(!ed.open);
 dirBtn.onclick = () => { if (ed.open && ed.tab === "director") setEditor(false); else setTab("director"); dirBtn.classList.toggle("on", ed.open && ed.tab === "director"); };
 const body = $("edBody");
 function render() {
-  if (!ed.open) return; const keepScroll = body.scrollTop, focused = document.activeElement && body.contains(document.activeElement) ? document.activeElement.dataset.f : null;
+  if (!ed.open) return; syncHint(); const keepScroll = body.scrollTop, focused = document.activeElement && body.contains(document.activeElement) ? document.activeElement.dataset.f : null;
   ({ objects: renderObjects, paths: renderPaths, steps: renderSteps, director: renderDirector, numbers: renderNumbers, project: renderProject })[ed.tab]();
   body.scrollTop = keepScroll; if (focused) { const el = body.querySelector(`[data-f="${focused}"]`); if (el) el.focus(); }
   syncToolbar();
@@ -160,9 +160,10 @@ function renderObjects() {
   body.innerHTML = `<div class="sec"><h4>Add to the scene</h4>${ADD_GROUPS.map(([g, items]) => `<div class="add7">${items.map((it) => `<button data-add="${it}" class="${ed.placing && ed.placing.kind === it ? "on" : ""}" title="${esc(ADD[it].label)}"><i>${ADD_ICON[it] || "+"}</i><span>${esc(ADD[it].label.replace(/^PC: /, "PC "))}</span></button>`).join("")}</div>`).join("")}
     <label class="chk"><input type="checkbox" id="pickRep" ${ed.pickReplica ? "checked" : ""}> Click selects replica objects too (racks, machines, walls, columns, pallets)</label></div>
     <div class="sec">${insp}</div>
-    ${lists.map(([t, items]) => `<details class="sec" ${t === "Stops" ? "" : "open"}><summary>${t} <span class="n">${items.length}</span></summary><ul class="list7">${items.map((it, j) => `<li data-l="${t}:${j}" class="${same(it.sel, ed.sel) ? "on" : ""}"><b>${esc(it.name)}</b><small>${esc(it.sub)}</small></li>`).join("")}</ul></details>`).join("")}`;
+    <input id="objFind" class="find7" placeholder="Find a stop, device or object…">${lists.map(([t, items]) => `<details class="sec" ${t === "Stops" ? "" : "open"}><summary>${t} <span class="n">${items.length}</span></summary><ul class="list7">${items.map((it, j) => `<li data-l="${t}:${j}" class="${same(it.sel, ed.sel) ? "on" : ""}"><b>${esc(it.name)}</b><small>${esc(it.sub)}</small></li>`).join("")}</ul></details>`).join("")}`;
   body.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => { if (ed.placing && ed.placing.kind === b.dataset.add) { ed.placing = null; render(); } else { startPlace(b.dataset.add); render(); } }));
   $("pickRep").onchange = (e) => { ed.pickReplica = e.target.checked; };
+  $("objFind").oninput = (e) => { const q = e.target.value.trim().toLowerCase(); body.querySelectorAll("[data-l]").forEach((li) => { li.style.display = !q || li.textContent.toLowerCase().includes(q) ? "" : "none"; }); if (q) body.querySelectorAll("details.sec").forEach((d) => (d.open = true)); };
   body.querySelectorAll("[data-l]").forEach((li) => (li.onclick = () => { const [t, j] = li.dataset.l.split(":"); const it = lists.find((l) => l[0] === t)[1][+j]; select(it.sel, true); }));
   const acts = { focus: () => { const i = selInfo(); if (i) focusPlan(i.x, i.y, i.plate); }, dup: duplicateSel, del: deleteSel, turn: () => rotateSelBy(15), rotL: () => rotateSelBy(-90), rotR: () => rotateSelBy(90), resetRep: () => commit("put back " + selInfo().title, () => { const op = doc.replica[ed.sel.tag]; delete op.dx; delete op.dy; delete op.rot; }, "replica") };
   body.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => acts[b.dataset.a] && acts[b.dataset.a]()));
@@ -202,13 +203,13 @@ function renderPaths() {
 }
 
 /* ---- Steps tab ---- */
-const MODES = [["flow", "Pushed (step)"], ["auto", "AGV (auto)"], ["manual", "Manual"]];
+const MODES = [["flow", "Push"], ["auto", "AGV"], ["manual", "Manual"]];
 function renderSteps() {
   const f = curFlow(); if (!f) return; const fi = S.flow;
   body.innerHTML = `<div class="sec card7"><div class="ct"><b>Flow ${fi + 1} of ${doc.flows.length}</b><span>${f.steps.length} steps</span></div>
     <label>Name<input data-f="flow.name" value="${esc(f.name)}"></label><div class="g3"><label>Colour<input type="color" data-f="flow.color" value="${f.color || "#7030A0"}"></label><label>Trolleys<input type="number" min="1" max="12" step="1" data-f="flow.trolleys" value="${f.trolleys || 1}"></label><label>Every (s)<input type="number" min="1" step="1" data-f="flow.headway" value="${f.headway || 30}"></label></div>
     <div class="acts"><button data-a="newFlow">New flow</button><button data-a="dupFlow">Duplicate</button><button data-a="left">◀ Move</button><button data-a="right">Move ▶</button><button data-a="reverse" title="Drive the path the other way round (no elevator rides)">Reverse</button><button data-a="delFlow" class="danger">Delete flow</button></div></div>
-    <ol class="steps7">${f.steps.map((s, i) => `<li draggable="true" data-i="${i}" class="${i === ed.stepSel ? "on" : ""}"><div class="row7"><span class="grip" title="Drag to reorder">⋮⋮</span><span class="no">${i + 1}</span><b>${esc(s.title || "Step")}</b><span class="mini">${s.lift ? "elevator" : esc((MODES.find((m) => m[0] === s.mode) || ["", s.mode || ""])[1])}</span><button data-up="${i}" title="Move up">▲</button><button data-dn="${i}" title="Move down">▼</button></div>
+    <ol class="steps7">${f.steps.map((s, i) => `<li draggable="true" data-i="${i}" class="${i === ed.stepSel ? "on" : ""}"><div class="row7"><span class="grip" title="Drag to reorder">⋮⋮</span><span class="no">${i + 1}</span><b>${esc(s.title || "Step")}</b><span class="mini">${s.lift ? "elevator" : esc((MODES.find((m) => m[0] === s.mode) || ["", s.mode || ""])[1])}</span><button data-play="${i}" title="Play from this step">▶</button><button data-up="${i}" title="Move up">▲</button><button data-dn="${i}" title="Move down">▼</button></div>
       ${i === ed.stepSel ? `<div class="ed7row"><label>Title<input data-f="s.title" value="${esc(s.title || "")}"></label><label>Explanation (shown on the card)<textarea data-f="s.what" rows="3">${esc(s.what || "")}</textarea></label>
       ${s.lift ? `<label>Elevator<select data-f="s.elevator">${ELEVATORS.map((e) => opt(e.label, e.label, s.elevator)).join("")}</select></label>` : `<label>Stop<select data-f="s.node">${nodeOptions(s.node)}</select></label>`}
       <div class="g3"><label>Mode<select data-f="s.mode">${MODES.map(([v, l]) => opt(v, l, s.mode)).join("")}</select></label><label>Wait (s)<input type="number" step="0.1" min="0" data-f="s.dwell" value="${s.dwell != null ? s.dwell : ""}" placeholder="auto"></label><label>Camera (m)<input type="number" step="5" min="10" data-f="s.dist" value="${num((s.dist || 300) * PT_M, 0)}"></label></div>${s.lift ? "" : `<label>Speed (m/s, empty = 4)<input type="number" step="0.1" min="0.2" max="8" data-f="s.speed" value="${s.speed != null ? s.speed : ""}" placeholder="4"></label>`}
@@ -224,6 +225,7 @@ function renderSteps() {
     li.ondragover = (e) => { e.preventDefault(); li.classList.add("over"); }; li.ondragleave = () => li.classList.remove("over");
     li.ondrop = (e) => { e.preventDefault(); li.classList.remove("over"); const from = +e.dataTransfer.getData("text/plain"), to = +li.dataset.i; moveStep(from, to); };
   });
+  list.querySelectorAll("[data-play]").forEach((b) => (b.onclick = () => { const it = X.F().items[+b.dataset.play + 1]; if (it) { MF.seek(it.t0); MF.play(); } }));
   list.querySelectorAll("[data-up]").forEach((b) => (b.onclick = () => moveStep(+b.dataset.up, +b.dataset.up - 1)));
   list.querySelectorAll("[data-dn]").forEach((b) => (b.onclick = () => moveStep(+b.dataset.dn, +b.dataset.dn + 1)));
   const acts = {
@@ -442,7 +444,7 @@ stage.onpointerup = stage.onpointercancel = (e) => {
   if (click && d.btn === 0) { if (ed.open) editClick(e); else if (S.measure) { const hh = X.hitFloor(e); if (hh) { if (S.pts.length === 2) S.pts = []; S.pts.push(hh.point.clone()); } } }
   if (click && d.btn === 2 && ed.open) {
     if (ed.drawing && ed.drawing.pts.length > 1) ed.drawing.pts.pop();
-    else { const ph = pathHandles(); if (ph) for (let k = 1; k < ph.pts.length - 1; k++) if (near(ph.pts[k], e.clientX, e.clientY, 10)) { removeVertex(ph.f, ph.i, k); break; } }
+    else { const ph = pathHandles(); let done = false; if (ph) for (let k = 1; k < ph.pts.length - 1; k++) if (near(ph.pts[k], e.clientX, e.clientY, 10)) { removeVertex(ph.f, ph.i, k); done = true; break; } if (!done) contextMenu(e); }
   }
   sd = null;
 };
@@ -473,6 +475,7 @@ addEventListener("keydown", (e) => {
   else if (ctrl && k === "z") act = e.shiftKey ? redo : undo; else if (ctrl && k === "y") act = redo; else if (ctrl && k === "s") act = saveNow;
   else if (ed.open && !ctrl) {
     if (sd && sd.mode === "edit" && k === "escape") act = () => { sd.h.cancel && sd.h.cancel(); sd = null; };
+    else if (k === "escape" && ctx.style.display === "flex") act = hideCtx;
     else if (k === "escape" && keysEl.style.display === "block") act = () => toggleKeys(false);
     else if (k === "escape") act = () => { if (ed.placing || ed.drawing) { ed.placing = null; ed.drawing = null; } else select(null); render(); };
     else if (k === "enter" && ed.drawing) act = () => { finishDraw(); render(); };
@@ -503,6 +506,55 @@ addEventListener("keydown", (e) => {
   if (ed.open && ctrl && k === "d") act = () => { duplicateSel(); render(); };
   if (act) { e.preventDefault(); e.stopImmediatePropagation(); act(); }
 }, true);
+
+/* ---------- right-click menu ---------- */
+const ctx = h('<div id="ctx7" class="glass" role="menu"></div>'); document.body.appendChild(ctx);
+function hideCtx() { ctx.style.display = "none"; }
+addEventListener("pointerdown", (e) => { if (!e.target.closest || !e.target.closest("#ctx7")) hideCtx(); }, true);
+function contextMenu(e) {
+  let hit = null; for (const { n, p } of nodeHandles()) if (Math.hypot(p[0] - e.clientX, p[1] - e.clientY) < 10) { hit = { kind: "node", id: n.id }; break; }
+  if (!hit) { const h3 = pick3D(e); if (h3) hit = h3.kind === "device" ? { kind: "device", i: h3.i } : h3.kind === "prop" ? { kind: "prop", id: h3.id } : { kind: "replica", tag: h3.tag }; }
+  const items = [], floor = hitPlan(e);
+  if (hit) {
+    select(hit); const k = hit.kind, info = selInfo();
+    items.push(["<b>" + esc(info ? info.title : "") + "</b>", null]);
+    items.push(["Fly to it (F)", () => { focusPlan(info.x, info.y, info.plate); }]);
+    if (k !== "replica") items.push(["Duplicate (Ctrl+D)", duplicateSel]);
+    if (k === "node") { items.push(["Straighten paths here (S)", () => straighten("step")]); items.push(["Add a step to this stop", () => { const f = curFlow(), at = ed.stepSel + 1, n = doc.nodes[hit.id]; commit("add step", () => { f.steps.splice(at, 0, { node: n.id, title: n.text || "Step", what: "", mode: "flow", view: "3d", dist: 300, path: null, dwell: 1.2 }); relink(f, at, true); for (let q = at + 1; q < f.steps.length; q++) relink(f, q); }); ed.stepSel = at; setTab("steps"); }]); }
+    else { items.push(["Turn 90° (Shift+E)", () => rotateSelBy(90)]); if (k !== "replica") { items.push(["Bigger (+)", () => scaleSel(1.1)]); items.push(["Smaller (−)", () => scaleSel(1 / 1.1)]); } }
+    items.push(["Delete (Del)", deleteSel, "danger"]);
+  } else if (floor) {
+    items.push(["<b>Here</b>", null]);
+    items.push(["Place a stop here", () => { ed.placing = { kind: "stop" }; placeAt(floor, false); }]);
+    items.push(["Place a crate here", () => { ed.placing = { kind: "prop-box" }; placeAt(floor, false); }]);
+    if (lastPlace) items.push(["Place " + esc(ADD[lastPlace].label) + " here", () => { ed.placing = { kind: lastPlace }; placeAt(floor, false); }]);
+    items.push(["Fly here", () => flyTo({ x: floor.world.x, y: floor.world.y, z: floor.world.z, dist: cam.goal.dist * .7 }, .8)]);
+    items.push(["Add a camera key here (K)", () => addKey()]);
+  } else return;
+  ctx.innerHTML = items.map(([t, f, c], i) => f ? '<button data-i="' + i + '" class="' + (c || "") + '">' + t + "</button>" : '<div class="t">' + t + "</div>").join("");
+  ctx.querySelectorAll("button").forEach((b) => (b.onclick = () => { hideCtx(); items[+b.dataset.i][1](); render(); }));
+  ctx.style.display = "flex"; const w = ctx.offsetWidth, hh = ctx.offsetHeight; ctx.style.left = Math.min(e.clientX, innerWidth - w - 8) + "px"; ctx.style.top = Math.min(e.clientY, innerHeight - hh - 8) + "px";
+}
+
+/* ---------- a picture of the view (PNG), composed like a video frame ---------- */
+let photoPending = false;
+function takePhoto() {
+  photoPending = false; const keep = { comp: rec.comp, cg: rec.cg, take: rec.take };
+  rec.comp = document.createElement("canvas"); rec.comp.width = innerWidth; rec.comp.height = innerHeight; rec.cg = rec.comp.getContext("2d"); rec.take = { labels: true, card: false, captions: true };
+  try { compositeFrame(); const c = rec.comp; c.toBlob((b) => { const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = "Material_Flow_" + PROJECT + "_" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".png"; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000); X.tip("Picture saved: " + a.download); }, "image/png"); }
+  finally { Object.assign(rec, keep); }
+}
+
+/* ---------- one-line hint: what the mouse does now ---------- */
+const hint = h('<div id="hint7"></div>'); panel.appendChild(hint);
+function syncHint() {
+  hint.textContent = ed.placing ? "Click the floor to place " + (ADD[ed.placing.kind] ? ADD[ed.placing.kind].label : "it") + " · Shift keeps the tool · Esc stops"
+    : ed.drawing ? "Click corners · click the stop or Enter to finish · right-click removes the last corner · Esc cancels"
+    : ed.tab === "objects" ? (ed.sel ? "Drag to move · green knob turns · Q/E turn · +/− size · Del deletes · right-click: menu" : "Click an object or a ◆ stop · right-click: menu · F1: all keys")
+    : ed.tab === "paths" || ed.tab === "steps" ? "Drag yellow corners or the small squares · double-click a leg adds a corner · S straighten · R auto-route"
+    : ed.tab === "director" ? "Frame the view, K adds a camera key · C adds a caption · J records your camera move"
+    : "F1: all keys · right-click in the scene: menu";
+}
 
 /* ---------- keyboard map overlay ---------- */
 const KEYMAP = [
@@ -544,7 +596,7 @@ window.MFX = {
     sampleCamRec(); fleetFrame(); void dt;
   },
   post(dt, time) {
-    drawOverlay(time); drawCaptions(); if (rec.active) recFrame();
+    drawOverlay(time); drawCaptions(); if (rec.active) recFrame(); if (photoPending) takePhoto();
     const now = performance.now(); padTick(now); if (ed.open && ed.tab === "numbers" && now - (fleetTick.t || 0) > 400) { fleetTick.t = now; fleetTick(); }
     if (S.flow !== lastFlow || Math.abs(X.F().total - lastTotal) > 1e-6) { lastFlow = S.flow; lastTotal = X.F().total; ed.stepSel = Math.min(ed.stepSel, curFlow().steps.length - 1); runChecks(); render(); renderLanes(); }
     if (rec.active) { $("recT").textContent = fmtT((now - rec.started) / 1000).replace(/\.\d$/, ""); $("recN").textContent = rec.take.name + " · " + fmtT(S.t); }
@@ -558,6 +610,6 @@ window.MFX = {
 /* ---------- start ---------- */
 try { setPad(localStorage.getItem("mf7:pad") !== "0"); } catch (e) { setPad(true); }
 syncPad(); panel.style.display = "none"; bar7.style.display = "none"; renderLanes();
-MF.ready.then(() => { if (doc.props.length) syncProps(); if (Object.keys(doc.replica).some((t) => !loadedOps[t] || JSON.stringify(loadedOps[t]) !== JSON.stringify(doc.replica[t]))) syncAllRep(); lastTotal = X.F().total; if (MF7.source !== "original") X.tip(MF7.source === "browser" ? "Your Studio scene (saved in this browser) is loaded" : "Studio scene from this file is loaded"); });
+MF.ready.then(() => { if (doc.props.length) syncProps(); if (Object.keys(doc.replica).some((t) => !loadedOps[t] || JSON.stringify(loadedOps[t]) !== JSON.stringify(doc.replica[t]))) syncAllRep(); lastTotal = X.F().total; });
 // the camera menu gets the director cut
 { const sel = $("cam"), o = document.createElement("option"); o.value = "director"; o.textContent = "Director cut"; sel.insertBefore(o, sel.querySelector('option[value="free"]')); }
