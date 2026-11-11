@@ -345,7 +345,9 @@ landing (add them if needed). Then add a step to the lower-landing stop with `au
 **Open a door in a wall.** Find the `wall:N` that closes the doorway and add `{ "target": "wall:N", "delete": true }`. Change
 the affected steps to `auto` so they use the door.
 
-**Add a camera shot or a caption.** Available from V7.5; see section 8.
+**Straighten a path.** In the Studio: select the step (Paths tab, PageUp/PageDown) or the stop, press S (Shift+S: the whole path), L for one corner, R to auto-route. Moving a stop straightens the legs around it automatically.
+
+**Add a camera shot or a caption.** In the Studio Director tab (K: camera key, C: caption, J: record your camera move); see section 8.
 
 ## 12. Worked example: a new path made from data only
 

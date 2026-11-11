@@ -82,9 +82,9 @@ const bar7 = h(`<div id="tb7" class="ui glass" role="toolbar" aria-label="Studio
   <button id="tbUndo" class="ib xs" data-tip="Undo (Ctrl+Z)">${ICON.undo}</button><button id="tbRedo" class="ib xs" data-tip="Redo (Ctrl+Y)">${ICON.redo}</button><span class="sep"></span>
   <label title="Snap positions to a grid (Alt while dragging: no snap)">Snap <select id="tbSnap"><option value="0">off</option><option value="0.1">0.1 m</option><option value="0.5">0.5 m</option><option value="1">1 m</option><option value="2">2 m</option></select></label>
   <button id="tbOrtho" title="Paths keep horizontal and vertical legs">Ortho</button><span class="sep"></span>
-  <span id="tbChecks" class="chk7" title="Collisions and link problems of this flow"></span><span class="sep"></span><span id="tbSave" class="sv"></span></div>`);
+  <button id="tbStraight" title="Straighten the selected step or the steps at the selected stop (S); Shift+click: the whole path">Straighten</button><button id="tbKeys" title="Keyboard map (F1)">Keys</button><span class="sep"></span><span id="tbChecks" class="chk7" title="Collisions and link problems of this flow"></span><span class="sep"></span><span id="tbSave" class="sv"></span></div>`);
 document.body.appendChild(bar7);
-$("tbUndo").onclick = undo; $("tbRedo").onclick = redo;
+$("tbUndo").onclick = undo; $("tbRedo").onclick = redo; $("tbStraight").onclick = (e) => { straighten(e.shiftKey ? "flow" : "step"); render(); }; $("tbKeys").onclick = () => toggleKeys();
 $("tbSnap").onchange = (e) => { doc.settings.snap = +e.target.value; scheduleSave(); };
 $("tbOrtho").onclick = () => { doc.settings.ortho = !doc.settings.ortho; scheduleSave(); syncToolbar(); };
 $("tbChecks").onclick = () => { setTab("paths"); const hit = ed.hits[0]; if (hit) { ed.stepSel = hit.step; focusPlan(hit.x, hit.y, plateOf(hit.x, hit.y), 120); render(); } };
@@ -187,13 +187,13 @@ function renderPaths() {
   body.innerHTML = `<div class="sec"><h4>${esc(f.name)}</h4><p class="hint">Pick a step, then drag its yellow corners or the small squares on its legs. Double-click a leg to add a corner, right-click a corner to remove it. Ends are locked to the stops; move a stop in Objects.</p>
     <ul class="list7 steps">${f.steps.map((st, i) => `<li data-s="${i}" class="${i === ed.stepSel ? "on" : ""}"><span class="no">${i + 1}</span><b>${esc(st.title || "Step")}</b><small>${st.lift ? "Elevator ride · " + esc(st.elevator || "") : Array.isArray(st.path) ? pathLen(st.path).toFixed(1) + " m" : "stays at the stop"}${hitsBy[i] ? ` · <em class="bad">${hitsBy[i]} clash</em>` : ""}${issBy[i] ? ` · <em class="bad">${esc(issBy[i][0])}</em>` : ""}</small></li>`).join("")}</ul></div>
     ${s ? `<div class="sec card7"><div class="ct"><b>Step ${ed.stepSel + 1}: ${esc(s.title || "")}</b><span>${esc(nodeName(doc.nodes[s.node]))}</span></div>
-      ${s.lift ? `<p class="hint">An elevator ride from the lower to the upper landing of ${esc(s.elevator || "the elevator")}. Its ends come from the elevator.</p>` : `<div class="acts"><button data-a="route" title="Find a clear trolley route from the previous stop">Auto-route</button><button data-a="draw" title="Click the corners yourself">Draw path</button><button data-a="ell">Straight L</button><button data-a="clear">No path</button></div>
+      ${s.lift ? `<p class="hint">An elevator ride from the lower to the upper landing of ${esc(s.elevator || "the elevator")}. Its ends come from the elevator.</p>` : `<div class="acts"><button data-a="straight" class="pri" title="Remove small jogs, square the legs (S)">Straighten (S)</button><button data-a="ell" title="One corner (L)">L shape (L)</button><button data-a="route" title="Find a clear trolley route from the previous stop (R)">Auto-route (R)</button><button data-a="draw" title="Click the corners yourself (B)">Draw (B)</button><button data-a="clear">No path</button></div>
       <p class="hint">${Array.isArray(s.path) ? `${s.path.length} points, ${pathLen(s.path).toFixed(1)} m, about ${(pathLen(s.path) / 4 + Math.max(0, s.path.length - 2) * .3).toFixed(1)} s at full speed.` : "The trolley stays at its stop in this step."}</p>`}</div>` : ""}
-    <div class="sec"><div class="acts"><button data-a="checkAll">Check all flows</button><button data-a="fixAll" title="Re-route every step that does not join its neighbours">Fix all links</button></div><div id="chkOut" class="hint"></div></div>`;
+    <div class="sec"><div class="acts"><button data-a="straightFlow" title="Shift+S">Straighten whole path</button><button data-a="straightAll">Straighten all paths</button><button data-a="routeFlow" title="Shift+R">Auto-route whole path</button><button data-a="checkAll">Check all flows</button><button data-a="fixAll" title="Re-route every step that does not join its neighbours">Fix all links</button></div><div id="chkOut" class="hint"></div></div>`;
   body.querySelectorAll("[data-s]").forEach((li) => (li.onclick = () => { ed.stepSel = +li.dataset.s; const it = X.F().items[ed.stepSel + 1]; if (it) { MF.seek(it.t0); MF.pause(); } const P = f.steps[ed.stepSel].path; if (Array.isArray(P)) { const m = P[Math.floor(P.length / 2)]; focusPlan(m[0], m[1], stepPlate(f.steps[ed.stepSel])); } render(); }));
   const acts = {
-    route: () => autoRoute(S.flow, ed.stepSel), draw: () => startDraw(S.flow, ed.stepSel),
-    ell: () => { const a = stepStart(f, ed.stepSel), n = doc.nodes[s.node]; if (!a || !n) return; commit("straight path", () => { s.path = simplify(elbow(a, [n.x, n.y], Math.abs(n.x - a[0]) >= Math.abs(n.y - a[1]))); if (s.path.length < 2) s.path = null; }); },
+    route: () => autoRoute(S.flow, ed.stepSel), draw: () => startDraw(S.flow, ed.stepSel), straight: () => straighten("step"), straightFlow: () => straighten("flow"), straightAll: () => straighten("all"), routeFlow: autoRouteFlow,
+    ell: lShape,
     clear: () => commit("remove path", () => { s.path = null; }),
     checkAll: () => { const out = doc.flows.map((fl) => { const c = checkFlow(fl).length, l = validateFlow(fl).length; return `${esc(fl.name)}: ${c ? `<em class="bad">${c} clash</em>` : "clear"}${l ? `, <em class="bad">${l} link issue</em>` : ""}`; }); $("chkOut").innerHTML = out.join("<br>"); },
     fixAll: () => commit("fix links", () => { for (const fl of doc.flows) for (const iss of validateFlow(fl)) relink(fl, iss.step, true); }),
@@ -469,14 +469,33 @@ addEventListener("keydown", (e) => {
   const t = e.target, tag = t.tagName; if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable) return;
   const k = e.key.toLowerCase(), ctrl = e.ctrlKey || e.metaKey; let act = null;
   if (rec.active) { if (k === "escape") act = stopTake; }
+  else if (k === "f1") act = () => toggleKeys();
   else if (ctrl && k === "z") act = e.shiftKey ? redo : undo; else if (ctrl && k === "y") act = redo; else if (ctrl && k === "s") act = saveNow;
   else if (ed.open && !ctrl) {
     if (sd && sd.mode === "edit" && k === "escape") act = () => { sd.h.cancel && sd.h.cancel(); sd = null; };
+    else if (k === "escape" && keysEl.style.display === "block") act = () => toggleKeys(false);
     else if (k === "escape") act = () => { if (ed.placing || ed.drawing) { ed.placing = null; ed.drawing = null; } else select(null); render(); };
     else if (k === "enter" && ed.drawing) act = () => { finishDraw(); render(); };
     else if ((k === "delete" || k === "backspace") && ed.hover && ed.hover.kind === "vertex") act = () => { const ph = pathHandles(); if (ph) removeVertex(ph.f, ph.i, ed.hover.k); ed.hover = null; };
     else if ((k === "delete" || k === "backspace") && ed.sel) act = () => { deleteSel(); render(); };
-    else if (k === "k") act = () => { addKey(); if (ed.tab === "director") render(); renderLanes(); };
+    else if (k === "k") act = () => { addKey({ follow: e.shiftKey }); if (ed.tab === "director") render(); renderLanes(); };
+    else if (e.altKey && k >= "1" && k <= "6") act = () => setTab(["objects", "paths", "steps", "director", "numbers", "project"][+k - 1]);
+    else if (k === "f1" || e.key === "?") act = toggleKeys;
+    else if (k === "s") act = () => { straighten(e.shiftKey ? "flow" : "step"); render(); };
+    else if (k === "l") act = () => { lShape(); render(); };
+    else if (k === "r") act = () => { if (e.shiftKey) autoRouteFlow(); else autoRoute(S.flow, ed.stepSel); render(); };
+    else if (k === "b") act = () => startDraw(S.flow, ed.stepSel);
+    else if (k === "o") act = () => { doc.settings.ortho = !doc.settings.ortho; scheduleSave(); syncToolbar(); X.tip("Ortho " + (doc.settings.ortho ? "on" : "off")); };
+    else if (k === "g") act = () => { const c = [0, .1, .5, 1, 2], i = (c.indexOf(doc.settings.snap) + 1) % c.length; doc.settings.snap = c[i]; scheduleSave(); syncToolbar(); X.tip("Snap " + (c[i] ? c[i] + " m" : "off")); };
+    else if (k === "v") act = () => { ed.placing = null; ed.drawing = null; select(null); render(); };
+    else if (k === "n") act = () => { startPlace("stop"); render(); };
+    else if (k === "p" && !e.shiftKey) act = () => { if (lastPlace) { startPlace(lastPlace); render(); } };
+    else if (k === "f" && ed.sel) act = () => { const i = selInfo(); if (i) focusPlan(i.x, i.y, i.plate); };
+    else if (k === "c" && !e.shiftKey) act = () => { addCaption(); setTab("director"); };
+    else if (k === "j") act = () => { camRec.on ? stopCamRec() : startCamRec(); render(); };
+    else if (k === "p" && e.shiftKey) act = () => { if (dirOf().keys.length) { MF.setCam("director"); MF.seek(0); MF.play(); } };
+    else if (k === "pageup" || k === "pagedown") act = () => { const n = curFlow().steps.length; ed.stepSel = clamp(ed.stepSel + (k === "pagedown" ? 1 : -1), 0, n - 1); if (ed.tab !== "paths" && ed.tab !== "steps") setTab("paths"); else render(); };
+    else if (ed.sel && (e.key === "+" || e.key === "=" || e.key === "-")) act = () => scaleSel(e.key === "-" ? 1 / 1.1 : 1.1);
     else if (ed.sel && (k === "q" || k === "e")) act = () => { rotateSelBy((k === "e" ? 1 : -1) * (e.shiftKey ? 90 : 15)); render(); };
     else if (ed.sel && k.startsWith("arrow")) { const st = (snapStep() || .5 * M) * (e.shiftKey ? 10 : 1); act = () => { nudge(k === "arrowleft" ? -st : k === "arrowright" ? st : 0, k === "arrowup" ? -st : k === "arrowdown" ? st : 0); render(); }; }
   } else if (ctrl && k === "d" && ed.open) act = () => { duplicateSel(); render(); };
@@ -484,6 +503,27 @@ addEventListener("keydown", (e) => {
   if (ed.open && ctrl && k === "d") act = () => { duplicateSel(); render(); };
   if (act) { e.preventDefault(); e.stopImmediatePropagation(); act(); }
 }, true);
+
+/* ---------- keyboard map overlay ---------- */
+const KEYMAP = [
+  ["Playback", [["Space", "Play / pause"], ["← / →", "Previous / next step (when nothing is selected)"], ["Home / End", "Start / end"], ["[ / ]", "Slower / faster"], ["2 / 3 / A", "2D plan / 3D / auto view (Studio closed)"]]],
+  ["Studio", [["F1 or ?", "This keyboard map"], ["Alt+1 … Alt+6", "Objects · Paths · Steps · Director · Numbers · Project"], ["Ctrl+Z / Ctrl+Y", "Undo / redo"], ["Ctrl+S / Ctrl+Shift+S", "Save the scene file / save as"], ["Ctrl+O", "Open a scene file (or drop it on the player)"], ["Esc / V", "Stop the tool, clear the selection"], ["O", "Ortho on / off (paths keep square legs)"], ["G", "Snap grid: off · 0.1 · 0.5 · 1 · 2 m"]]],
+  ["Objects", [["Click / drag", "Select / move (Alt: no snap)"], ["Green knob", "Drag to turn (Shift: free angle)"], ["Q / E", "Turn 15° (Shift: 90°)"], ["Arrows", "Nudge one snap step (Shift: ×10)"], ["+ / −", "Bigger / smaller"], ["Ctrl+D", "Duplicate"], ["Delete", "Delete"], ["F", "Fly to the selection"], ["N", "Place a new stop"], ["P", "Place the last object type again"]]],
+  ["Paths", [["S", "Straighten the step (or every step at the selected stop)"], ["Shift+S", "Straighten the whole path"], ["L", "Make the step one L (one corner)"], ["R / Shift+R", "Auto-route the step / the whole path"], ["B", "Draw the step's path corner by corner (Enter ends)"], ["PageUp / PageDown", "Previous / next step"], ["Double-click a leg", "Add a corner"], ["Right-click / Delete on a corner", "Remove the corner"]]],
+  ["Director", [["K / Shift+K", "Camera key here / key that rides with the trolley"], ["J", "Start / stop recording your camera move"], ["C", "Caption here"], ["Shift+P", "Watch the director cut from the start"]]],
+  ["Camera", [["Left drag", "Orbit"], ["Right drag or Shift+drag", "Pan"], ["Wheel", "Zoom toward the cursor"], ["Double-click", "Fly to that point"], ["Pad", "Sticks, lens, speed, smooth, views, 6 shots (right-click a shot to save it)"]]],
+];
+const keysEl = h('<div id="keys7" class="glass" role="dialog" aria-label="Keyboard map"></div>'); document.body.appendChild(keysEl);
+keysEl.innerHTML = '<div class="hd"><b>Keyboard map</b><span>every action is also a button on screen</span><button class="ib xs" id="keysX" aria-label="Close">' + ICON.x + '</button></div><div class="cols">' + KEYMAP.map(([g, rows]) => '<div><h4>' + g + '</h4><table>' + rows.map(([k, v]) => '<tr><td><kbd>' + esc(k) + '</kbd></td><td>' + esc(v) + '</td></tr>').join("") + '</table></div>').join("") + '</div>';
+function toggleKeys(on) { const show = on != null ? on : keysEl.style.display !== "block"; keysEl.style.display = show ? "block" : "none"; }
+$("keysX").onclick = () => toggleKeys(false); keysEl.onclick = (e) => { if (e.target === keysEl) toggleKeys(false); };
+let lastPlace = null;
+function scaleSel(f) {
+  const sel = ed.sel, o = selObj(); if (!o) return;
+  if (sel.kind === "device") commit("resize", () => { o.k = +clamp((o.k || DIMS.K) * f, .5, 4).toFixed(2); }, "devices");
+  else if (sel.kind === "prop") commit("resize", () => { o.w = +(o.w * f).toFixed(2); o.d = +(o.d * f).toFixed(2); o.h = +(o.h * f).toFixed(2); }, "props");
+  render();
+}
 
 /* ---------- reacting to changes ---------- */
 let lastFlow = S.flow, lastTotal = 0;

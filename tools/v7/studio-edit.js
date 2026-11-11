@@ -344,9 +344,9 @@ function relinkNode(id) {
   const n = doc.nodes[id]; if (!n) return; const p = [n.x, n.y], ok = (r) => (r && r.length >= 2 ? r : null);
   for (const f of doc.flows) f.steps.forEach((s, i) => {
     if (s.lift || !Array.isArray(s.path) || s.path.length < 2) return;
-    if (s.node == id) s.path = ok(fixEnd(s.path, p));
+    if (s.node == id) s.path = ok(fixEnd(s.path, p)); if (Array.isArray(s.path) && s.path.length > 2) s.path = straightenPath(s.path, 1.5 * M);
     const prev = f.steps[i - 1];
-    if (prev && prev.node == id && !prev.lift && Array.isArray(s.path)) s.path = ok(fixStart(s.path, p));
+    if (prev && prev.node == id && !prev.lift && Array.isArray(s.path)) { s.path = ok(fixStart(s.path, p)); if (Array.isArray(s.path) && s.path.length > 2) s.path = straightenPath(s.path, 1.5 * M); }
   });
   for (const f of doc.flows) f.steps.forEach((s, i) => { if (i && s.path == null && !s.lift) { const e = stepEnd(f, i - 1), m = doc.nodes[s.node]; if (e && m && Math.hypot(e[0] - m.x, e[1] - m.y) > .05) relink(f, i, true); } });
 }
@@ -379,7 +379,7 @@ const ADD = {
   stop: { label: "Stop point" },
 };
 for (const [k, v] of Object.entries(PROP_TYPES)) ADD["prop-" + k] = { label: v.name, prop: k };
-function startPlace(kind) { ed.drawing = null; ed.placing = { kind, label: ADD[kind].label, at: null, rect: [0, 0, 0, 0], ok: true }; X.tip("Click the floor to place: " + ADD[kind].label + " (Shift keeps the tool, Esc stops)"); emit("tool"); }
+function startPlace(kind) { if (typeof lastPlace !== "undefined" && kind !== "stop") lastPlace = kind; ed.drawing = null; ed.placing = { kind, label: ADD[kind].label, at: null, rect: [0, 0, 0, 0], ok: true }; X.tip("Click the floor to place: " + ADD[kind].label + " (Shift keeps the tool, Esc stops)"); emit("tool"); }
 function placeRect(kind, x, y) {
   const a = ADD[kind]; if (a.prop) return propRect(Object.assign({ x, y, rot: 0 }, PROP_TYPES[a.prop]));
   if (a.dev) { const d = Object.assign({ x, y, k: DIMS.K }, a.dev); if (d.type === "rfid-manual") { d.lane = [x, y]; d.x = x - 2 * M; } const fp = footprints(d); return fp.reduce((p, q) => [Math.min(p[0], q[0]), Math.min(p[1], q[1]), Math.max(p[2], q[2]), Math.max(p[3], q[3])], [Infinity, Infinity, -Infinity, -Infinity]); }
@@ -454,3 +454,41 @@ function runChecks() {
   const f = curFlow(); if (!f) return; ed.hits = checkFlow(f); ed.issues = validateFlow(f); emit("checks");
 }
 onChange((w) => { if (w === "commit") setTimeout(runChecks, 0); });
+
+/* ---------- straighten: remove small jogs (ends locked), make slanted legs square, minimal corners ---------- */
+const JOG = 3 * M;   // legs shorter than 3 m between two parallel legs are jogs
+function orthogonalize(P) { const out = [P[0].slice()]; for (let k = 1; k < P.length; k++) { const a = out[out.length - 1], b = P[k]; if (Math.abs(a[0] - b[0]) > 1e-6 && Math.abs(a[1] - b[1]) > 1e-6) { const prevH = out.length > 1 && Math.abs(out[out.length - 2][1] - a[1]) < 1e-6; out.push(prevH ? [a[0], b[1]] : [b[0], a[1]]); } out.push(b.slice()); } return simplify(out); }
+function straightenPath(P0, tol = JOG) {
+  let Q = orthogonalize(simplify(P0.map((p) => p.slice())));
+  for (let guard = 0; guard < 40; guard++) {
+    let changed = false;
+    for (let k = 1; k < Q.length - 2; k++) {
+      const a = Q[k], b = Q[k + 1]; if (Math.hypot(b[0] - a[0], b[1] - a[1]) >= tol) continue;
+      if (k + 2 < Q.length - 1) { const dx = a[0] - b[0], dy = a[1] - b[1]; Q[k + 1] = [b[0] + dx, b[1] + dy]; Q[k + 2] = [Q[k + 2][0] + dx, Q[k + 2][1] + dy]; }
+      else if (k - 1 > 0) { const dx = b[0] - a[0], dy = b[1] - a[1]; Q[k - 1] = [Q[k - 1][0] + dx, Q[k - 1][1] + dy]; Q[k] = [a[0] + dx, a[1] + dy]; }
+      else continue;
+      Q = simplify(Q); changed = true; break;
+    }
+    if (!changed) break;
+  }
+  // a 2-leg path whose first or last leg is a short stub: try a single L
+  if (Q.length === 4) { const L = simplify(elbow(Q[0], Q[3], Math.abs(Q[3][0] - Q[0][0]) >= Math.abs(Q[3][1] - Q[0][1]))); if (L.length <= 3) Q = Q.some((p, i) => i && i < 3 && Math.hypot(p[0] - Q[i - 1][0], p[1] - Q[i - 1][1]) < tol) ? L : Q; }
+  return Q;
+}
+function stepClashes(f, i) { const g = { steps: f.steps.map((s, k) => (k === i ? s : Object.assign({}, s, { path: null, lift: s.lift }))) }; return checkFlow(g).filter((h) => h.step === i).length; }
+// straighten steps: which = "step" (selected step, or every step touching the selected stop) | "flow" | "all"
+function straighten(which = "step") {
+  const f = curFlow(); if (!f) return; const targets = [];
+  if (which === "all") doc.flows.forEach((fl) => fl.steps.forEach((s, i) => targets.push([fl, i])));
+  else if (which === "flow") f.steps.forEach((s, i) => targets.push([f, i]));
+  else if (ed.sel && ed.sel.kind === "node") doc.flows.forEach((fl) => fl.steps.forEach((s, i) => { if (s.node == ed.sel.id || (fl.steps[i - 1] && fl.steps[i - 1].node == ed.sel.id)) targets.push([fl, i]); }));
+  else if (ed.stepSel >= 0) targets.push([f, ed.stepSel]);
+  if (!targets.length) return X.tip("Pick a step (Paths tab) or a stop first");
+  let n = 0, bad = 0;
+  commit("straighten " + (which === "step" ? "step" : which === "flow" ? "path" : "all paths"), () => {
+    for (const [fl, i] of targets) { const s = fl.steps[i]; if (!Array.isArray(s.path) || s.path.length < 3) continue; const before = JSON.stringify(s.path), q = straightenPath(s.path); if (JSON.stringify(q) === before) continue; const keep = s.path; s.path = q; if (stepClashes(fl, i) > stepClashes(Object.assign({}, fl, { steps: fl.steps.map((x, k) => (k === i ? Object.assign({}, x, { path: keep }) : x)) }), i)) { s.path = keep; bad++; } else n++; }
+  });
+  X.tip(n ? `Straightened ${n} step(s)${bad ? `; ${bad} kept (straight would hit something: try Auto-route)` : ""}` : bad ? "Straight would hit something here: try Auto-route (R)" : "Already straight");
+}
+function lShape() { const f = curFlow(), s = f && f.steps[ed.stepSel]; if (!s || s.lift) return; const a = stepStart(f, ed.stepSel), n = doc.nodes[s.node]; if (!a || !n) return; commit("L shape", () => { s.path = simplify(elbow(a, [n.x, n.y], Math.abs(n.x - a[0]) >= Math.abs(n.y - a[1]))); if (s.path.length < 2) s.path = null; }); }
+function autoRouteFlow() { const f = curFlow(); let ok = 0, fail = 0; commit("auto-route path", () => { f.steps.forEach((s, i) => { if (i === 0 || s.lift || !Array.isArray(s.path)) return; const a = stepStart(f, i), n = doc.nodes[s.node], r = a && n ? routeBetween(a, [n.x, n.y], n.plate || plateOf(n.x, n.y)) : null; if (r) { s.path = r; ok++; } else fail++; }); }); X.tip(`Auto-routed ${ok} step(s)${fail ? `, ${fail} without a clear route` : ""}`); }

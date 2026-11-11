@@ -85,3 +85,5 @@ ode tools/v7/export-scenes.mjs (V6 data -> `private/v7/scenes/*.scene.json`; INJ
 - Data-only owner fixes: INJ 2 Main Line at the corner (image 29); EPS path 3 TO -> Main Line straight west through two doorways (new layout edit `door`, image 30).
 - Minimum test: `node tools/v7/smoke-76.mjs` (Studio edits land in the scene file and validate, director camera, fleet, Arabic caption, numbers, undo / redo, no page errors) PASS.
 - Not checked: recording a full video take, drag interactions by mouse (driven through the API in the test), frame rate.
+
+- 2026-11-11 update (owner image 31): Straighten (S / Shift+S / toolbar), L shape (L), auto-route step/path (R / Shift+R), stop moves auto-straighten nearby legs; full keyboard map (F1, toolbar Keys) with Alt+1..6 tabs, B draw, N stop, P place again, +/- resize, F focus, O ortho, G snap, J camera recording, C caption, Shift+K trolley key, PageUp/Down steps; agent skill `.agents/skills/material-flow-scene-engine`. Minimum tests: `tools/v7/smoke-76.mjs` and real-input `tools/v7/mouse-test.mjs` PASS.
