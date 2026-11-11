@@ -39,3 +39,10 @@ Details per version: [CHANGELOG.md](CHANGELOG.md); decisions: [DECISIONS.md](DEC
 ## 2026-11-11 — V7 scene engine Phase A direct review
 
 Reviewed the requested V7 engine, scene bridge, Studio, CLI, build and tests; implemented bounded fixes and regression coverage without git, bridge or agents. See [the review report](REVIEW_REPORT.md) for findings, exact test receipts, historical-player preservation and limits. Functional identity/import/editor tests pass; startup stutter reproduces in both the untouched baseline and candidate and remains unresolved. Recorded video encoding and completed file download are separate claims. CAD extraction was not changed.
+
+## 2026-11-11 — V7.7.2 task 1 review and restart recovery
+
+Recovered the saved review, completed camera rescue and Studio layout fixes, and reran the requested verification against a
+new test build. See [the V7.7.2 report](REVIEW_REPORT_772.md) for findings, fixes, deliberately retained limits, ranked ideas,
+changed files and final receipts. All generated evidence stays in `dist/test/`; release integration belongs to the lead.
+No git, delegation, upload, company-scene edit or historical player replacement was performed.

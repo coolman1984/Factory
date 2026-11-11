@@ -20,12 +20,17 @@ const s = copy(scene); s.layoutAdds[0].y = 1; assert.ok(run(s).errors.some(e => 
 const wall = copy(scene); wall.layoutAdds.push({ id: 'wall', kind: 'wall', floor: 'F', a: [10, 10], b: [20, 10] }); wall.layoutEdits = [{ target: 'wall:101000', door: [13, 16] }];
 assert.equal(run(wall).errors.length, 0);
 const l = copy(layout); SC.toInternal(wall, l); assert.deepEqual(Array.from(l.replica.walls, w => w._oid), ['101000a', '101000b']);
+const crossing = copy(wall); crossing.layoutAdds[1].a = [10, 0]; crossing.layoutAdds[1].b = [10, 10]; crossing.layoutEdits = [];
+assert.ok(run(crossing).errors.some(e => /trolley/.test(e.msg)));
+crossing.layoutEdits = [{ target: 'wall:101000', door: [.5, 3.5] }]; assert.equal(run(crossing).errors.length, 0);
 const storage = copy(scene); storage.layoutAdds = [{ id: 'grid', kind: 'storage', floor: 'F', x: 10, y: 10, w: 6, d: 4, rows: 2, cols: 3 }];
 for (const turn of [0, 90, 180, 270]) {
   storage.layoutAdds[0].turn = turn; const l = copy(layout); SC.toInternal(storage, l);
   assert.deepEqual(Array.from(l.replica.pallets, p => p._oid), [100001, 100002, 100003, 100004, 100005, 100006]);
   assert.equal(l.replica.marks[0].rows, turn % 180 ? 3 : 2);
   assert.ok(l.replica.pallets.every(p => p.x >= l.replica.marks[0].x && p.y >= l.replica.marks[0].y));
+  const first = l.replica.pallets[0], expected = [[11,11],[13,11],[15,13],[11,15]][turn / 90];
+  assert.ok(Math.hypot((first.x+first.w/2)*.3-expected[0], (first.y+first.h/2)*.3-expected[1]) < 1e-8);
 }
 const deleted = copy(scene); deleted.layoutAdds.push({ ...deleted.layoutAdds[0], id: 'second', x: 10 }); deleted.layoutEdits = [{ target: 'machine:100000', delete: true }];
 const dl = copy(layout); SC.toInternal(deleted, dl); assert.deepEqual(Array.from(dl.replica.machines, x => x._oid), [101000]);
@@ -59,7 +64,33 @@ try {
     check(['x','y','w','h'].every(k=>Math.abs(live[k]-saved[k])<.01), 'folded save matches live geometry');
     MFX.undo(); MFX.undo(); check(JSON.stringify(MFX.toScene().layoutAdds) === JSON.stringify(before.layoutAdds), 'undo restores folded addition');
     MFX.redo(); MFX.redo(); check(JSON.stringify(MFX.toScene().layoutAdds) === JSON.stringify(after.layoutAdds), 'redo restores folded addition');
-    MFX.select({kind:'replica',tag}); MFX.deleteSel(); check(MFX.toScene().layoutAdds.length === after.layoutAdds.length && MFX.toScene().layoutEdits.some(e=>e.delete && e.target.endsWith(':'+ (100000+1000*i))), 'delete keeps addition slot'); MFX.undo();
+    MFX.select({kind:'replica',tag});
+    const probe = MFX.repIndex().get(tag).parts[0], mesh = probe.entry.im, T = window.THREE;
+    mesh.computeBoundingSphere(); MFX.nudge(4000,0);
+    const mat = new T.Matrix4(); mesh.getMatrixAt(probe.i,mat); mesh.updateWorldMatrix(true,false);
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    const centre = mesh.geometry.boundingBox.getCenter(new T.Vector3()).applyMatrix4(mat).applyMatrix4(mesh.matrixWorld);
+    const ray = new T.Raycaster(centre.clone().add(new T.Vector3(0,1000,0)),new T.Vector3(0,-1,0),0,2000);
+    check(ray.intersectObject(mesh,false).some(h=>h.instanceId===probe.i), 'moved instance remains raycastable beyond old bounds'); MFX.undo();
+    const selected = MFX.repIndex().get(tag), matrices = selected.parts.map(p => Array.from(p.entry.im.instanceMatrix.array.slice(p.i*16,p.i*16+16)));
+    MFX.deleteSel();
+    check(MFX.toScene().layoutAdds.length === after.layoutAdds.length && MFX.toScene().layoutEdits.some(e=>e.delete && e.target.endsWith(':'+ (100000+1000*i))), 'delete keeps addition slot');
+    check(!MF.RP[selected.kind].includes(selected.obj), 'delete removes live replica solid');
+    check(selected.parts.every(p => { const m = p.entry.im.instanceMatrix.array.slice(p.i*16,p.i*16+16); return m.every(Number.isFinite) && m[15] === 1 && m.slice(0,15).every(v=>v===0); }), 'deleted instances retain finite affine matrices');
+    check([...new Set(selected.parts.map(p=>p.entry.im))].every(m=>{ m.computeBoundingSphere(); return Number.isFinite(m.boundingSphere.radius) && m.boundingSphere.center.toArray().every(Number.isFinite); }), 'deleted mesh bounds stay finite');
+    MFX.undo();
+    check(MF.RP[selected.kind].includes(selected.obj) && selected.parts.every((p,j)=>Array.from(p.entry.im.instanceMatrix.array.slice(p.i*16,p.i*16+16)).every((v,k)=>v===matrices[j][k])), 'delete undo restores live solid and every instance');
+    const document = JSON.stringify(MFX.doc), slot = 100000+1000*MFX.doc.adds.length, target = 'wall:'+slot;
+    try {
+      MFX.doc.adds.push({id:'review-cut',kind:'wall',floor:Object.values(MFX.doc.nodes)[0].plate,a:[5,10],b:[15,10]});
+      const edits=[{target,move:[1,0]},{target,door:[8,10]}]; MFX.doc.layoutEdits.push(...edits); MFX.doc.doors.push(edits[1]); MFX.doc.replica['walls:'+slot]={};
+      const sc=MFX.toScene(); check(JSON.stringify(sc.layoutEdits.filter(e=>e.target===target))===JSON.stringify(edits) && sc.layoutAdds.at(-1).a[0]===5, 'unrelated edit preserves ordered added-wall move and door');
+      const next = 100000+1000*MFX.doc.adds.length, machine = 'machine:'+next;
+      MFX.doc.adds.push({id:'review-multi',kind:'table',floor:Object.values(MFX.doc.nodes)[0].plate,x:5,y:10,w:2,d:4});
+      MFX.doc.layoutEdits.push({target:machine,move:[1,0]},{target:machine,move:[2,0]});
+      MFX.doc.replica['machines:'+next]={dx:3/.3,dy:0};
+      check(MFX.toScene().layoutAdds.at(-1).x===9, 'editing an ordered target keeps earlier transforms');
+    } finally { const restore=JSON.parse(document); for(const k of Object.keys(MFX.doc)) delete MFX.doc[k]; Object.assign(MFX.doc,restore); }
     return out;
   })()`);
   checks.forEach(x => console.log('PASS ' + x));

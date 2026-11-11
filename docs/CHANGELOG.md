@@ -6,7 +6,8 @@ A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are 
 ## V7.7.2 (in progress) - layout accuracy round - 2026-11-11
 - Review fixes: added-layout import/reload/undo transactions, ordered door edits, storage rotation/cell identities, strict
   addition validation, layout diffs/schema arrays and CLI edge cases. Camera rescue now checks opaque device meshes as well
-  as the replica, after the ceiling clamp; it no longer accepts untested candidates when a check budget expires. See
+  as the replica, after the ceiling clamp; every candidate, including the final fallback, must pass the checks. Studio
+  preserves earlier ordered transforms when appending a new edit and invalidates raycast bounds after live instance changes. See
   [the V7.7.2 report](REVIEW_REPORT_772.md) for final evidence and limits.
 - Added: `layoutAdds` scene section (machines, lines, conveyors, tables, racks, storage grids, walls as data; validator, 3D, plan,
   Studio move / turn / add). Owner's scenes: missing machines, lines, storage fields, tables added from the slides.

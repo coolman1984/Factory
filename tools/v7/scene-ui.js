@@ -20,7 +20,6 @@ function autosave() {
 const sameEdits = (a, b) => ["layoutEdits", "layoutAdds"].every(k => JSON.stringify((a && a[k]) || []) === JSON.stringify((b && b[k]) || []));
 function load(scene, how, opts = {}) {
   if (window.MFX) MFX.flush();
-  if (window.MFX) MFX.flush();
   const t0 = performance.now(), rep = SC.validate(scene, layout()); st.report = rep;
   if (rep.errors.length && !opts.force) { render(); open(true); X.tip(`Not loaded: ${rep.errors.length} error(s) in the scene (see the Scene panel)`); return false; }
   if (opts.record !== false && !window.MFX) { st.undo.push(clone(st.scene)); if (st.undo.length > 60) st.undo.shift(); st.redo.length = 0; }

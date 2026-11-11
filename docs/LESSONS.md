@@ -46,6 +46,10 @@ Each: what happened, the cause, the rule.
 - **L-PL-16 Layout reloads are transactions.** A layout addition can update JSON while leaving the visible replica unchanged;
   reloading after a failed save can lose the change. Compare both layout sections, persist first, preserve normalized scene
   history across reload, and test save/reload/undo against actual geometry. Positional slots must survive deletion.
+  When editing an already transformed target, retain its ordered operations and append the live delta; keeping only the last
+  original operation loses earlier transforms on save. Deleted instance matrices need the affine homogeneous component
+  to stay one, even with zero scale, so computed bounds remain finite. Invalidate instance bounds after edits/undo so
+  raycasting sees moved geometry outside the old bounds.
 - **L-PL-17 A camera check must use every acceptance obstacle.** The replica-only exact ray omitted opaque device meshes,
   and a later ceiling clamp could invalidate a rescued eye. Check the final eye after constraints, include device instances,
   and never treat an exhausted exact-check budget as evidence that a candidate is clear. See the V7.7.2 review receipts.

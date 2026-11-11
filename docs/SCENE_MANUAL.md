@@ -251,6 +251,7 @@ every affected target. The text `id` alone does not determine these numeric refe
 
 Studio folds simple added-block/rack moves and turns into `layoutAdds` on save. Delete keeps the entry and writes a delete
 edit, so later slots keep their identities. Storage grids are edited as scene data; selecting one pallet edits only that cell.
+Existing ordered edits are preserved; a further Studio edit appends the transform relative to the loaded geometry before folding.
 Door fragments (`wall:<slot>a/b`) are generated pieces, not independently editable targets: change the parent wall's ordered
 edits in the scene. Imports and Studio layout additions reload the factory after a successful browser save; Studio preserves
 undo/redo across this reload in the current tab. If saving fails, export the in-memory scene before a manual reload.

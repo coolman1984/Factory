@@ -49,7 +49,7 @@ export const playerPatches = [
     const seen = (P) => clearLine(P, L) && floorClear(P) && exactClear(P);
     function ensure(E3, Tg, vel) {
       if (!fmeshes) fmeshes = floors.flatMap((f) => [f.art, f.slab]); for (const k of Object.keys(plates)) plates[k].updateMatrixWorld(true);   // floors may have moved this frame (glide)
-      targets(frameLot); if (seen(E3)) return false;
+      targets(frameLot); lot.getWorldPosition(L); L.y += 2; if (seen(E3)) return false;
       const dx = E3.x - Tg.x, dy = E3.y - Tg.y, dz = E3.z - Tg.z, d = Math.max(1, Math.hypot(dx, dy, dz)), az = Math.atan2(dx, dz), pol = Math.acos(clamp(dy / d, -1, 1));
       const take = () => { E3.copy(eye); vel.set(0, 0, 0); stats.rescued = (stats.rescued || 0) + 1; return true; };
       // smallest change first: tilt up or down, then turn, then come closer (under an upper slab only a low, near view is clear)
@@ -58,12 +58,21 @@ export const playerPatches = [
       for (const k of [.7, .5, .35, .22]) for (const o of [0, .7, -.7, 1.5, -1.5, Math.PI]) for (const q of [pol, 1.3, 1.1, .8, .5, .2]) if (seen(eyeAt(Tg, d * k, az + o, q, eye))) return take();
       // last: views centred on the trolley itself (inside an elevator shaft only a near-vertical line through the shaft hole is clear)
       for (const q of [.01, .06, .12, .2, .3]) for (const o of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) if (seen(eyeAt(L, d, az + o, q, eye))) return take();
-      eyeAt(L, d, az, .005, eye); return take();
+      if (seen(eyeAt(L, d, az, .005, eye))) return take();
+      // An exhausted finite search is a failed rescue, never evidence of a clear view.
+      stats.unresolved = (stats.unresolved || 0) + 1; return false;
     }
     // V7.7.1: build the sight boxes and the meshes' bounding data now (behind the preparing screen), not in the first guided frame
     function warm() { if (!built) build(); targets(frameLot); floorClear(camera.position); exactClear(camera.position); }
     return { warm, ensure, seen: (P) => { targets(frameLot); return { box: clearLine(P, L), floor: floorClear(P), L: L.toArray().map((v) => +v.toFixed(1)) }; }, clearLine, choose, transitionPol, chasePol, boxes, stats,`, "sight: rescue the real eye"],
-  ["      c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z;", "      if ((S.cam === \"guided\" || S.cam === \"follow\") && !flat() && S.R > .9 && !stepAt(S.t).s.intro) SIGHT.ensure(camera.position, cameraTarget, eyeVelocity);   // after springs AND the legacy ceiling clamp\n      c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z;", "guided camera never hidden"],
+  ["    stage(\"camera\", cameraStart);", `    // The final rendered target includes the trolley's display lift, and device instances have this frame's transforms.
+    if ((S.cam === "guided" || S.cam === "follow") && !flat() && S.R > .9 && !cur.s.intro && SIGHT.ensure(camera.position, cameraTarget, eyeVelocity)) {
+      camera.lookAt(cameraTarget); camera.updateMatrixWorld();
+      const c = S.c, dx = camera.position.x - cameraTarget.x, dy = camera.position.y - cameraTarget.y, dz = camera.position.z - cameraTarget.z;
+      c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z; c.dist = Math.max(.001, Math.hypot(dx, dy, dz)); c.pol = Math.acos(clamp(dy / c.dist, -1, 1)); c.az = Math.atan2(dx, dz);
+      if (DEV) DEV.frame(cur, lp, 0, time);   // reproject the device chips with the corrected camera, without advancing animation
+    }
+    stage("camera", cameraStart);`, "guided camera never hidden"],
   // ---- owner (image 24): the "pale light cones" are the planar floor reflection mirroring the tall rack posts; off by default
   //      (?reflect=1 turns it back on). It also saves one extra scene render every third frame.
   ["const st = { enabled: query.get(\"reflect\") !== \"0\",", "const st = { enabled: query.get(\"reflect\") === \"1\",", "floor reflection off by default"],
@@ -200,7 +209,7 @@ export const replicaPatches = [
    "      box(p, cx, H / 2, cz, r.w, H, r.h, col, \"paint\");\n" +
    "      if (r.stripe) for (const s of [-1, 1]) box(p, long ? cx : cx + s * (r.w / 2 - .25), H + .08, long ? cz + s * (r.h / 2 - .25) : cz, long ? r.w : .5, .16, long ? .5 : r.h, parseInt(r.stripe.slice(1), 16), \"paint\");\n" +
    "      else box(p, cx, H + .05, cz, long ? r.w * .96 : r.w * .3, .1, long ? r.h * .3 : r.h * .96, 0xdfe5ee, \"paint\"); }\n" +
-   "    TAG = null; for (const q of R.marks || []) { const p = q.plate, t = .6, y = .12, cw = q.w / q.cols, ch = q.h / q.rows;\n" +
+   "    for (const q of R.marks || []) { const p = q.plate, t = .6, y = .12, cw = q.w / q.cols, ch = q.h / q.rows;\n" +
    "      for (let i = 0; i <= q.rows; i++) box(p, q.x + q.w / 2, y, q.y + ch * i, q.w + t, .12, t, c.yellow, \"paint\");\n" +
    "      for (let j = 0; j <= q.cols; j++) box(p, q.x + cw * j, y, q.y + q.h / 2, t, .12, q.h + t, c.yellow, \"paint\"); }",
    "layout adds 3D"],

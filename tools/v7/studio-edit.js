@@ -138,6 +138,8 @@ function syncRep(tag) {
     if (del) { for (let k = 0; k < 16; k++) arr[o + k] = 0; arr[o + 15] = 1; if (p.b0) for (let k = 0; k < 4; k++) p.entry.base[p.i * 4 + k] = 0; }
     else { mD.fromArray(p.m0); mD.premultiply(mA); mD.toArray(arr, o); if (p.b0) for (let k = 0; k < 4; k++) p.entry.base[p.i * 4 + k] = p.b0[k]; }
     p.entry.im.instanceMatrix.needsUpdate = true;
+    // Raycaster caches aggregate instance bounds; moving/deleting/undoing can change their extent.
+    p.entry.im.boundingBox = null; p.entry.im.boundingSphere = null;
   }
   repTouched.add(tag);
 }

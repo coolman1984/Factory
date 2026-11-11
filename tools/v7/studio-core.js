@@ -47,24 +47,21 @@ function toScene() {
   const sc = SCN.fromInternal(PROJECT, { nodes: doc.nodes, flows: doc.flows.map((f) => Object.assign({}, f, { steps: f.steps.map(cleanStep) })), devices: doc.devices, title: doc.title });
   sc.title = doc.title; sc.notes = doc.notes; sc.layout = doc.layout;
   sc.objects = doc.props.map((p) => { const o = { id: p.id, type: OBJ_OF_PROP[p.type] || p.type, floor: p.plate, x: +(p.x * U7).toFixed(3), y: +(p.y * U7).toFixed(3), heading: p.rot || 0, w: p.w, d: p.d, h: p.h, color: p.color }; if (p.name) o.name = p.name; if (p.text) o.text = p.text; return o; });
-  sc.layoutEdits = Object.entries(doc.replica).map(([tag, op]) => { const [k, n] = tag.split(":"), e = { target: REP_NAME_OF[k] + ":" + n }; if (op.dx || op.dy) e.move = [+((op.dx || 0) * U7).toFixed(3), +((op.dy || 0) * U7).toFixed(3)]; if (op.rot) e.turn = op.rot; if (op.del) e.delete = true; return e; }).filter((e) => e.move || e.turn || e.delete);
   // Preserve ordered edits (including doors combined with transforms) when Studio has not changed them.
   const originalOps = fromLayoutEdits(doc.layoutEdits || []);
   if (JSON.stringify(originalOps) === JSON.stringify(doc.replica)) sc.layoutEdits = clone(doc.layoutEdits || []);
   else {
-    // An unrelated edit must not flatten an existing ordered wall/door sequence.
-    const pending = sc.layoutEdits, out = [], seen = new Set();
-    for (const e of doc.layoutEdits || []) {
-      const [kind, id] = e.target.split(":"), tag = REP_KIND_OF[kind] + ":" + id;
-      if (JSON.stringify(originalOps[tag]) === JSON.stringify(doc.replica[tag])) out.push(clone(e));
-      else if (!seen.has(e.target)) {
-        const op = pending.find(x => x.target === e.target);
-        const door = (doc.doors || []).find(x => x.target === e.target);
-        if (op || door) out.push(Object.assign({}, door && clone(door), op));
-      }
-      seen.add(e.target);
+    // Live transforms are relative to the loaded geometry (syncRep), so append that same delta to its ordered edits.
+    // Replacing a target's sequence with its last operation would lose earlier moves/turns on save.
+    sc.layoutEdits = clone(doc.layoutEdits || []);
+    for (const tag of new Set([...Object.keys(originalOps), ...Object.keys(doc.replica)])) {
+      const op = doc.replica[tag] || {}, old = originalOps[tag] || {}, [kind, id] = tag.split(":"), e = { target: REP_NAME_OF[kind] + ":" + id };
+      const dx = (op.dx || 0) - (old.dx || 0), dy = (op.dy || 0) - (old.dy || 0), rot = (((op.rot || 0) - (old.rot || 0)) % 360 + 360) % 360;
+      if (dx || dy) e.move = [+(dx * U7).toFixed(3), +(dy * U7).toFixed(3)];
+      if (rot) e.turn = rot;
+      if (op.del && !old.del) e.delete = true;
+      if (e.move || e.turn || e.delete) sc.layoutEdits.push(e);
     }
-    sc.layoutEdits = out.concat(pending.filter(e => !seen.has(e.target)));
   }
   foldAdds(sc);
   sc.director = clone(doc.director); sc.takes = clone(doc.takes); sc.viewpoints = clone(doc.bookmarks); sc.studio = clone(doc.settings);

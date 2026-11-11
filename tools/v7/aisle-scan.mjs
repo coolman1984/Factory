@@ -1,6 +1,6 @@
 // Narrow trolley aisles: sweep the trolley footprint along every straight leg of every path (corners and the last 3 m before a
 // stop are skipped: the trolley slows and turns there) and list each layout object closer than --under metres (default 0.5).
-// Usage: node tools/v7/aisle-scan.mjs <scene.json> [--under 0.5] [--json out.json]
+// Usage: node tools/v7/aisle-scan.mjs <scene.json> [--under 0.5] [--player player.html] [--json out.json]
 import { readFileSync, writeFileSync } from "node:fs";
 import { loadSceneCore, readProjects, layoutFor } from "./scene-node.mjs";
 import { STAGE } from "./mf-commands.mjs";

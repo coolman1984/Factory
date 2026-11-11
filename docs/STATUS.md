@@ -104,3 +104,13 @@ Preparing screen: after loading, the risen factory renders behind a 'Preparing t
 ## V7.7.1 Phase A review — 2026-11-11
 
 Direct authorized review and safe fixes are documented in [REVIEW_REPORT.md](REVIEW_REPORT.md): stable scene identities/round trips, shared Studio geometry/router, validation, undo/save transactions, recorder cleanup, build/export guards and headless test recovery. The original 10 paths pass V6 identity. Startup stutter remains open: first candidate run 2/4 failures, sequential comparison baseline 2/4 versus candidate 1/4. Do not describe the suite as all passing. Final receipts, deferred findings and the changed-file inventory are in the report. Company scenes were not edited; earlier players and version archives retain their hashes. No git or delegation was used.
+
+## V7.7.2 task 1 review — 2026-11-11
+
+Restart recovery and direct review fixes are documented in [REVIEW_REPORT_772.md](REVIEW_REPORT_772.md): layout addition
+validation/identity, import and reload undo, ordered transform preservation, affine deletion and raycast bounds, CLI edge
+cases and final-eye camera checks. Fresh verification results and ranked proposals are in that report; receipts and the
+candidate player are in `dist/test/`. All 22 final build/test commands pass, including all 10 camera paths; the 18 historical
+player/archive hashes are unchanged. The separate CAD workbook-receipt mismatch still fails the broader project-docs check.
+Release integration remains with the lead. No git, bridge, other agents, remote access,
+company-scene edits or historical player replacements were used. CAD work and future camera/layout tasks are separate.
