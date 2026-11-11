@@ -16,6 +16,8 @@ const stage = args[0] && !args[0].startsWith("--") ? args[0] : "7.1";
 // each inner list is one script scope (the scene manager and the Studio have their own names)
 const STAGES = {
   "7.1": { groups: [["scene-ui.js"]], css: ["scene-ui.css"] },
+  "7.7.1": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
+  "7.7": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
   "7.6": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
 };
 if (!STAGES[stage]) throw new Error(`unknown stage ${stage} (built so far: ${Object.keys(STAGES).join(", ")})`);

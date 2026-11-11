@@ -21,7 +21,7 @@ try {
   const ev = async (e) => { const r = await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
   await call("Runtime.enable"); await call("Page.enable");
   for (let i = 0; i < 120; i++) { await wait(500); if (await ev(`typeof MF==='object'&&!!MF.ready`)) break; }
-  await ev(`Promise.resolve(MF.ready).then(()=>1)`); await wait(800);
+  await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`); await wait(800);
   if (process.env.MF_JS) console.log("setup:", JSON.stringify(await ev(process.env.MF_JS)));
   await ev(`MF.setCam(${JSON.stringify(cam)});0`);
   const total = await ev(`MF.D.flows[MF.S.flow].total`);

@@ -11,7 +11,7 @@ const call = (m, p = {}) => new Promise((r) => { const i = ++id; const f = (e) =
 await call("Runtime.enable"); await wait(4000);
 const ev = async (e) => (await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result.value;
 const shot = async (n) => writeFileSync(`${out}/${n}.png`, Buffer.from((await call("Page.captureScreenshot")).data, "base64"));
-await ev(`Promise.resolve(MF.ready).then(()=>1)`); await wait(800);
+await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`); await wait(800);
 await shot("g0-start"); await ev(`MF.seek(4)`); await wait(900); await shot("g1-rising");
 await ev(`MF.setFlow(1);MF.seek(MF.D.flows[1].items[2].t0+3)`); await wait(3500); await shot("g2-step-e1");
 await ev(`MF.setFlow(0);MF.seek(MF.D.flows[0].items[2].tm-1)`); await wait(3500); await shot("g3-e2");

@@ -24,7 +24,7 @@ async function run(cam, speed) {
     const ev = async (e) => { const r = await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
     await call("Runtime.enable");
     for (let i = 0; i < 120; i++) { await wait(500); if (await ev(`typeof MF==='object'&&!!MF.ready`)) break; }
-    await ev(`Promise.resolve(MF.ready).then(()=>1)`); await wait(800);
+    await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`); await wait(800);
     const res = await ev(`(async()=>{
       const T=window.THREE, cam=MF.lot.parent && MF.camera, ray=new T.Raycaster(), lot=new T.Vector3(), eye=new T.Vector3(), dir=new T.Vector3();
       const solids=[...MF.floors.flatMap(f=>[f.art,f.slab]), ...MF.REP.meshes.map(m=>m.im), ...Object.values(MF.devices.groups||{}).flatMap(g=>g.children.filter(o=>o.isInstancedMesh))];

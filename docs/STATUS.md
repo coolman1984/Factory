@@ -96,3 +96,6 @@ ode tools/v7/export-scenes.mjs (V6 data -> `private/v7/scenes/*.scene.json`; INJ
 - Frame rate 1080p (`tools/perf-file.mjs`): steady state 59.3-59.9 fps on all 4 tabs at 1x and 3x. OPEN: in some fresh browser sessions the opening rise (first ~7 s) runs at 7-10 fps, then recovers; V6 does the same; cause not found (cold start, GPU-side; CPU per frame 1-2 ms).
 - Video: one full take recorded end to end (`tools/v7/take-test.mjs`): H.264 MP4 (video/mp4;codecs=avc1.640029), 57 MB for a 76 s path at 3x (24 s), plays back in Chrome.
 - Tests: smoke, mouse, ui-check, tour all PASS.
+
+## V7.7.1 - 2026-11-11 (owner: hide the slow opening)
+Preparing screen: after loading, the risen factory renders behind a 'Preparing the 3D factory' card until 30 frames in a row are under 22 ms (or 4 s: then the rise is skipped and the story starts at step 1). `MF.prepared` resolves when the story may start; all test tools wait for it. `?prep=0` turns it off. Test `tools/v7/start-test.mjs`: 0 of 10 fresh starts with visible stutter (prep 0.6-0.9 s, 58.8-59.6 fps in the first 10 s). Open: Press path 2, 1 guided-camera sample hidden (owner accepted).

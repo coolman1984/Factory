@@ -12,7 +12,7 @@ let id = 0; const call = (m, p = {}) => new Promise((r) => { const i = ++id; con
 const ev = async (e) => (await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true })).result.value;
 await call("Runtime.enable"); await wait(5000);
 console.log("GPU:", await ev(`(()=>{const c=document.createElement('canvas').getContext('webgl2'),x=c.getExtension('WEBGL_debug_renderer_info');return x?c.getParameter(x.UNMASKED_RENDERER_WEBGL):'unknown'})()`));
-await ev(`Promise.resolve(MF.ready).then(()=>1)`); await wait(1500);
+await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`); await wait(1500);
 await ev(`window.__f=[];window.__w=[];(function l(t){if(window.__p!=null){const d=t-__p;__f.push(d);if(d>60)__w.push([+MF.S.t.toFixed(1),Math.round(d)])}window.__p=t;requestAnimationFrame(l)})(performance.now());MF.seek(0);MF.play();0`);
 await wait(secs * 1000);
 const f = await ev(`__f`); f.sort((a, b) => a - b);

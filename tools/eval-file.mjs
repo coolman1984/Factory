@@ -20,7 +20,7 @@ try {
   const ev = async (e) => { const r = await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
   await call("Runtime.enable");
   for (let i = 0; i < 120; i++) { await wait(500); if (await ev(`typeof MF==='object'&&!!MF.ready`)) break; }
-  await ev(`Promise.resolve(MF.ready).then(()=>1)`); await wait(500);
+  await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`); await wait(500);
   console.log(JSON.stringify(await ev(`(async()=>{${expr.includes("return") ? expr : "return (" + expr + ")"}})()`), null, 1));
   const box = await ev(`document.getElementById("err").textContent`); if (box) { console.log("ERROR BOX:", box); code = 1; }
   if (errors.length) { console.log("PAGE EXCEPTIONS:", JSON.stringify(errors)); code = 1; }

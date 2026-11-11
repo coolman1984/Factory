@@ -17,7 +17,7 @@ export async function openPage(file, hash = "inj1", { query = "q=high", size = "
   const ev = async (e) => { const r = await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
   await call("Runtime.enable");
   for (let i = 0; i < 150; i++) { await wait(400); try { if (await ev("typeof MF==='object'&&!!MF.ready")) break; } catch { /* navigating */ } }
-  await ev("Promise.resolve(MF.ready).then(()=>1)"); await wait(400);
+  await ev("Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)"); await wait(400);
   const close = async () => { try { ws.close(); } catch { /* closed */ } ch.kill(); await wait(700); try { rmSync(profile, { recursive: true, force: true }); } catch { /* held */ } };
-  return { ev, call, errors, close, wait, reload: async () => { await ev("location.reload()").catch(() => {}); await wait(800); for (let i = 0; i < 150; i++) { await wait(400); try { if (await ev("typeof MF==='object'&&!!MF.ready")) break; } catch { /* navigating */ } } await ev("Promise.resolve(MF.ready).then(()=>1)"); await wait(400); } };
+  return { ev, call, errors, close, wait, reload: async () => { await ev("location.reload()").catch(() => {}); await wait(800); for (let i = 0; i < 150; i++) { await wait(400); try { if (await ev("typeof MF==='object'&&!!MF.ready")) break; } catch { /* navigating */ } } await ev("Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)"); await wait(400); } };
 }

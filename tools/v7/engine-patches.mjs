@@ -3,6 +3,32 @@
 // came from, add the Studio frame hooks (pre: before the camera, post: after the overlay) and expose the internals to the Studio
 // as MF.x. Nothing here changes how V6 looks or plays when the Studio is closed.
 export const playerPatches = [
+  // ---- V7.7.1 preparing screen: after loading, render the fully risen factory behind a "Preparing" card until frame time is
+  //      stable (30 frames in a row under 22 ms), then start the opening rise. If it is still slow after 4 s, skip the rise and
+  //      start at step 1 with the factory up. MF.prepared resolves when the story may start (tests and tools wait for it).
+  ["  function tick(now) {\n    const raw = Math.max(0, (now - last) / 1000); last = now;", `  const PREP = { active: false, t0: 0, good: 0, frames: 0, skipped: false, el: null, done: null };
+  PREP.promise = new Promise((r) => (PREP.done = r));
+  function prepStart() {
+    PREP.active = true; PREP.t0 = performance.now(); PREP.good = 0; PREP.frames = 0;
+    const el = PREP.el = document.createElement("div"); el.id = "prep7";
+    el.innerHTML = '<div><b>Preparing the 3D factory…</b><i></i><small>Warming up the graphics so the film runs smoothly</small></div>'; document.body.appendChild(el);
+  }
+  function prepFrame(raw) {
+    PREP.frames++; PREP.good = raw < .022 ? PREP.good + 1 : 0;
+    REP.rise(1); for (const f of floors) f.art.material = f.surfaceMaterial; scene.updateMatrixWorld(); renderer.render(scene, camera);
+    const waited = performance.now() - PREP.t0, bar = PREP.el && PREP.el.querySelector("i"); if (bar) bar.style.width = Math.min(100, Math.max(PREP.good / 30, waited / 4000) * 100) + "%";
+    if (PREP.good >= 30 || waited > 4000) {
+      PREP.active = false; PREP.skipped = PREP.good < 30;
+      for (const f of floors) f.art.material = f.planMaterial; REP.rise(S.R); lastR = -1;
+      if (PREP.skipped) { const first = F().items[1]; if (first && S.t < first.t0) { S.R = 1; seek(first.t0); } }
+      if (PREP.el) { PREP.el.classList.add("out"); setTimeout(() => PREP.el && PREP.el.remove(), 400); }
+      metrics.prep = { frames: PREP.frames, ms: Math.round(waited), skipped: PREP.skipped }; last = performance.now(); PREP.done(metrics.prep);
+    }
+  }
+  function tick(now) {
+    const raw = Math.max(0, (now - last) / 1000); last = now;
+    if (PREP.active) { prepFrame(raw); requestAnimationFrame(tick); return; }`, "preparing screen (tick)"],
+  ["    metrics.lastMask = 0; event(\"startup-warmup\", start); last = performance.now(); requestAnimationFrame(tick);", "    metrics.lastMask = 0; event(\"startup-warmup\", start); last = performance.now(); if (query.get(\"prep\") !== \"0\") prepStart(); else PREP.done({ frames: 0, ms: 0, skipped: false }); requestAnimationFrame(tick);", "preparing screen (start)"],
   // ---- V7.7: warm the GPU with a few FULL-SIZE frames of the rise (canvas still hidden). The tiny 32 px warm-up left the first
   //      real frames of the opening rise to pay for driver setup (bursts of 100-300 ms frames in some runs).
   ["composer.width = composer.height = 0; resize(); canvas.style.visibility = oldVisibility;", "composer.width = composer.height = 0; resize();\n      try { for (const k of [.15, .45, .75, 1]) { REP.rise(k); REP.live(k, 1, 0); for (const f of floors) f.art.material = k > .85 ? f.surfaceMaterial : f.planMaterial; for (let i = 0; i < 2; i++) renderer.render(scene, camera); } renderer.getContext().finish(); } catch (e) { console.warn(\"full-size warm-up\", e); }\n      finally { for (const f of floors) f.art.material = f.planMaterial; REP.rise(S.R); REP.live(0, 1, 0); }\n      canvas.style.visibility = oldVisibility;", "full-size GPU warm-up"],
@@ -124,7 +150,7 @@ export const playerPatches = [
     return +(performance.now() - start).toFixed(1);
   }
   function v7Devices(full) { disposeDEV(); DEV = makeDEV(); window.MF.devices = DEV; reflection.rehide(); SIGHT.rebuild(); if (full) prepareChaseEnvelope(); }
-  window.MF = { x: { rebuild: v7Rebuild, rebuildDevices: v7Devices, rebuildPlanArt, renderer, camera, cameraTarget, frameLot: () => frameLot, F, stepAt, lotPos: (t, o) => lotPos(t, o), worldFromLot, plateOf, hitFloor, floors, plates, scene, labels, getE: () => E, ELEVATORS, GAP, CX, CY, INTRO, glideY, prepareChaseEnvelope, tip, toFree, setSpeed, renderFlow, resize, flat, fit, bare: () => bareOn }, devices: DEV, sight: SIGHT,`, "studio internals"],
+  window.MF = { prepared: PREP.promise, x: { rebuild: v7Rebuild, rebuildDevices: v7Devices, rebuildPlanArt, renderer, camera, cameraTarget, frameLot: () => frameLot, F, stepAt, lotPos: (t, o) => lotPos(t, o), worldFromLot, plateOf, hitFloor, floors, plates, scene, labels, getE: () => E, ELEVATORS, GAP, CX, CY, INTRO, glideY, prepareChaseEnvelope, tip, toFree, setSpeed, renderFlow, resize, flat, fit, bare: () => bareOn }, devices: DEV, sight: SIGHT,`, "studio internals"],
 ];
 
 // Replica builder (window.MFReplica.build): tag every instance with the plan object it came from ("racks:12"), so the Studio can

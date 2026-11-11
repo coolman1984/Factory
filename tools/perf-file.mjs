@@ -21,7 +21,7 @@ try {
   const ev = async (e) => { const r = await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
   await call("Runtime.enable");
   for (let i = 0; i < 120; i++) { await wait(500); if (await ev(`typeof MF==='object'&&!!MF.ready`)) break; }
-  await ev(`Promise.resolve(MF.ready).then(()=>1)`);
+  await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`);
   console.log("GPU:", await ev(`(()=>{const c=document.createElement('canvas').getContext('webgl2'),x=c&&c.getExtension('WEBGL_debug_renderer_info');return x?c.getParameter(x.UNMASKED_RENDERER_WEBGL):'unknown'})()`));
   if (process.env.MF_JS) console.log("setup:", JSON.stringify(await ev(process.env.MF_JS)));   // optional one-off setting before playback
   await wait(1500);

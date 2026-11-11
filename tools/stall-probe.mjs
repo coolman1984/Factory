@@ -19,7 +19,7 @@ try {
   const ev = async (e) => { const r = await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
   await call("Runtime.enable");
   for (let i = 0; i < 120; i++) { await wait(500); if (await ev(`typeof MF==='object'&&!!MF.ready`)) break; }
-  await ev(`Promise.resolve(MF.ready).then(()=>1)`); await wait(1500);
+  await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`); await wait(1500);
   const before = await ev(`({programs:MF.perf.snapshot().programs,textures:MF.perf.snapshot().textures,geometries:MF.perf.snapshot().geometries})`);
   await ev(`MF.setSpeed(${+speed});MF.perf.reset();MF.seek(0);MF.play();0`);
   await wait(+secs * 1000);

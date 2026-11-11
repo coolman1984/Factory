@@ -12,3 +12,9 @@
 #rail #sc7Btn.on{background:linear-gradient(180deg,rgba(43,212,192,.55),rgba(43,212,192,.22))}
 #sc7drop{position:fixed;inset:0;display:none;place-items:center;z-index:40;background:rgba(6,18,40,.55);pointer-events:none}
 #sc7drop div{padding:26px 40px;border:2px dashed #9fe7dc;border-radius:24px;font:600 20px var(--font);color:#fff;background:rgba(12,36,78,.8)}
+
+/* V7.7.1 preparing screen */
+#prep7{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:radial-gradient(circle at 50% 45%,#1d3f73,#0b1220 70%);transition:opacity .35s}#prep7.out{opacity:0;pointer-events:none}
+#prep7>div{display:flex;flex-direction:column;align-items:center;gap:12px;color:#eaf4ff;font:600 18px 'Segoe UI Variable','Segoe UI',system-ui,sans-serif}#prep7 small{font-weight:400;font-size:12.5px;color:#a9c3e4}
+#prep7 i{display:block;width:0;height:4px;border-radius:2px;background:linear-gradient(90deg,#2bd4c0,#bdf03c);transition:width .2s;align-self:stretch;min-width:0}#prep7>div::before{content:'';display:block}#prep7>div{width:min(360px,80vw)}
+
