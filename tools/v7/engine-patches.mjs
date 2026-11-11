@@ -3,6 +3,34 @@
 // came from, add the Studio frame hooks (pre: before the camera, post: after the overlay) and expose the internals to the Studio
 // as MF.x. Nothing here changes how V6 looks or plays when the Studio is closed.
 export const playerPatches = [
+  // ---- V7.7: warm the GPU with a few FULL-SIZE frames of the rise (canvas still hidden). The tiny 32 px warm-up left the first
+  //      real frames of the opening rise to pay for driver setup (bursts of 100-300 ms frames in some runs).
+  ["composer.width = composer.height = 0; resize(); canvas.style.visibility = oldVisibility;", "composer.width = composer.height = 0; resize();\n      try { for (const k of [.15, .45, .75, 1]) { REP.rise(k); REP.live(k, 1, 0); for (const f of floors) f.art.material = k > .85 ? f.surfaceMaterial : f.planMaterial; for (let i = 0; i < 2; i++) renderer.render(scene, camera); } renderer.getContext().finish(); } catch (e) { console.warn(\"full-size warm-up\", e); }\n      finally { for (const f of floors) f.art.material = f.planMaterial; REP.rise(S.R); REP.live(0, 1, 0); }\n      canvas.style.visibility = oldVisibility;", "full-size GPU warm-up"],
+  // ---- V7.7 hard rule: the guided / follow camera never ends a frame with the trolley hidden. After the springs, if the real eye's
+  //      line to the trolley is blocked, the eye moves at once to the nearest clear view (higher first, then around).
+  ["    return { clearLine, choose, transitionPol, chasePol, boxes, stats,", `    // exact check against the floors and slabs (a handful of triangles): the box model can miss slab edges around a shaft hole
+    const fray = new T.Raycaster(), fdir = new T.Vector3(); let fmeshes = null;
+    const floorClear = (P) => { if (!fmeshes) fmeshes = floors.flatMap((f) => [f.art, f.slab]); fdir.subVectors(L, P); const len = fdir.length(); fray.set(P, fdir.multiplyScalar(1 / len)); fray.far = Math.max(0, len - 1.5); for (const m of fmeshes) { let v = true; for (let o = m; o; o = o.parent) if (!o.visible) { v = false; break; } if (v && fray.intersectObject(m, false).length) return false; } return true; };
+    // exact check against the real replica meshes (~1 ms): the final word, so the trolley is never hidden by a missed box
+    const xray = new T.Raycaster(), xdir = new T.Vector3(); let xmeshes = null, xbudget = 0;
+    const exactClear = (P) => { if (!xmeshes) xmeshes = REP.meshes.map((m) => m.im).filter((o) => !o.material.transparent); xdir.subVectors(L, P); const len = xdir.length(); xray.set(P, xdir.multiplyScalar(1 / len)); xray.far = Math.max(0, len - 1.5); for (const m of xmeshes) { let v = m.visible; for (let o = m.parent; v && o; o = o.parent) if (!o.visible) v = false; if (v && xray.intersectObject(m, false).length) return false; } return true; };
+    const seen = (P) => clearLine(P, L) && floorClear(P) && (xbudget-- > 0 ? exactClear(P) : true);
+    function ensure(E3, Tg, vel) {
+      if (!fmeshes) fmeshes = floors.flatMap((f) => [f.art, f.slab]); for (const k of Object.keys(plates)) plates[k].updateMatrixWorld(true);   // floors may have moved this frame (glide)
+      xbudget = 6;
+      targets(frameLot); if (seen(E3)) return false;
+      const dx = E3.x - Tg.x, dy = E3.y - Tg.y, dz = E3.z - Tg.z, d = Math.max(1, Math.hypot(dx, dy, dz)), az = Math.atan2(dx, dz), pol = Math.acos(clamp(dy / d, -1, 1));
+      const take = () => { E3.copy(eye); vel.set(0, 0, 0); stats.rescued = (stats.rescued || 0) + 1; return true; };
+      // smallest change first: tilt up or down, then turn, then come closer (under an upper slab only a low, near view is clear)
+      for (let k = 1; k <= 30; k++) for (const q of [pol - k * .05, pol + k * .05]) if (q > .01 && q < 1.5 && seen(eyeAt(Tg, d, az, q, eye))) return take();
+      for (const o of [.35, -.35, .7, -.7, 1.2, -1.2, 1.9, -1.9, Math.PI]) for (const q of [pol, 1.2, .8, .5, .25, 1.4]) if (seen(eyeAt(Tg, d, az + o, q, eye))) return take();
+      for (const k of [.7, .5, .35, .22]) for (const o of [0, .7, -.7, 1.5, -1.5, Math.PI]) for (const q of [pol, 1.3, 1.1, .8, .5, .2]) if (seen(eyeAt(Tg, d * k, az + o, q, eye))) return take();
+      // last: views centred on the trolley itself (inside an elevator shaft only a near-vertical line through the shaft hole is clear)
+      for (const q of [.01, .06, .12, .2, .3]) for (const o of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) if (seen(eyeAt(L, d, az + o, q, eye))) return take();
+      eyeAt(L, d, az, .005, eye); return take();
+    }
+    return { ensure, seen: (P) => { targets(frameLot); return { box: clearLine(P, L), floor: floorClear(P), L: L.toArray().map((v) => +v.toFixed(1)) }; }, clearLine, choose, transitionPol, chasePol, boxes, stats,`, "sight: rescue the real eye"],
+  ["      // A spring or a seek can leave the rendered eye below its safe goal. Guard the actual eye too.", "      if ((S.cam === \"guided\" || S.cam === \"follow\") && !flat() && S.R > .9 && !stepAt(S.t).s.intro) SIGHT.ensure(camera.position, cameraTarget, eyeVelocity);   // V7.7: never hidden\n      // A spring or a seek can leave the rendered eye below its safe goal. Guard the actual eye too.", "guided camera never hidden"],
   // ---- owner (image 24): the "pale light cones" are the planar floor reflection mirroring the tall rack posts; off by default
   //      (?reflect=1 turns it back on). It also saves one extra scene render every third frame.
   ["const st = { enabled: query.get(\"reflect\") !== \"0\",", "const st = { enabled: query.get(\"reflect\") === \"1\",", "floor reflection off by default"],
