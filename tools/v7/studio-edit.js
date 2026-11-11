@@ -43,6 +43,7 @@ const PROP_TYPES = {
   arrow: { name: "Floor arrow", w: 2.4, d: 1.2, h: .02, color: "#2bd4c0" },
   zone: { name: "Floor zone", w: 4, d: 3, h: .02, color: "#1f6feb" },
   sign: { name: "Info sign", w: 1.6, d: .1, h: 2.2, color: "#1b57b8", text: "INFO" },
+  trolley: { name: "Trolley", w: .98, d: 1.74, h: 1.2, color: "#3a6fb0" },
 };
 const matCache = new Map();
 function pmat(color, opts = {}) {
@@ -88,6 +89,7 @@ function buildProp(p) {
     const tex = signTexture(p.text || "INFO", c), face = new T.MeshStandardMaterial({ map: tex, roughness: .5 }); face.name = "MF V7 sign";
     const panel = new T.Mesh(unitBox, [pmat(c), pmat(c), pmat(c), pmat(c), face, face]); panel.position.y = h * .75 * M; panel.scale.set(w * M, h * .45 * M, Math.max(.05, d) * M); panel.castShadow = true; g.add(panel);
   }
+  if (p.type === "trolley") { const m = MF.lot && MF.lot.userData.model; if (m) { const c = m.clone(true); c.scale.multiplyScalar(p.d / 1.74); g.add(c); } else boxPart(g, pmat(c), 0, h / 2, 0, w, h, d); }
   g.position.set(p.x - CX, 0, p.y - CY); g.rotation.y = -(p.rot || 0) * Math.PI / 180;
   g.traverse((o) => { o.userData.prop = p.id; }); g.name = "MF V7 prop " + (p.name || p.type);
   return g;
@@ -102,6 +104,12 @@ function syncProps() {
 function moveProp3D(p) { const o = propObjs.get(p.id); if (o) { o.position.set(p.x - CX, 0, p.y - CY); o.rotation.y = -(p.rot || 0) * Math.PI / 180; } }
 
 /* ---------- replica objects: an index from tag to instances, live moves, turns and deletes ---------- */
+function applyOp(kind, o, op) {   // same rule as scene-core applyLayoutEdits, in frame units
+  const dx = op.dx || 0, dy = op.dy || 0, rot = (((op.rot || 0) % 360) + 360) % 360;
+  if (kind === "walls") { const mx = (o.a[0] + o.b[0]) / 2 + dx, my = (o.a[1] + o.b[1]) / 2 + dy, r = rot * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r), t = (p) => { const x = p[0] + dx - mx, y = p[1] + dy - my; return [mx + x * c - y * sn, my + x * sn + y * c]; }; o.a = t(o.a); o.b = t(o.b); }
+  else if (kind === "columns") o.p = [o.p[0] + dx, o.p[1] + dy];
+  else { o.x += dx; o.y += dy; if (rot === 90 || rot === 270) { const cx = o.x + o.w / 2, cy = o.y + o.h / 2, w = o.w; o.w = o.h; o.h = w; o.x = cx - o.w / 2; o.y = cy - o.h / 2; if (kind === "machines" && o.type === "injection") o.vertical = !o.vertical; } }
+}
 let repIndex = null; const repTouched = new Set();
 const mA = new T.Matrix4(), mB = new T.Matrix4(), mC = new T.Matrix4(), mD = new T.Matrix4();
 function buildRepIndex() {
@@ -124,7 +132,7 @@ function syncRep(tag) {
   if (!repIndex) buildRepIndex(); const r = repIndex.get(tag); if (!r) return;
   const op = doc.replica[tag] || {}, lo = loadedOps[tag] || {}, dx = (op.dx || 0) - (lo.dx || 0), dy = (op.dy || 0) - (lo.dy || 0), drot = (op.rot || 0) - (lo.rot || 0), del = !!op.del;
   Object.keys(r.obj).forEach((k) => delete r.obj[k]); Object.assign(r.obj, clone(r.base));
-  MF7.applyOp ? MF7.applyOp(r.kind, r.obj, { dx, dy, rot: drot }) : null;
+  applyOp(r.kind, r.obj, { dx, dy, rot: drot });
   const list = RP[r.kind], at = list.indexOf(r.obj);
   if (del && at >= 0) list.splice(at, 1); else if (!del && at < 0) list.push(r.obj);
   const c = repCentre(r.kind, r.base), cx = c[0] - CX, cz = c[1] - CY, ang = -drot * Math.PI / 180;

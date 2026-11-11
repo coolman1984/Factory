@@ -13,7 +13,11 @@ import { playerPatches, replicaPatches } from "./v7/engine-patches.mjs";
 
 const args = process.argv.slice(2), opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const stage = args[0] && !args[0].startsWith("--") ? args[0] : "7.1";
-const STAGES = { "7.1": { modules: ["scene-ui.js"], css: ["scene-ui.css"] } };
+// each inner list is one script scope (the scene manager and the Studio have their own names)
+const STAGES = {
+  "7.1": { groups: [["scene-ui.js"]], css: ["scene-ui.css"] },
+  "7.6": { groups: [["scene-ui.js"], ["studio-core.js", "studio-camera.js", "studio-edit.js", "studio-director.js", "studio-numbers.js", "studio-ui.js"]], css: ["scene-ui.css", "studio.css"] },
+};
 if (!STAGES[stage]) throw new Error(`unknown stage ${stage} (built so far: ${Object.keys(STAGES).join(", ")})`);
 const inFile = opt("--in", "dist/Material_Flow_Player_v6.html"), outFile = opt("--out", `dist/Material_Flow_Player_v${stage}.html`);
 const bi = args.indexOf("--bake"), bakeFiles = bi >= 0 ? args.slice(bi + 1).filter((a) => !a.startsWith("--")) : existsSync("private/v7/scenes") ? readdirSync("private/v7/scenes").filter((f) => f.endsWith(".scene.json")).map((f) => "private/v7/scenes/" + f) : [];
@@ -63,8 +67,8 @@ html = once(html, "var p = P[id]; window.MF_PROJECT = id;", "var p = P[id]; if (
 for (const [a, b, what] of [...replicaPatches, ...playerPatches]) html = patch(html, a, b, what);
 
 // 3. this stage's modules, after the player
-const S = STAGES[stage], code = S.modules.map((f) => `/* ---- ${f} ---- */\n` + read(f)).join("\n");
-html = once(html, "</body>", `<script>/* Material Flow V${stage} */\n(() => {\n"use strict";\ntry {\n${safe(code)}\n} catch (e) { console.error("V${stage} add-on failed to start", e); const t = document.getElementById("tip"); if (t) { t.textContent = "The V${stage} tools could not start: " + e.message; t.style.display = "block"; } }\n})();</script>\n</body>`, "stage modules");
+const S = STAGES[stage], wrap = (files) => `<script>/* Material Flow V${stage}: ${files.join(", ")} */\n(() => {\n"use strict";\ntry {\n${safe(files.map((f) => `/* ---- ${f} ---- */\n` + read(f)).join("\n"))}\n} catch (e) { console.error("V${stage} add-on failed to start", e); const t = document.getElementById("tip"); if (t) { t.textContent = "The V${stage} tools could not start: " + e.message; t.style.display = "block"; } }\n})();</script>\n`;
+html = once(html, "</body>", S.groups.map(wrap).join("") + "</body>", "stage modules");
 html = once(html, "</style>", S.css.map(read).join("\n") + "</style>", "stage styles");
 html = once(html, "<title>Material Flow Player V6</title>", `<title>Material Flow Player V${stage}</title>`, "title");
 html = once(html, "<tr><td>2 / 3 / A</td>", "<tr><td>Ctrl+O / Ctrl+S</td><td>Open / save the scene file (also in the Scene file panel)</td></tr><tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo a scene change</td></tr><tr><td>2 / 3 / A</td>", "help: scene keys");

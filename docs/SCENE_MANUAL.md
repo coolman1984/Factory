@@ -223,22 +223,29 @@ the layout reference.
 | `move` | `[dx, dy]` in metres |
 | `turn` | `0`, `90`, `180` or `270` (about the object's centre) |
 | `delete` | `true` removes it |
+| `door` | `[from, to]` in metres along a straight wall (its y range for a vertical wall, x range for a horizontal one): cuts a doorway, for example `{ "target": "wall:170", "door": [61.65, 65.25] }` |
 
 Routes, the collision check and the plan follow the edited layout. Changing layout edits in the player reloads the page.
 
-## 8. Sections for later versions
+## 8. Objects, several trolleys, director (V7.6)
 
-These are accepted and checked for basic shape now. The validator warns that they are not shown yet.
-
-| section | shown from | content |
-|---|---|---|
-| `viewpoints` | V7.2 | saved camera views: `{ "name", "camera": { "target": [x, y, z] or "trolley", "distance", "heading", "tilt", "lens" } }` |
-| `objects` | V7.4 | crates, pallets, racks, columns, walls, fences, cones, floor arrows, floor zones, signs, extra trolleys: `{ "id", "type", "floor", "x", "y", "heading", "w", "d", "h", "color", "text" }` |
-| `director` | V7.5 | per path id: `shots` (camera keys tied to step moments), `captions`, `takes` (video recipes) |
-| path `trolleys` | V7.6 | several trolleys on one path |
-
-These formats are drafts until their version ships; this manual will then be updated.
-
+- **`objects`**: placed 3D objects. Each one is `{ "id", "type", "floor", "x", "y", "heading", "w", "d", "h", "color", "name", "text" }`, with `w`, `d` and `h` in metres.
+  - Types: `crate`, `pallet`, `rack`, `column`, `wall`, `fence`, `cone`, `floor-arrow`, `floor-zone`, `sign` (`text` is shown on the sign), `trolley`.
+- **Several trolleys** on a path: set `"trolleys": 1..12` on the path, and `"headway"` for the seconds between trolley starts. The Studio's Numbers tab shows the closest distance between moving trolleys; under 3 m counts as congestion.
+- **`director`**: one entry per path id, `{ "keys": [...], "caps": [...] }`, plus a top-level `takes` list. Normally you edit these in the Studio's Director tab.
+  - **keys** are camera keys:
+    - `t`: story seconds
+    - `x`, `y`, `z`, `dist`, `az`, `pol`, `fov`: camera target, distance and angles in the engine's own 3D units, not in metres; that's why the Director tab is the way to edit them
+    - `ease`: `smooth`, `linear`, `in`, `out` or `cut`
+    - `follow: true` rides with the trolley, using the offsets `ox`, `oy`, `oz`
+  - **caps** are captions:
+    - `t0` and `t1`: start and end, in seconds
+    - `title` and `text`: a string, or `{ "en", "ar", "ko" }`
+    - `pos`: `lower`, `upper`, `center`, `left` or `right`
+    - `style`: `glass`, `cinema`, `banner` or `minimal`
+    - `size`: 0.7 to 1.8
+- **`viewpoints`**: saved camera shots 1 to 6.
+- **`studio`**: editor settings: `snap`, `ortho`, caption language `lang`, and `shift` (hours).
 ## 9. Reference data
 
 Generate the reference for the current player with:

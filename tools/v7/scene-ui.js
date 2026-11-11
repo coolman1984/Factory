@@ -24,6 +24,7 @@ function load(scene, how, opts = {}) {
   if (opts.record !== false) { st.undo.push(clone(st.scene)); if (st.undo.length > 60) st.undo.shift(); st.redo.length = 0; }
   const prev = st.scene; st.scene = clone(scene); MF7.scene = st.scene; autosave();
   if (!sameEdits(prev, scene)) { X.tip("The layout edits changed: reloading the factory…"); setTimeout(() => location.reload(), 350); return true; }
+  if (window.MFX && window.MFX.replaceScene) { window.MFX.replaceScene(scene, how); render(); X.tip(`${how}: ${scene.paths.length} path(s) loaded`); return true; }
   const res = SC.toInternal(clone(scene), { plates: D.plates, elevators: layout().elevators, replica: MF.RP }, { applyLayout: false });
   for (const k of Object.keys(D.nodes)) delete D.nodes[k]; Object.assign(D.nodes, res.data.nodes);
   D.flows = res.data.flows; D.devices = res.data.devices; if (D.slide && res.data.title) D.slide.title = res.data.title;
@@ -31,14 +32,15 @@ function load(scene, how, opts = {}) {
   render(); X.tip(`${how}: ${scene.paths.length} path(s) loaded in ${(performance.now() - t0).toFixed(0)} ms${rep.warnings.length ? `, ${rep.warnings.length} warning(s)` : ""}`);
   return true;
 }
-function undo() { const s = st.undo.pop(); if (!s) return X.tip("Nothing to undo"); st.redo.push(clone(st.scene)); load(s, "Undo", { record: false, force: true }); }
-function redo() { const s = st.redo.pop(); if (!s) return X.tip("Nothing to redo"); st.undo.push(clone(st.scene)); load(s, "Redo", { record: false, force: true }); }
+function undo() { if (window.MFX && MFX.canUndo()) return MFX.undo(); const s = st.undo.pop(); if (!s) return X.tip("Nothing to undo"); st.redo.push(clone(st.scene)); load(s, "Undo", { record: false, force: true }); }
+function redo() { if (window.MFX && MFX.canRedo()) return MFX.redo(); const s = st.redo.pop(); if (!s) return X.tip("Nothing to redo"); st.undo.push(clone(st.scene)); load(s, "Redo", { record: false, force: true }); }
 
 /* ---------- files ---------- */
 const TYPES = [{ description: "Material Flow scene", accept: { "application/json": [".json"] } }];
 const text = () => JSON.stringify(st.scene, null, 1) + "\n";
 async function writeHandle(h) { const w = await h.createWritable(); await w.write(text()); await w.close(); }
 async function save() {
+  if (window.MFX) MFX.flush();
   if (!st.handle) return saveAs();
   try {
     if (st.handle.queryPermission && (await st.handle.queryPermission({ mode: "readwrite" })) !== "granted" && (await st.handle.requestPermission({ mode: "readwrite" })) !== "granted") throw new Error("permission refused");
@@ -53,6 +55,7 @@ async function saveAs() {
   } catch (e) { if (e.name !== "AbortError") { X.tip("Save as failed (" + e.message + "): downloading instead"); download(); } }
 }
 function download() {
+  if (window.MFX) MFX.flush();
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text()], { type: "application/json" })); a.download = st.fileName || `${PROJECT}.scene.json`;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
 }
@@ -119,4 +122,4 @@ addEventListener("keydown", (e) => {
 if (MF7.issues && MF7.issues.length) X.tip(MF7.issues[0].msg);
 MF.ready.then(() => { if (MF7.source === "browser") X.tip("Your scene saved in this browser is loaded (Scene file: Reset to built-in to undo)"); if (MF7.error) X.tip(MF7.error); });
 // test and automation surface
-window.MFS = { get scene() { return st.scene; }, load: (s, o) => load(s, "Loaded", o), validate: () => SC.validate(st.scene, layout()), undo, redo, save, saveAs, download, open, state: st, fsOK };
+window.MFS = { setScene: (s) => { st.scene = s; MF7.scene = s; render(); }, openFile, get scene() { return st.scene; }, load: (s, o) => load(s, "Loaded", o), validate: () => SC.validate(st.scene, layout()), undo, redo, save, saveAs, download, open, state: st, fsOK };

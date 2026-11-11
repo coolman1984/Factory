@@ -99,7 +99,7 @@ statusHandler = (msg, bad) => { syncToolbar(); if (bad) X.tip(msg); };
 /* ---------- editor panel ---------- */
 const panel = h(`<div id="ed7" class="ui glass" role="region" aria-label="Scene Studio">
   <div class="hd"><b>Scene Studio</b><span class="pj">${esc(PROJECT.toUpperCase())}</span><button class="ib xs" id="edClose" aria-label="Close the Studio">${ICON.x}</button></div>
-  <div class="tabs7" role="tablist"><button data-t="objects">Objects</button><button data-t="paths">Paths</button><button data-t="steps">Steps</button><button data-t="director">Director</button><button data-t="project">Project</button></div>
+  <div class="tabs7" role="tablist"><button data-t="objects">Objects</button><button data-t="paths">Paths</button><button data-t="steps">Steps</button><button data-t="director">Director</button><button data-t="numbers">Numbers</button><button data-t="project">Project</button></div>
   <div class="body" id="edBody"></div></div>`);
 document.body.appendChild(panel);
 panel.querySelectorAll(".tabs7 button").forEach((b) => (b.onclick = () => setTab(b.dataset.t)));
@@ -116,7 +116,7 @@ dirBtn.onclick = () => { if (ed.open && ed.tab === "director") setEditor(false);
 const body = $("edBody");
 function render() {
   if (!ed.open) return; const keepScroll = body.scrollTop, focused = document.activeElement && body.contains(document.activeElement) ? document.activeElement.dataset.f : null;
-  ({ objects: renderObjects, paths: renderPaths, steps: renderSteps, director: renderDirector, project: renderProject })[ed.tab]();
+  ({ objects: renderObjects, paths: renderPaths, steps: renderSteps, director: renderDirector, numbers: renderNumbers, project: renderProject })[ed.tab]();
   body.scrollTop = keepScroll; if (focused) { const el = body.querySelector(`[data-f="${focused}"]`); if (el) el.focus(); }
   syncToolbar();
 }
@@ -127,7 +127,7 @@ const nodeOptions = (cur, none) => (none ? opt("", "(none)", cur) : "") + nodeLi
 
 /* ---- Objects tab ---- */
 const ADD_GROUPS = [["Devices", ["pc-result", "pc-mapping", "pc-quality", "rfid-auto", "rfid-manual", "stop"]], ["Props", Object.keys(PROP_TYPES).map((k) => "prop-" + k)]];
-const ADD_ICON = { "pc-result": "●", "pc-mapping": "■", "pc-quality": "⬢", "rfid-auto": "⊓", "rfid-manual": "⌖", stop: "◆", "prop-box": "▣", "prop-pallet": "▤", "prop-rack": "▥", "prop-column": "▮", "prop-wall": "▬", "prop-fence": "┼", "prop-cone": "▲", "prop-arrow": "➜", "prop-zone": "▢", "prop-sign": "ⓘ" };
+const ADD_ICON = { "pc-result": "●", "pc-mapping": "■", "pc-quality": "⬢", "rfid-auto": "⊓", "rfid-manual": "⌖", stop: "◆", "prop-box": "▣", "prop-pallet": "▤", "prop-rack": "▥", "prop-column": "▮", "prop-wall": "▬", "prop-fence": "┼", "prop-cone": "▲", "prop-arrow": "➜", "prop-zone": "▢", "prop-sign": "ⓘ", "prop-trolley": "⛟" };
 function renderObjects() {
   const info = selInfo(), o = selObj(), k = ed.sel && ed.sel.kind;
   let insp = `<p class="hint">Click an object in the 3D scene, a stop diamond, or an item below. Drag it to move; drag the round green knob to turn. Delete removes, Ctrl+D duplicates, Q / E turn, arrows nudge.</p>`;
@@ -206,12 +206,12 @@ const MODES = [["flow", "Pushed (step)"], ["auto", "AGV (auto)"], ["manual", "Ma
 function renderSteps() {
   const f = curFlow(); if (!f) return; const fi = S.flow;
   body.innerHTML = `<div class="sec card7"><div class="ct"><b>Flow ${fi + 1} of ${doc.flows.length}</b><span>${f.steps.length} steps</span></div>
-    <label>Name<input data-f="flow.name" value="${esc(f.name)}"></label><label>Colour<input type="color" data-f="flow.color" value="${f.color || "#7030A0"}"></label>
-    <div class="acts"><button data-a="newFlow">New flow</button><button data-a="dupFlow">Duplicate</button><button data-a="left">◀ Move</button><button data-a="right">Move ▶</button><button data-a="delFlow" class="danger">Delete flow</button></div></div>
+    <label>Name<input data-f="flow.name" value="${esc(f.name)}"></label><div class="g3"><label>Colour<input type="color" data-f="flow.color" value="${f.color || "#7030A0"}"></label><label>Trolleys<input type="number" min="1" max="12" step="1" data-f="flow.trolleys" value="${f.trolleys || 1}"></label><label>Every (s)<input type="number" min="1" step="1" data-f="flow.headway" value="${f.headway || 30}"></label></div>
+    <div class="acts"><button data-a="newFlow">New flow</button><button data-a="dupFlow">Duplicate</button><button data-a="left">◀ Move</button><button data-a="right">Move ▶</button><button data-a="reverse" title="Drive the path the other way round (no elevator rides)">Reverse</button><button data-a="delFlow" class="danger">Delete flow</button></div></div>
     <ol class="steps7">${f.steps.map((s, i) => `<li draggable="true" data-i="${i}" class="${i === ed.stepSel ? "on" : ""}"><div class="row7"><span class="grip" title="Drag to reorder">⋮⋮</span><span class="no">${i + 1}</span><b>${esc(s.title || "Step")}</b><span class="mini">${s.lift ? "elevator" : esc((MODES.find((m) => m[0] === s.mode) || ["", s.mode || ""])[1])}</span><button data-up="${i}" title="Move up">▲</button><button data-dn="${i}" title="Move down">▼</button></div>
       ${i === ed.stepSel ? `<div class="ed7row"><label>Title<input data-f="s.title" value="${esc(s.title || "")}"></label><label>Explanation (shown on the card)<textarea data-f="s.what" rows="3">${esc(s.what || "")}</textarea></label>
       ${s.lift ? `<label>Elevator<select data-f="s.elevator">${ELEVATORS.map((e) => opt(e.label, e.label, s.elevator)).join("")}</select></label>` : `<label>Stop<select data-f="s.node">${nodeOptions(s.node)}</select></label>`}
-      <div class="g3"><label>Mode<select data-f="s.mode">${MODES.map(([v, l]) => opt(v, l, s.mode)).join("")}</select></label><label>Wait (s)<input type="number" step="0.1" min="0" data-f="s.dwell" value="${s.dwell != null ? s.dwell : ""}" placeholder="auto"></label><label>Camera (m)<input type="number" step="5" min="10" data-f="s.dist" value="${num((s.dist || 300) * PT_M, 0)}"></label></div>
+      <div class="g3"><label>Mode<select data-f="s.mode">${MODES.map(([v, l]) => opt(v, l, s.mode)).join("")}</select></label><label>Wait (s)<input type="number" step="0.1" min="0" data-f="s.dwell" value="${s.dwell != null ? s.dwell : ""}" placeholder="auto"></label><label>Camera (m)<input type="number" step="5" min="10" data-f="s.dist" value="${num((s.dist || 300) * PT_M, 0)}"></label></div>${s.lift ? "" : `<label>Speed (m/s, empty = 4)<input type="number" step="0.1" min="0.2" max="8" data-f="s.speed" value="${s.speed != null ? s.speed : ""}" placeholder="4"></label>`}
       <div class="acts">${s.lift ? "" : `<button data-a="route">Auto-route</button>`}<button data-a="delStep" class="danger">Delete step</button></div></div>` : ""}</li>`).join("")}</ol>
     <div class="sec card7"><div class="ct"><b>Add a step after step ${Math.max(1, ed.stepSel + 1)}</b></div><label>Go to stop<select id="addStop">${nodeOptions(null)}</select></label>
       <div class="acts"><button data-a="addStep">Add step</button>${ELEVATORS.length ? `<select id="addElev">${ELEVATORS.map((e) => opt(e.label, e.label)).join("")}</select><button data-a="addLift">Add elevator ride</button>` : ""}</div>
@@ -233,6 +233,7 @@ function renderSteps() {
     left: () => { if (fi < 1) return; commit("move flow", () => { const [x] = doc.flows.splice(fi, 1); doc.flows.splice(fi - 1, 0, x); }); MF.setFlow(fi - 1); render(); },
     right: () => { if (fi >= doc.flows.length - 1) return; commit("move flow", () => { const [x] = doc.flows.splice(fi, 1); doc.flows.splice(fi + 1, 0, x); }); MF.setFlow(fi + 1); render(); },
     route: () => autoRoute(fi, ed.stepSel),
+    reverse: () => { if (f.steps.some((x) => x.lift)) return X.tip("Paths with an elevator ride cannot be reversed (rides go up only)"); commit("reverse path", () => { f.steps.reverse(); f.steps[0].path = null; for (let k = 1; k < f.steps.length; k++) relink(f, k, true); }); render(); },
     delStep: () => { if (f.steps.length < 2) return X.tip("A flow keeps at least one step"); const i = ed.stepSel; commit("delete step " + (i + 1), () => { f.steps.splice(i, 1); for (let k = i; k < f.steps.length; k++) relink(f, k); }); ed.stepSel = Math.min(i, f.steps.length - 1); render(); },
     addStep: () => { const id = +$("addStop").value, n = doc.nodes[id]; if (!n) return; const at = ed.stepSel + 1; commit("add step", () => { f.steps.splice(at, 0, { node: id, title: n.text || "Step", what: "", mode: "flow", view: "3d", dist: 300, path: null, dwell: 1.2 }); relink(f, at, true); for (let k = at + 1; k < f.steps.length; k++) relink(f, k); }); ed.stepSel = at; render(); },
     addLift: () => {
@@ -245,11 +246,12 @@ function renderSteps() {
   body.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => acts[b.dataset.a] && acts[b.dataset.a]()));
   bindFields(body, (path, v) => {
     const [o, k] = path.split("."), s = f.steps[ed.stepSel];
-    if (o === "flow") return commit("edit flow " + k, () => { f[k] = v; });
+    if (o === "flow") return commit("edit flow " + k, () => { if (k === "trolleys") { f.trolleys = Math.max(1, Math.min(12, Math.round(v))); if (f.trolleys < 2) delete f.trolleys; } else if (k === "headway") f.headway = Math.max(1, v); else f[k] = v; });
     commit("edit step " + k, () => {
       if (k === "node") { s.node = +v; relink(f, ed.stepSel, true); relink(f, ed.stepSel + 1); }
       else if (k === "dwell") { if (v === "" || !Number.isFinite(v)) delete s.dwell; else s.dwell = Math.max(0, v); }
       else if (k === "dist") s.dist = Math.max(10, v / PT_M);
+      else if (k === "speed") { if (v === "" || !Number.isFinite(v) || v === 4) delete s.speed; else s.speed = Math.min(8, Math.max(.2, v)); }
       else s[k] = v;
     });
   });
@@ -266,9 +268,9 @@ function renderDirector() {
   body.innerHTML = `<div class="sec"><h4>Camera shots · ${esc(f ? f.name : "")}</h4><p class="hint">Frame the view with the pad or the mouse, then add a key. The director camera glides through the keys along the timeline. A trolley-locked key rides with the trolley.</p>
     <div class="acts"><button data-a="key" class="pri">+ Key here (K)</button><button data-a="keyF">+ Trolley-locked key</button><button data-a="rec" class="${camRec.on ? "recon" : ""}">${camRec.on ? "■ Stop camera recording" : "● Record camera move"}</button><button data-a="play">${S.cam === "director" ? "Director camera on" : "▶ Watch director cut"}</button></div>
     <ul class="list7 keys">${d.keys.map((k) => `<li data-k="${k.id}" class="${dsel.key === k.id ? "on" : ""}"><input type="number" step="0.1" min="0" max="${total.toFixed(1)}" data-f="t:${k.id}" value="${k.t.toFixed(2)}" title="Time (s)"><select data-f="ease:${k.id}" title="How the camera arrives at this key">${opt("smooth", "Smooth", k.ease)}${opt("linear", "Linear", k.ease)}${opt("in", "Ease in", k.ease)}${opt("out", "Ease out", k.ease)}${opt("cut", "Cut", k.ease)}</select><label class="chk" title="Ride with the trolley"><input type="checkbox" data-f="follow:${k.id}" ${k.follow ? "checked" : ""}>ride</label><button data-go="${k.id}" title="Go to this key">Go</button><button data-up="${k.id}" title="Replace with the current view">Set</button><button data-del="${k.id}" class="danger" title="Delete">✕</button></li>`).join("") || "<li class='empty'>No keys yet</li>"}</ul></div>
-    <div class="sec"><h4>Captions</h4><p class="hint">Explanation texts shown over the scene for a time range (also in recorded videos). The step cards are edited in Steps.</p><div class="acts"><button data-a="cap" class="pri">+ Caption here</button></div>
+    <div class="sec"><h4>Captions</h4><label>Language shown and edited<select id="capLang">${LANGS.map(([v, l]) => opt(v, l, lang())).join("")}</select></label><p class="hint">Explanation texts shown over the scene for a time range (also in recorded videos). The step cards are edited in Steps.</p><div class="acts"><button data-a="cap" class="pri">+ Caption here</button></div>
     ${d.caps.map((c) => `<div class="card7 cap ${dsel.cap === c.id ? "on" : ""}" data-c="${c.id}"><div class="g3"><label>From (s)<input type="number" step="0.1" min="0" data-f="t0:${c.id}" value="${c.t0.toFixed(1)}"></label><label>To (s)<input type="number" step="0.1" min="0" data-f="t1:${c.id}" value="${c.t1.toFixed(1)}"></label><label>Size<input type="range" min="0.7" max="1.8" step="0.05" data-f="size:${c.id}" value="${c.size || 1}"></label></div>
-      <label>Title<input data-f="title:${c.id}" value="${esc(c.title || "")}"></label><label>Text<textarea rows="2" data-f="text:${c.id}">${esc(c.text || "")}</textarea></label>
+      <label>Title (${lang().toUpperCase()})<input dir="${lang() === "ar" ? "rtl" : "ltr"}" data-f="title:${c.id}" value="${esc(trEdit(c.title))}" placeholder="${esc(tr(c.title, "en"))}"></label><label>Text (${lang().toUpperCase()})<textarea dir="${lang() === "ar" ? "rtl" : "ltr"}" rows="2" data-f="text:${c.id}" placeholder="${esc(tr(c.text, "en"))}">${esc(trEdit(c.text))}</textarea></label>
       <div class="g2"><label>Place<select data-f="pos:${c.id}">${opt("lower", "Lower third", c.pos)}${opt("upper", "Top", c.pos)}${opt("center", "Centre", c.pos)}${opt("left", "Left", c.pos)}${opt("right", "Right", c.pos)}</select></label><label>Style<select data-f="style:${c.id}">${opt("glass", "Glass", c.style)}${opt("cinema", "Cinema", c.style)}${opt("banner", "Banner", c.style)}${opt("minimal", "Minimal", c.style)}</select></label></div>
       <div class="acts"><button data-cs="${c.id}">Start = now</button><button data-ce="${c.id}">End = now</button><button data-cg="${c.id}">Go</button><button data-cd="${c.id}" class="danger">Delete</button></div></div>`).join("")}</div>
     <div class="sec"><h4>Video takes</h4><p class="hint">A take replays a time range of a flow and saves it as a video (WebM) with the director camera, labels, cards and captions. Edit a take and record it again at any time.</p>
@@ -278,6 +280,7 @@ function renderDirector() {
       <div class="g2"><label>Camera<select data-f="cam:${t.id}">${opt("director", "Director cut", t.cam)}${opt("guided", "Guided", t.cam)}${opt("chase", "Ride with the trolley", t.cam)}${opt("keep", "As it is now", t.cam)}</select></label><label>Quality<select data-f="quality:${t.id}">${opt("high", "High (16 Mbit/s)", t.quality)}${opt("normal", "Normal (8 Mbit/s)", t.quality)}</select></label></div>
       <div class="chks"><label class="chk"><input type="checkbox" data-f="captions:${t.id}" ${t.captions ? "checked" : ""}>Captions</label><label class="chk"><input type="checkbox" data-f="card:${t.id}" ${t.card ? "checked" : ""}>Step card</label><label class="chk"><input type="checkbox" data-f="labels:${t.id}" ${t.labels ? "checked" : ""}>Labels</label></div>
       <div class="acts"><button data-ti="${t.id}">In = now</button><button data-to="${t.id}">Out = now</button><button data-tp="${t.id}">▶ Preview</button><button data-tr="${t.id}" class="pri">● Record video</button><button data-td="${t.id}" class="danger">✕</button></div></div>`).join("")}</div>`;
+  $("capLang").onchange = (e) => { commit("caption language", () => { doc.settings.lang = e.target.value; }, "director"); render(); };
   const acts = { key: () => addKey(), keyF: () => addKey({ follow: true }), rec: () => (camRec.on ? stopCamRec() : startCamRec()), play: () => { if (!dirOf().keys.length) return X.tip("Add camera keys first"); MF.setCam("director"); MF.seek(0); MF.play(); render(); }, cap: addCaption, take: () => commit("new take", () => doc.takes.push(newTake()), "director") };
   body.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => { acts[b.dataset.a](); render(); renderLanes(); }));
   const keyOf = (id) => d.keys.find((k) => k.id === id), capOf = (id) => d.caps.find((c) => c.id === id), takeOf = (id) => doc.takes.find((t) => t.id === id);
@@ -297,7 +300,7 @@ function renderDirector() {
     const [k, id] = path.split(":"), key = keyOf(id), cap = capOf(id), take = takeOf(id);
     commit("edit " + k, () => {
       if (key) { if (k === "t") key.t = clamp(v, 0, total); else if (k === "follow") { key.follow = v; const p = trolleyWorld(key.t); key.ox = key.x - p.x; key.oy = key.y - p.y; key.oz = key.z - p.z; if (!v) { key.x = p.x + (key.ox || 0); } } else key[k] = v; sortKeys(d); }
-      else if (cap) { if (k === "t0" || k === "t1") cap[k] = clamp(v, 0, total); else cap[k] = v; if (cap.t1 < cap.t0 + .2) cap.t1 = cap.t0 + .2; }
+      else if (cap) { if (k === "t0" || k === "t1") cap[k] = clamp(v, 0, total); else if (k === "title" || k === "text") setTr(cap, k, v); else cap[k] = v; if (cap.t1 < cap.t0 + .2) cap.t1 = cap.t0 + .2; }
       else if (take) { if (k === "speed") take.speed = +v; else take[k] = v; }
     }, "director");
     if (k === "size") return; render(); renderLanes();
@@ -309,16 +312,16 @@ function renderProject() {
   const src = { original: "the original data in this file", browser: "a scene saved in this browser", file: "a scene baked into this file" }[MF7.source] || MF7.source;
   body.innerHTML = `<div class="sec card7"><div class="ct"><b>${esc(doc.title)}</b><span>${esc(PROJECT)}</span></div><label>Title<input data-f="title" value="${esc(doc.title)}"></label>
     <p class="hint">This view started from ${src}. Every change is saved in this browser automatically (Ctrl+S saves at once). Export the scene to keep it as a file or share it; Import loads one.</p>
-    <div class="acts"><button data-a="save" class="pri">Save now</button><button data-a="export">Export scene (.json)</button><button data-a="import">Import scene…</button><button data-a="reset" class="danger">Reset to original</button></div>
+    <div class="acts"><button data-a="save" class="pri">Save scene file</button><button data-a="export">Download scene (.json)</button><button data-a="import">Open scene file…</button><button data-a="reset" class="danger">Reset to original</button></div>
     <input type="file" id="imp7" accept=".json,application/json" hidden>${MF7.error ? `<p class="bad">The saved scene had a problem: ${esc(MF7.error)}</p>` : ""}</div>
     <div class="sec card7"><div class="ct"><b>This scene</b></div><p class="hint">${doc.flows.length} flows · ${doc.flows.reduce((n, f) => n + f.steps.length, 0)} steps · ${nodeList().length} stops · ${doc.devices.length} devices · ${doc.props.length} props · ${Object.keys(doc.replica).length} replica edits · ${Object.values(doc.director).reduce((n, d) => n + (d.keys || []).length, 0)} camera keys · ${Object.values(doc.director).reduce((n, d) => n + (d.caps || []).length, 0)} captions · ${doc.takes.length} takes</p><p class="hint">Undo history: ${undoStack.length} change(s).</p></div>
     <div class="sec card7"><div class="ct"><b>Keys and mouse</b></div><table class="keys7">
     <tr><td>Left drag</td><td>Orbit (on an object: move it)</td></tr><tr><td>Right drag / Shift</td><td>Pan</td></tr><tr><td>Wheel</td><td>Zoom toward the cursor</td></tr><tr><td>Double-click</td><td>Fly to that point (on a path leg: add a corner)</td></tr>
     <tr><td>Delete</td><td>Delete the selection or the corner under the mouse</td></tr><tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo</td></tr><tr><td>Ctrl+D</td><td>Duplicate</td></tr><tr><td>Q / E</td><td>Turn 15° (Shift: 90°)</td></tr><tr><td>Arrows</td><td>Nudge one snap step (Shift: ×10)</td></tr><tr><td>K</td><td>Add a director camera key</td></tr><tr><td>Esc</td><td>Stop the tool / clear the selection</td></tr></table></div>`;
   const acts = {
-    save: saveNow,
-    export: () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], { type: "application/json" })); a.download = `Material_Flow_${PROJECT}_scene.json`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000); },
-    import: () => $("imp7").click(),
+    save: () => { saveNow(); MFS.save(); },
+    export: () => { saveNow(); MFS.download(); },
+    import: () => MFS.openFile(),
     reset: () => { if (!acts.reset.armed) { acts.reset.armed = true; X.tip("Click Reset again within 3 s: the saved scene is forgotten and the original comes back"); setTimeout(() => (acts.reset.armed = false), 3000); return; } try { localStorage.removeItem(storageKey()); } catch (e) {} location.reload(); },
   };
   body.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => acts[b.dataset.a]()));
@@ -498,16 +501,18 @@ window.MFX = {
     const R = S.R, show = R > .02, k = Math.max(.002, R * R * (3 - 2 * R));
     for (const g of Object.values(propGroups)) { if (g.visible !== show) g.visible = show; if (show && g.scale.y !== k) g.scale.y = k; }
     if (!isFreeish()) { cam.lastMode = S.cam; if (Math.abs(camera.fov - BASE_FOV) > 1e-3) { camera.fov = BASE_FOV; camera.updateProjectionMatrix(); } }
-    sampleCamRec(); void dt;
+    sampleCamRec(); fleetFrame(); void dt;
   },
   post(dt, time) {
     drawOverlay(time); drawCaptions(); if (rec.active) recFrame();
-    const now = performance.now(); padTick(now);
+    const now = performance.now(); padTick(now); if (ed.open && ed.tab === "numbers" && now - (fleetTick.t || 0) > 400) { fleetTick.t = now; fleetTick(); }
     if (S.flow !== lastFlow || Math.abs(X.F().total - lastTotal) > 1e-6) { lastFlow = S.flow; lastTotal = X.F().total; ed.stepSel = Math.min(ed.stepSel, curFlow().steps.length - 1); runChecks(); render(); renderLanes(); }
     if (rec.active) { $("recT").textContent = fmtT((now - rec.started) / 1000).replace(/\.\d$/, ""); $("recN").textContent = rec.take.name + " · " + fmtT(S.t); }
   },
   // test and automation surface
-  doc, ed, cam, commit, undo, redo, apply, select, startPlace, placeAt, autoRoute, routeBetween, checkFlow, validateFlow, relink, addKey, addCaption, evalDirector, startTake, stopTake, rec, setEditor, setTab, setPad, saveNow, moveSelTo, rotateSelBy, deleteSel, duplicateSel, nudge, syncRep, buildRepIndex, repIndex: () => repIndex, flyTo, viewPreset, setLock, zoomBy, goFree, dragVertex, dragSegment, footprints, solidsOf, gridFor,
+  flush: () => { if (dirty) saveNow(); }, canUndo: () => undoStack.length > 0, canRedo: () => redoStack.length > 0,
+  replaceScene: (scene, how) => { commit(how || "load scene", () => { const w = fromScene(scene); for (const k of Object.keys(doc)) delete doc[k]; Object.assign(doc, w); }); saveNow(); render(); renderLanes(); },
+  toScene, doc, ed, cam, commit, undo, redo, apply, select, startPlace, placeAt, autoRoute, routeBetween, checkFlow, validateFlow, relink, addKey, addCaption, evalDirector, startTake, stopTake, rec, setEditor, setTab, setPad, saveNow, moveSelTo, rotateSelBy, deleteSel, duplicateSel, nudge, syncRep, buildRepIndex, repIndex: () => repIndex, flyTo, viewPreset, setLock, zoomBy, goFree, dragVertex, dragSegment, footprints, solidsOf, gridFor,
 };
 
 /* ---------- start ---------- */

@@ -20,20 +20,36 @@ const plateZone = (k) => { const P = D.plates[k]; if (Array.isArray(P.zone)) ret
 const plateOf = (x, y) => X.plateOf(x, y);
 const plateLabel = (k) => (D.plates[k] && D.plates[k].label) || k;
 
-/* ---------- the scene document ---------- */
-const MF7 = window.MF7 || { clean: clone({ nodes: D.nodes, flows: D.flows.map((f) => ({ id: f.id, name: f.name, color: f.color, steps: f.steps })), devices: D.devices || [] }), doc: null, ops: {} };
-const saved = MF7.doc || {};
-const doc = {
-  format: "mf7-scene", version: 1, project: PROJECT, title: MF7.clean.title || (D.slide && D.slide.title) || PROJECT,
-  nodes: clone(MF7.clean.nodes), flows: clone(MF7.clean.flows), devices: clone(MF7.clean.devices),
-  props: clone(saved.props || []), replica: clone(saved.replica || {}), director: clone(saved.director || {}), takes: clone(saved.takes || []), bookmarks: clone(saved.bookmarks || []),
-  settings: Object.assign({ snap: .5, ortho: true }, clone(saved.settings || {})),
-};
-doc.flows.forEach((f, i) => { if (!f.id) f.id = "flow-" + (i + 1); });
-const loadedOps = clone(MF7.ops || {});           // replica edits already built into this session's replica
-const FLOW_KEYS = ["id", "name", "color", "steps"];
-const STEP_KEYS = ["node", "title", "what", "mode", "view", "dist", "path", "dwell", "lift", "elevator"];
-const cleanStep = (s) => { const o = {}; for (const k of STEP_KEYS) if (s[k] !== undefined) o[k] = s[k]; for (const k of Object.keys(s)) if (!(k in o) && !/^_/.test(k)) o[k] = s[k]; return o; };
+/* ---------- the scene document ----------
+   The scene file (MF7.scene, format "mf-scene", metres) is the single source of truth. The Studio edits a working copy in the
+   player's units (doc) and writes it back as a scene on every change (toScene); fromScene turns a scene into the working copy. */
+const SCN = window.MFScene, MF7 = window.MF7 || {}, U7 = 0.3;
+const OBJ_OF_PROP = { box: "crate", arrow: "floor-arrow", zone: "floor-zone" }, PROP_OF_OBJ = { crate: "box", "floor-arrow": "arrow", "floor-zone": "zone" };
+const REP_NAME_OF = { walls: "wall", columns: "column", racks: "rack", machines: "machine", pallets: "pallet" }, REP_KIND_OF = { wall: "walls", column: "columns", rack: "racks", machine: "machines", pallet: "pallets" };
+function fromScene(scene) {
+  const res = SCN.toInternal(clone(scene), { plates: D.plates, elevators: X.ELEVATORS || [], replica: RP }, { applyLayout: false }), replica = {};
+  for (const e of scene.layoutEdits || []) { const m = /^([a-z]+):(\d+)$/.exec(e.target || ""); if (!m || !REP_KIND_OF[m[1]]) continue; const op = {}; if (e.move) { op.dx = e.move[0] / U7; op.dy = e.move[1] / U7; } if (e.turn) op.rot = e.turn; if (e.delete) op.del = true; replica[REP_KIND_OF[m[1]] + ":" + m[2]] = op; }
+  return {
+    format: "mf7-work", project: PROJECT, title: scene.title || PROJECT, nodes: res.data.nodes, flows: res.data.flows, devices: res.data.devices,
+    props: (scene.objects || []).map((o) => ({ id: o.id, type: PROP_OF_OBJ[o.type] || o.type, name: o.name || "", x: o.x / U7, y: o.y / U7, plate: o.floor, rot: o.heading || 0, w: o.w, d: o.d, h: o.h, color: o.color, text: o.text })),
+    replica, doors: clone((scene.layoutEdits || []).filter((e) => e.door)), director: clone(scene.director || {}), takes: clone(scene.takes || []), bookmarks: clone(scene.viewpoints || []),
+    settings: Object.assign({ snap: .5, ortho: true, lang: "en", shift: 8 }, clone(scene.studio || {})),
+  };
+}
+function toScene() {
+  const sc = SCN.fromInternal(PROJECT, { nodes: doc.nodes, flows: doc.flows.map((f) => Object.assign({}, f, { steps: f.steps.map(cleanStep) })), devices: doc.devices, title: doc.title });
+  sc.title = doc.title;
+  sc.objects = doc.props.map((p) => { const o = { id: p.id, type: OBJ_OF_PROP[p.type] || p.type, floor: p.plate, x: +(p.x * U7).toFixed(3), y: +(p.y * U7).toFixed(3), heading: p.rot || 0, w: p.w, d: p.d, h: p.h, color: p.color }; if (p.name) o.name = p.name; if (p.text) o.text = p.text; return o; });
+  sc.layoutEdits = Object.entries(doc.replica).map(([tag, op]) => { const [k, n] = tag.split(":"), e = { target: REP_NAME_OF[k] + ":" + n }; if (op.dx || op.dy) e.move = [+((op.dx || 0) * U7).toFixed(3), +((op.dy || 0) * U7).toFixed(3)]; if (op.rot) e.turn = op.rot; if (op.del) e.delete = true; return e; }).filter((e) => e.move || e.turn || e.delete);
+  sc.layoutEdits = sc.layoutEdits.concat(clone(doc.doors || []));
+  sc.director = clone(doc.director); sc.takes = clone(doc.takes); sc.viewpoints = clone(doc.bookmarks); sc.studio = clone(doc.settings);
+  return sc;
+}
+const FLOW_KEYS0 = ["id", "name", "color", "steps", "trolleys", "headway"];
+const STEP_KEYS0 = ["node", "title", "what", "mode", "view", "dist", "path", "dwell", "lift", "elevator", "speed"];
+const cleanStep = (s) => { const o = {}; for (const k of STEP_KEYS0) if (s[k] !== undefined) o[k] = s[k]; return o; };
+const doc = fromScene(MF7.scene || SCN.fromInternal(PROJECT, D));
+const loadedOps = clone(doc.replica);              // layout edits already built into this session's replica (by the preload)
 const flowById = (id) => doc.flows.find((f) => f.id === id);
 const curFlow = () => doc.flows[clamp(S.flow, 0, doc.flows.length - 1)];
 const nodeList = () => Object.values(doc.nodes);
@@ -61,13 +77,13 @@ const snapshot = () => JSON.stringify(doc);
 const onChange = (fn) => listeners.push(fn);
 function restore(json) { const o = JSON.parse(json); for (const k of Object.keys(doc)) delete doc[k]; Object.assign(doc, o); }
 function storageKey() { return "mf7:scene:" + PROJECT; }
+// write the working copy back as the scene: browser autosave (the preload's format) + the scene file manager's state
 function saveNow() {
-  clearTimeout(saveTimer); const s = snapshot(); doc.savedAt = new Date().toISOString();
-  try { localStorage.setItem(storageKey(), JSON.stringify(doc)); lastSaved = s; dirty = false; status("Saved in this browser"); }
+  clearTimeout(saveTimer); const s = snapshot();
+  try { const sc = toScene(); MF7.scene = sc; localStorage.setItem(storageKey(), JSON.stringify({ scene: sc, baseHash: MF7.baseHash, savedAt: new Date().toISOString(), fileName: window.MFS ? MFS.state.fileName : "" })); if (window.MFS) MFS.setScene(sc); lastSaved = s; dirty = false; status("Saved in this browser"); }
   catch (e) { status("Could not save: " + (e && e.message || e), true); }
   emit("save");
-}
-function scheduleSave() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 600); emit("dirty"); }
+}function scheduleSave() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 600); emit("dirty"); }
 function emit(what) { for (const fn of listeners) try { fn(what); } catch (e) { console.error(e); } }
 let statusHandler = null; const status = (msg, bad) => statusHandler && statusHandler(msg, bad);
 /* commit(label, fn, rebuild): run fn() to change the document, record undo, push the result into the player and autosave.
@@ -96,7 +112,7 @@ function apply(what = "all") {
   if (what === "props") { applyHooks.props(); invalidateSolids(); applyHooks.after(what); return; }
   if (what === "devices") { D.devices = clone(doc.devices); X.rebuildDevices(true); invalidateSolids(); applyHooks.after(what); return; }
   for (const k of Object.keys(D.nodes)) delete D.nodes[k]; Object.assign(D.nodes, clone(doc.nodes));
-  D.flows = doc.flows.map((f) => { const o = clone(f); o.steps = o.steps.map(cleanStep); return o; });
+  D.flows = doc.flows.map((f) => { const o = {}; for (const k of FLOW_KEYS0) if (f[k] !== undefined) o[k] = clone(f[k]); o.steps = o.steps.map(cleanStep); return o; });
   D.devices = clone(doc.devices); if (D.slide) D.slide.title = doc.title;
   applyHooks.replica(); applyHooks.props(); invalidateSolids();
   const ms = X.rebuild({ plan: what === "replica" });

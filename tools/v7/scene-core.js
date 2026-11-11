@@ -64,7 +64,8 @@
     }).filter(Boolean);
     var paths = data.flows.map(function (f) {
       var usedStep = {};
-      return { id: f.id, name: f.name, color: f.color || "#7030A0", steps: f.steps.map(function (s, i) {
+      var po = { id: f.id, name: f.name, color: f.color || "#7030A0" }; if (f.trolleys > 1) { po.trolleys = f.trolleys; po.headway = f.headway || 30; }
+      return Object.assign(po, { steps: f.steps.map(function (s, i) {
         var o = { id: "s" + (i + 1), stop: stopId[s.node], title: s.title || "" };
         usedStep[o.id] = 1;
         if (s.what) o.text = s.what;
@@ -76,7 +77,7 @@
         else if (Array.isArray(s.path)) o.route = { type: "points", points: s.path.map(function (p) { return [toM(p[0]), toM(p[1])]; }) };
         else o.route = { type: "stay" };
         return o;
-      }) };
+      }) });
     });
     return { format: FORMAT, version: VERSION, project: project, title: data.title || (data.slide && data.slide.title) || project, layout: project,
       stops: stops, devices: devices, objects: [], layoutEdits: [], paths: paths, director: {}, viewpoints: [] , notes: opts.notes || "" };
@@ -128,7 +129,7 @@
         prevEnd = Array.isArray(o.path) ? o.path[o.path.length - 1].slice() : n ? [n.x, n.y] : prevEnd;
         return o;
       });
-      return { id: p.id, name: p.name || p.id, color: p.color || "#7030A0", steps: steps };
+      var fo = { id: p.id, name: p.name || p.id, color: p.color || "#7030A0", steps: steps }; if (p.trolleys > 1) { fo.trolleys = Math.min(12, Math.round(p.trolleys)); fo.headway = p.headway > 0 ? p.headway : 30; } return fo;
     });
     return { data: { nodes: nodes, flows: flows, devices: devices, title: scene.title }, stopIds: idOf, issues: issues };
   }
@@ -149,6 +150,13 @@
       if (f.kind === "walls") { var mx = (o.a[0] + o.b[0]) / 2 + dx, my = (o.a[1] + o.b[1]) / 2 + dy, r = rot * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r); var t = function (p) { var x = p[0] + dx - mx, y = p[1] + dy - my; return [mx + x * c - y * sn, my + x * sn + y * c]; }; o.a = t(o.a); o.b = t(o.b); }
       else if (f.kind === "columns") o.p = [o.p[0] + dx, o.p[1] + dy];
       else { o.x += dx; o.y += dy; if (rot === 90 || rot === 270) { var cx = o.x + o.w / 2, cy = o.y + o.h / 2, w = o.w; o.w = o.h; o.h = w; o.x = cx - o.w / 2; o.y = cy - o.h / 2; if (f.kind === "machines" && o.type === "injection") o.vertical = !o.vertical; } }
+      if (e.door) {   // cut a doorway into a straight wall: door = [from, to] in metres along the wall
+        if (f.kind !== "walls" || !Array.isArray(e.door) || e.door.length !== 2) { issues && issues.push({ level: "error", where: "layoutEdits[" + i + "].door", msg: "door needs a wall target and [from, to] in metres along the wall" }); return; }
+        var ax = Math.abs(o.a[1] - o.b[1]) < Math.abs(o.a[0] - o.b[0]) ? 0 : 1, lo = Math.min(o.a[ax], o.b[ax]), hi = Math.max(o.a[ax], o.b[ax]), d0 = toU(Math.min(e.door[0], e.door[1])), d1 = toU(Math.max(e.door[0], e.door[1]));
+        if (d1 <= lo || d0 >= hi) { issues && issues.push({ level: "error", where: "layoutEdits[" + i + "].door", msg: "the door [" + e.door + "] is not on " + e.target + " (it runs from " + toM(lo) + " to " + toM(hi) + " m)" }); return; }
+        var mk = function (s0, s1, tag) { var c = JSON.parse(JSON.stringify(o)); c.a[ax] = s0; c.b[ax] = s1; c._oid = o._oid + tag; return c; };
+        if (d0 > lo + 0.01) replica.walls.push(mk(lo, d0, "a")); if (d1 < hi - 0.01) replica.walls.push(mk(d1, hi, "b")); o._del = true;
+      }
       if (e.delete) o._del = true;
     });
     LAYOUT_KINDS.forEach(function (k) { if (replica[k]) replica[k] = replica[k].filter(function (o) { return !o._del; }); });
@@ -292,13 +300,15 @@
     });
     var nGates = devices.filter(function (d) { return d.type === "rfid-gate"; }).length; if (nGates > MAX_GATES) E("devices", nGates + " RFID gates; at most " + MAX_GATES + " per tab");
     objects.forEach(function (o) { var w = "objects[" + o.id + "]"; if (OBJECT_TYPES.indexOf(o.type) < 0) E(w + ".type", "one of " + OBJECT_TYPES.join(", ")); else inFloor(w, o.floor, o.x, o.y); });
-    if (objects.length) Wn("objects", objects.length + " object(s): shown from V7.4");
+
     var conv = toInternal(scene, { plates: layout.plates, elevators: layout.elevators, replica: layout.replica }, { applyLayout: false });
     conv.issues.forEach(function (x) { E(x.where, x.msg); });
     var internalDevices = conv.data.devices;
     paths.forEach(function (p, pi) {
       var w = "paths[" + p.id + "]"; if (!Array.isArray(p.steps) || !p.steps.length) { E(w + ".steps", "a path needs at least one step"); return; }
       if (p.color != null && !isColor(p.color)) E(w + ".color", "a colour like #7030A0");
+      if (p.trolleys != null && (!isNum(p.trolleys) || p.trolleys < 1 || p.trolleys > 12)) E(w + ".trolleys", "1 to 12 trolleys on this path");
+      if (p.headway != null && (!isNum(p.headway) || p.headway < 1 || p.headway > 3600)) E(w + ".headway", "1 to 3600 seconds between trolleys");
       var sid = uniq(p.steps, w + ".steps"); void sid;
       var f = conv.data.flows[pi], prevEnd = null, prevFloor = null;
       p.steps.forEach(function (s, i) {
@@ -357,7 +367,7 @@
       });
     });
     var dir = scene.director || {}; Object.keys(dir).forEach(function (pid) { if (!paths.some(function (p) { return p.id === pid; })) E("director[" + pid + "]", "unknown path"); });
-    if (Object.keys(dir).length) Wn("director", "camera shots, captions and takes are shown from V7.5");
+
     return { errors: errors, warnings: warnings, stats: { stops: stops.length, devices: devices.length, paths: paths.length, steps: paths.reduce(function (n, p) { return n + (p.steps || []).length; }, 0) } };
   }
 

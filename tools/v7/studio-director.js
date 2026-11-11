@@ -41,7 +41,12 @@ function addCaption() {
 }
 const dsel = { key: null, cap: null };
 
-/* ---------- captions on screen ---------- */
+/* ---------- captions on screen (English, Arabic, Korean: a text is a string or { en, ar, ko }) ---------- */
+const LANGS = [["en", "English"], ["ar", "العربية"], ["ko", "한국어"]];
+const lang = () => doc.settings.lang || "en";
+const tr = (v, l = lang()) => (v == null ? "" : typeof v === "string" ? (l === "en" ? v : v) : v[l] || v.en || Object.values(v)[0] || "");
+const trEdit = (v, l = lang()) => (v == null ? "" : typeof v === "string" ? (l === "en" ? v : "") : v[l] || "");
+function setTr(o, k, val, l = lang()) { if (typeof o[k] !== "object" || o[k] == null) o[k] = { en: typeof o[k] === "string" ? o[k] : "" }; o[k][l] = val; }
 const capLayer = document.createElement("div"); capLayer.id = "cap7"; stage.appendChild(capLayer);
 const capEls = new Map();
 function drawCaptions() {
@@ -50,8 +55,8 @@ function drawCaptions() {
     const fade = .35, a = Math.min(clamp((t - c.t0) / fade, 0, 1), clamp((c.t1 - t) / fade, 0, 1)); if (a <= 0) continue;
     live.add(c.id); let el = capEls.get(c.id);
     if (!el) { el = document.createElement("div"); el.innerHTML = "<b></b><p></p>"; capLayer.appendChild(el); capEls.set(c.id, el); }
-    const key = c.title + "|" + c.text + "|" + c.pos + "|" + c.style + "|" + c.size;
-    if (el._k !== key) { el._k = key; el.className = `cap7 ${c.pos} ${c.style}`; el.style.setProperty("--s", c.size || 1); el.firstChild.textContent = c.title || ""; el.lastChild.textContent = c.text || ""; el.firstChild.style.display = c.title ? "" : "none"; el.lastChild.style.display = c.text ? "" : "none"; }
+    const ti = tr(c.title), tx = tr(c.text), key = ti + "|" + tx + "|" + c.pos + "|" + c.style + "|" + c.size + "|" + lang();
+    if (el._k !== key) { el._k = key; el.className = `cap7 ${c.pos} ${c.style}`; el.dir = lang() === "ar" ? "rtl" : "ltr"; el.style.setProperty("--s", c.size || 1); el.firstChild.textContent = ti; el.lastChild.textContent = tx; el.firstChild.style.display = ti ? "" : "none"; el.lastChild.style.display = tx ? "" : "none"; }
     el.style.opacity = a; el.style.transform = c.pos === "center" ? `translate(-50%,-50%) scale(${.96 + .04 * a})` : c.pos === "lower" || c.pos === "upper" ? `translateX(-50%) translateY(${(1 - a) * 10}px)` : `translateY(${(1 - a) * 10}px)`;
   }
   for (const [id, el] of capEls) if (!live.has(id)) { el.remove(); capEls.delete(id); }
@@ -82,7 +87,7 @@ function stopCamRec() {
 /* ---------- video takes: replay the timeline and record the screen picture (WebM) ---------- */
 const rec = { active: false, mr: null, chunks: [], comp: null, cg: null, take: null, started: 0, saved: null };
 function newTake() { const f = curFlow(); return { id: uid("take"), name: "Take " + (doc.takes.length + 1), flow: f ? f.id : "", t0: 0, t1: f ? +X.F().total.toFixed(2) : 10, speed: 1, cam: dirOf(f).keys.length ? "director" : "guided", captions: true, card: true, labels: true, quality: "high", fps: 60 }; }
-function pickMime() { for (const m of ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; return ""; }
+function pickMime() { for (const m of ["video/mp4;codecs=avc1.640028", "video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; return ""; }
 function startTake(take) {
   if (rec.active) return; if (!window.MediaRecorder) return X.tip("This browser cannot record video");
   const fi = doc.flows.findIndex((f) => f.id === take.flow); if (fi < 0) return X.tip("The take's flow no longer exists");
@@ -97,7 +102,7 @@ function startTake(take) {
   rec.chunks = []; rec.mr.ondataavailable = (e) => { if (e.data && e.data.size) rec.chunks.push(e.data); };
   rec.mr.onstop = () => {
     const blob = new Blob(rec.chunks, { type: (rec.mr && rec.mr.mimeType) || "video/webm" }), a = document.createElement("a"), f = flowById(take.flow);
-    a.href = URL.createObjectURL(blob); a.download = `Material_Flow_${PROJECT}_${(f ? f.name : "flow").replace(/[^\w.-]+/g, "_").slice(0, 40)}_${take.name.replace(/[^\w.-]+/g, "_")}.webm`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    a.href = URL.createObjectURL(blob); a.download = `Material_Flow_${PROJECT}_${(f ? f.name : "flow").replace(/[^\w.-]+/g, "_").slice(0, 40)}_${take.name.replace(/[^\w.-]+/g, "_")}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
     X.tip(`Video saved: ${(blob.size / 1048576).toFixed(1)} MB (${a.download})`); emit("rec");
   };
   rec.take = take; rec.active = true; rec.started = performance.now(); document.body.classList.add("rec7");
@@ -141,3 +146,23 @@ function compositeFrame() {
   }
 }
 function recFrame() { if (!rec.active) return; compositeFrame(); if (S.t >= rec.take.t1 - 1e-3 || (!S.playing && S.t > rec.take.t0 + .05)) stopTake(); }
+
+/* ---------- several trolleys on one path (scene: path.trolleys, path.headway seconds): copies of the trolley start one headway
+   apart on the same timeline; the closest distance between two moving trolleys is tracked to show congestion ---------- */
+const fleet = { clones: [], flow: -1, minGap: Infinity, at: null };
+const fpos = { x: 0, y: 0, i: 1, u: 0, lift: null, it: null, h: 0, d: 0, v: 0, k: "hold", seg: 0 }, fw = new T.Vector3();
+function fleetFrame() {
+  const f = MF.D.flows[S.flow], n = f && f.trolleys > 1 ? Math.min(12, f.trolleys) : 1, hw = (f && f.headway) || 30;
+  if (fleet.flow !== S.flow || fleet.clones.length !== n - 1) {
+    for (const c of fleet.clones) { if (c.parent) c.parent.remove(c); } fleet.clones = []; fleet.flow = S.flow;
+    for (let k = 1; k < n; k++) { const c = MF.lot.clone(true); c.name = "MF V7 fleet trolley " + k; MF.scene.add(c); fleet.clones.push(c); }
+  }
+  fleet.minGap = Infinity; fleet.at = null; if (n < 2) return;
+  const pts = [[MF.lot.position.x, MF.lot.position.z, MF.lot.visible]];
+  fleet.clones.forEach((c, k) => {
+    const t = S.t - (k + 1) * hw, on = t > X.INTRO && t <= X.F().total; c.visible = on && S.R > .5;
+    if (!on) { pts.push([0, 0, false]); return; }
+    X.lotPos(t, fpos); X.worldFromLot(fpos, S.stack, fw); c.position.copy(fw).setY(fw.y + S.R * .2); c.rotation.y = fpos.h; pts.push([fw.x, fw.z, true]);
+  });
+  for (let a = 0; a < pts.length; a++) for (let b = a + 1; b < pts.length; b++) if (pts[a][2] && pts[b][2]) { const d = Math.hypot(pts[a][0] - pts[b][0], pts[a][1] - pts[b][1]) * PT_M; if (d < fleet.minGap) { fleet.minGap = d; fleet.at = S.t; } }
+}
