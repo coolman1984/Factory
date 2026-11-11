@@ -166,8 +166,10 @@ fail if docs are out of date: schema fields, commands, keys, recipe examples, li
   use story time; `mf key --step` / `mf caption --step` convert for you.
 - **Manual scans in `numbers`:** a scanner with `stops: true` on a leg adds its 1.8 s stop inside that step's time; there is
   no separate line for it.
-- **Seeing a moment between stops:** `shots` renders stops and step ends only. For a moment mid-leg (for example a scan),
-  record a short clip: `mf take <scene> --path id --from <s> --to <s+4>` (story seconds; `play` prints the total).
+- **Seeing a moment between stops:** use `mf shots <scene> --path id --at <s> [--look x,y]` for a picture at story second s,
+  or record a short clip with `mf take <scene> --path id --from <s> --to <s+4>`.
+- **Congestion is a sampled plan-distance demonstration:** floors are not separated and trolleys do not yield. If headway
+  exceeds playback duration, there is no simultaneous pair to report. Do not use this as an accepted capacity simulation.
 - **`private/v7/LAYOUT_REFERENCE.md` describes the built-in scenes** at the time it was written; your scene's stops may have
   moved. The scene file is the truth for stops; the reference is for walls, racks, elevators and floor extents.
 - **Names:** ids are lower-case with dashes, `<tab>-<what>` for paths (`inj2-kit-elev5`) and `<type>-<where>` for devices

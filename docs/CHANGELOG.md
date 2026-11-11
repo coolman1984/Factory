@@ -4,6 +4,10 @@ Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (ol
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
 ## V7.7.2 (in progress) - layout accuracy round - 2026-11-11
+- Review fixes: added-layout import/reload/undo transactions, ordered door edits, storage rotation/cell identities, strict
+  addition validation, layout diffs/schema arrays and CLI edge cases. Camera rescue now checks opaque device meshes as well
+  as the replica, after the ceiling clamp; it no longer accepts untested candidates when a check budget expires. See
+  [the V7.7.2 report](REVIEW_REPORT_772.md) for final evidence and limits.
 - Added: `layoutAdds` scene section (machines, lines, conveyors, tables, racks, storage grids, walls as data; validator, 3D, plan,
   Studio move / turn / add). Owner's scenes: missing machines, lines, storage fields, tables added from the slides.
 - Fixed: INJ 2 To LCM (2F) detour 457 m -> 94 m (door in the corridor end wall); INJ 2 doorway widened 0.45 m.

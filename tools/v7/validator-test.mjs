@@ -9,6 +9,8 @@ const L0 = layoutFor(P, "inj1"), rack = L0.replica.racks.map((o) => ({ cx: (o.x 
 const run = (s) => SC.validate(s, layoutFor(P, s.project));
 const cases = [
   ["clean scene passes", (s) => s, (r) => r.errors.length === 0],
+  ["added block on a path", (s) => { const step = s.paths[0].steps.find(t => t.route?.type === "points"); const [a, b] = step.route.points; const stop = s.stops.find(t => t.id === step.stop); (s.layoutAdds ||= []).push({ id: "planted-block", kind: "machine", floor: stop.floor, x: (a[0] + b[0]) / 2 - 1, y: (a[1] + b[1]) / 2 - 1, w: 2, d: 2 }); }, (r) => r.errors.some(e => /paths\[/.test(e.where) && /hits|passes/.test(e.msg) && /machine:/.test(e.msg))],
+  ["bad added kind is exactly one error", (s) => { (s.layoutAdds ||= []).push({ id: "planted-kind", kind: "unknown", floor: s.stops[0].floor, x: 1, y: 1, w: 1, d: 1 }); }, (r) => r.errors.length === 1 && r.errors[0].where === "layoutAdds[planted-kind].kind"],
   ["path straight through the warehouse racks", (s) => { const st = s.paths[0].steps[3]; const a = s.paths[0].steps[2].route.points.at(-1), stop = s.stops.find((x) => x.id === st.stop); st.route = { type: "points", points: [a, [rack.cx, a[1]], [rack.cx, rack.cy], [stop.x, rack.cy], [stop.x, stop.y]] }; }, (r) => r.errors.some((e) => /hits|passes/.test(e.msg))],
   ["unknown stop", (s) => { s.paths[0].steps[2].stop = "nowhere"; }, (r) => r.errors.some((e) => /unknown stop/.test(e.msg))],
   ["speed out of range", (s) => { s.paths[0].steps[1].speed = 40; }, (r) => r.errors.some((e) => /0.2 to 8/.test(e.msg))],

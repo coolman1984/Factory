@@ -43,12 +43,12 @@ export const playerPatches = [
     const fray = new T.Raycaster(), fdir = new T.Vector3(); let fmeshes = null;
     const floorClear = (P) => { if (!fmeshes) fmeshes = floors.flatMap((f) => [f.art, f.slab]); fdir.subVectors(L, P); const len = fdir.length(); fray.set(P, fdir.multiplyScalar(1 / len)); fray.far = Math.max(0, len - 1.5); for (const m of fmeshes) { let v = true; for (let o = m; o; o = o.parent) if (!o.visible) { v = false; break; } if (v && fray.intersectObject(m, false).length) return false; } return true; };
     // exact check against the real replica meshes (~1 ms): the final word, so the trolley is never hidden by a missed box
-    const xray = new T.Raycaster(), xdir = new T.Vector3(); let xmeshes = null, xbudget = 0;
-    const exactClear = (P) => { if (!xmeshes) xmeshes = REP.meshes.map((m) => m.im).filter((o) => !o.material.transparent); xdir.subVectors(L, P); const len = xdir.length(); xray.set(P, xdir.multiplyScalar(1 / len)); xray.far = Math.max(0, len - 1.5); for (const m of xmeshes) { let v = m.visible; for (let o = m.parent; v && o; o = o.parent) if (!o.visible) v = false; if (v && xray.intersectObject(m, false).length) return false; } return true; };
-    const seen = (P) => clearLine(P, L) && floorClear(P) && (xbudget-- > 0 ? exactClear(P) : true);
+    const xray = new T.Raycaster(), xdir = new T.Vector3(); let xmeshes = null, xdev = null, xdevices = [];
+    const exactClear = (P) => { if (!xmeshes) xmeshes = REP.meshes.map((m) => m.im).filter((o) => !o.material.transparent); if (xdev !== DEV) { xdev = DEV; xdevices = Object.values(DEV.groups || {}).flatMap(g => g.children.filter(o => o.isInstancedMesh && !o.material.transparent)); } xdir.subVectors(L, P); const len = xdir.length(); xray.set(P, xdir.multiplyScalar(1 / len)); xray.far = Math.max(0, len - 1.5); for (const list of [xmeshes, xdevices]) for (const m of list) { let v = m.visible; for (let o = m.parent; v && o; o = o.parent) if (!o.visible) v = false; if (v) { m.updateWorldMatrix(true, false); if (xray.intersectObject(m, false).length) return false; } } return true; };
+    // A candidate must pass the same opaque-mesh checks as the acceptance test, even after several failed candidates.
+    const seen = (P) => clearLine(P, L) && floorClear(P) && exactClear(P);
     function ensure(E3, Tg, vel) {
       if (!fmeshes) fmeshes = floors.flatMap((f) => [f.art, f.slab]); for (const k of Object.keys(plates)) plates[k].updateMatrixWorld(true);   // floors may have moved this frame (glide)
-      xbudget = 6;
       targets(frameLot); if (seen(E3)) return false;
       const dx = E3.x - Tg.x, dy = E3.y - Tg.y, dz = E3.z - Tg.z, d = Math.max(1, Math.hypot(dx, dy, dz)), az = Math.atan2(dx, dz), pol = Math.acos(clamp(dy / d, -1, 1));
       const take = () => { E3.copy(eye); vel.set(0, 0, 0); stats.rescued = (stats.rescued || 0) + 1; return true; };
@@ -63,7 +63,7 @@ export const playerPatches = [
     // V7.7.1: build the sight boxes and the meshes' bounding data now (behind the preparing screen), not in the first guided frame
     function warm() { if (!built) build(); targets(frameLot); floorClear(camera.position); exactClear(camera.position); }
     return { warm, ensure, seen: (P) => { targets(frameLot); return { box: clearLine(P, L), floor: floorClear(P), L: L.toArray().map((v) => +v.toFixed(1)) }; }, clearLine, choose, transitionPol, chasePol, boxes, stats,`, "sight: rescue the real eye"],
-  ["      // A spring or a seek can leave the rendered eye below its safe goal. Guard the actual eye too.", "      if ((S.cam === \"guided\" || S.cam === \"follow\") && !flat() && S.R > .9 && !stepAt(S.t).s.intro) SIGHT.ensure(camera.position, cameraTarget, eyeVelocity);   // V7.7: never hidden\n      // A spring or a seek can leave the rendered eye below its safe goal. Guard the actual eye too.", "guided camera never hidden"],
+  ["      c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z;", "      if ((S.cam === \"guided\" || S.cam === \"follow\") && !flat() && S.R > .9 && !stepAt(S.t).s.intro) SIGHT.ensure(camera.position, cameraTarget, eyeVelocity);   // after springs AND the legacy ceiling clamp\n      c.x = cameraTarget.x; c.y = cameraTarget.y; c.z = cameraTarget.z;", "guided camera never hidden"],
   // ---- owner (image 24): the "pale light cones" are the planar floor reflection mirroring the tall rack posts; off by default
   //      (?reflect=1 turns it back on). It also saves one extra scene render every third frame.
   ["const st = { enabled: query.get(\"reflect\") !== \"0\",", "const st = { enabled: query.get(\"reflect\") === \"1\",", "floor reflection off by default"],
@@ -152,7 +152,7 @@ export const playerPatches = [
     if (o.devices !== false) { disposeDEV(); DEV = makeDEV(); window.MF.devices = DEV; }
     if (o.sight !== false) { SIGHT.rebuild(); prepareChaseEnvelope(); }
     if (o.plan) rebuildPlanArt();
-    reflection.rehide(); draw.empty = false; guidedReady = false;
+    reflection.rehide(); draw.empty = false; guidedReady = false; calmD.clear(); calmS.clear();
     renderFlow(); shown = -1; S.t = clamp(t, 0, F().total); cine.shot = ""; cine.cut = true; SIGHT.reset();
     return +(performance.now() - start).toFixed(1);
   }
@@ -200,7 +200,7 @@ export const replicaPatches = [
    "      box(p, cx, H / 2, cz, r.w, H, r.h, col, \"paint\");\n" +
    "      if (r.stripe) for (const s of [-1, 1]) box(p, long ? cx : cx + s * (r.w / 2 - .25), H + .08, long ? cz + s * (r.h / 2 - .25) : cz, long ? r.w : .5, .16, long ? .5 : r.h, parseInt(r.stripe.slice(1), 16), \"paint\");\n" +
    "      else box(p, cx, H + .05, cz, long ? r.w * .96 : r.w * .3, .1, long ? r.h * .3 : r.h * .96, 0xdfe5ee, \"paint\"); }\n" +
-   "    for (const q of R.marks || []) { const p = q.plate, t = .6, y = .12, cw = q.w / q.cols, ch = q.h / q.rows;\n" +
+   "    TAG = null; for (const q of R.marks || []) { const p = q.plate, t = .6, y = .12, cw = q.w / q.cols, ch = q.h / q.rows;\n" +
    "      for (let i = 0; i <= q.rows; i++) box(p, q.x + q.w / 2, y, q.y + ch * i, q.w + t, .12, t, c.yellow, \"paint\");\n" +
    "      for (let j = 0; j <= q.cols; j++) box(p, q.x + cw * j, y, q.y + q.h / 2, t, .12, q.h + t, c.yellow, \"paint\"); }",
    "layout adds 3D"],

@@ -21,7 +21,8 @@ const projects = () => { const p = opt.player || PLAYER; if (!existsSync(p)) die
 // path tools: write when the edited path / step itself is clean; errors elsewhere (another path still broken after a stop moved)
 // are listed but do not block, so several paths can be repaired one at a time (or all at once with fix-links)
 const writeIfOwnClean = (f, s, P, pathId, stepId) => {
-  const r = SC.validate(s, layoutFor(P, s.project)), mine = r.errors.filter((e) => e.where.startsWith(`paths[${pathId}]` + (stepId ? `.steps[${stepId}]` : "")) || !e.where.startsWith("paths["));
+  const pathWhere = `paths[${pathId}]`, stepWhere = pathWhere + `.steps[${stepId}]`;
+  const r = SC.validate(s, layoutFor(P, s.project)), mine = r.errors.filter((e) => !e.where.startsWith("paths[") || (e.where.startsWith(pathWhere) && (!stepId || !e.where.startsWith(pathWhere + ".steps[") || e.where.startsWith(stepWhere))));
   if (mine.length) { for (const e of mine) console.log(`ERROR ${e.where}: ${e.msg}`); die(`not written: ${mine.length} error(s) in ${pathId}${stepId ? "/" + stepId : ""}`); }
   writeScene(f, s); const rest = r.errors.length; if (rest) { for (const e of r.errors) console.log(`STILL OPEN ${e.where}: ${e.msg}`); console.log(`written; ${rest} error(s) remain in other paths (fix them next, or run fix-links)`); }
 };
@@ -69,7 +70,7 @@ const run = {
     const pg = await page(bakeTemp(f, s), s.project), only = opt.only, names = [];
     const snap = async (name) => { await pg.wait(1600); const r = await pg.call("Page.captureScreenshot", { format: "png" }); writeFileSync(`${out}/${name}.png`, Buffer.from(r.data, "base64")); names.push(name); };
     try {
-      if (opt.at != null) { const pi = Math.max(0, s.paths.findIndex((p) => p.id === opt.path)); const look = opt.look ? String(opt.look).split(",").map(Number) : null; const file = `${out}/at-${s.paths[pi].id}-${(+opt.at).toFixed(1)}s.png`; await shotAt(pg, pi, +opt.at, look, +(opt.distance || 40), file); console.log(`1 screenshot: ${file}`); return; }
+      if (opt.at != null) { const pi = opt.path ? s.paths.findIndex((p) => p.id === opt.path) : 0; const look = opt.look ? String(opt.look).split(",").map(Number) : null; const at = +opt.at, distance = +(opt.distance || 40); if (pi < 0) throw new Error("unknown path " + opt.path); if (!Number.isFinite(at) || at < 0 || !Number.isFinite(distance) || distance <= 0 || (look && (look.length !== 2 || !look.every(Number.isFinite)))) throw new Error("shots: finite --at >= 0, --distance > 0 and --look x,y required"); const file = `${out}/at-${s.paths[pi].id}-${at.toFixed(1)}s.png`; await shotAt(pg, pi, at, look, distance, file); console.log(`1 screenshot: ${file}`); return; }
       await pg.ev(`(() => { MFX.setPad(false); MF.setFlow(0); MF.seek(MF.D.flows[0].items[1].t0); MF.pause(); return 1; })()`);   // past the intro for every kind of shot
       if (!only || only === "overview") { await pg.ev(`(() => { MFX.viewPreset("reset"); return 1; })()`); await snap("overview"); }
       if (!only || only === "stops") for (const st of s.stops) { await pg.ev(`(() => { const w = MF.W(${st.x / .3}, ${st.y / .3}, MF.S.stack, 0); MFX.flyTo({ x: w.x, y: w.y, z: w.z, dist: 120, pol: .75 }, .1); return 1; })()`); await snap("stop-" + st.id); }
@@ -90,6 +91,7 @@ const run = {
           if (m < 3) under += .05; }
         return { n, hw, total, best, pairs: Object.values(pairs), under }; })()`);
       if (r.n < 2) { console.log(`${opt.path}: one trolley (set "trolleys" and "headway" on the path)`); return; }
+      if (!r.best) { console.log(`${opt.path}: no simultaneous trolley pair during playback (${r.n} trolleys, ${r.hw} s apart)`); return; }
       const fm = (o) => `${o.d.toFixed(2)} m at story ${o.T.toFixed(1)} s, at (${o.at[0].toFixed(1)}, ${o.at[1].toFixed(1)}) m; trolley ${o.a} in "${o.sa}", trolley ${o.b} in "${o.sb}"`;
       console.log(`${opt.path}: ${r.n} trolleys, ${r.hw} s apart; closest ${fm(r.best)}${r.best.d < 3 ? " - CONGESTION (under 3 m)" : ""}`);
       for (const p of r.pairs) console.log(`  trolleys ${p.a} and ${p.b}: ${fm(p)}`);

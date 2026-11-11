@@ -43,3 +43,9 @@ Each: what happened, the cause, the rule.
 - **L-PL-13 Working product first** (owner's rule). Deliver a working result with the minimum test, then iterate; long test suites only when asked.
 - **L-PL-14 Headless downloads do not land on disk.** Read the produced Blob in the page (and write it from Node over CDP) to verify a video.
 - **L-PL-15 Test profiles fill the disk.** 207 throw-away Chrome profiles (4.7 GB) left in the temp folder filled drive C: and caused stutter in the start test. Cause: Chrome still held files when the test removed its profile. Rule: `tools/v7/cdp.mjs` removes `mf_*` profiles older than an hour on every start; check free space when tests behave strangely.
+- **L-PL-16 Layout reloads are transactions.** A layout addition can update JSON while leaving the visible replica unchanged;
+  reloading after a failed save can lose the change. Compare both layout sections, persist first, preserve normalized scene
+  history across reload, and test save/reload/undo against actual geometry. Positional slots must survive deletion.
+- **L-PL-17 A camera check must use every acceptance obstacle.** The replica-only exact ray omitted opaque device meshes,
+  and a later ceiling clamp could invalidate a rescued eye. Check the final eye after constraints, include device instances,
+  and never treat an exhausted exact-check budget as evidence that a candidate is clear. See the V7.7.2 review receipts.

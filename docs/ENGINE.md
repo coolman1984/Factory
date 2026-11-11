@@ -46,7 +46,8 @@ world z = unit y - CY (`D.center`), y up. Floors are plates that slide and lift 
 | test | proves |
 |---|---|
 | `node tools/v7/identity-test.mjs dist/Material_Flow_Player_v6.html <v7 player baked with private/v7/scenes-v6>` | the 10 V6 paths play identically |
-| `node tools/v7/validator-test.mjs <player>` | 16 planted faults are caught |
+| `node tools/v7/validator-test.mjs <player>` | 18 planted cases, including layout additions and single-error bad kinds |
+| `node tools/v7/layout-adds-test.mjs <player>` | strict additions, storage/door identities, folded transforms and reload undo |
 | `node tools/v7/smoke-76.mjs <player>` | Studio edits land in the scene, director / fleet / numbers / undo work |
 | `node tools/v7/mouse-test.mjs <player>` | real mouse and keyboard input |
 | `node tools/v7/ui-check.mjs <player>` | right-click menu, search, photo, numbers |

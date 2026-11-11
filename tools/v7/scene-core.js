@@ -168,10 +168,11 @@
     "wall": { into: "walls" }
   };
   var PALLET = { w: 1.15, d: 0.88 };
+  function addKind(kind) { return Object.prototype.hasOwnProperty.call(ADD_KINDS, kind) ? ADD_KINDS[kind] : null; }
   function addRect(a) { var k = ADD_KINDS[a.kind] || {}, w = a.w != null ? a.w : k.w, d = a.d != null ? a.d : k.d; if (norm360(a.turn || 0) % 180 === 90) { var t = w; w = d; d = t; } return { x: a.x, y: a.y, w: w, d: d }; }
   function applyLayoutAdds(adds, replica, issues) {
     (adds || []).forEach(function (a, i) {
-      var k = a && ADD_KINDS[a.kind], oid = ADD_BASE + 1000 * i, where = "layoutAdds[" + (a && a.id || i) + "]";
+      var k = a && addKind(a.kind), oid = ADD_BASE + 1000 * i, where = "layoutAdds[" + (a && a.id || i) + "]";
       if (!k) { issues && issues.push({ level: "error", where: where + ".kind", msg: "one of " + Object.keys(ADD_KINDS).join(", ") }); return; }
       if (k.into === "walls") {
         if (!Array.isArray(a.a) || !Array.isArray(a.b)) { issues && issues.push({ level: "error", where: where, msg: "a wall needs a: [x, y] and b: [x, y] in metres" }); return; }
@@ -186,10 +187,12 @@
       } else if (k.into === "racks") (replica.racks || (replica.racks = [])).push(o);
       else {   // storage field: floor marking grid (not solid) + one low pallet stack per cell (solid)
         var rows = Math.max(1, Math.min(60, Math.round(a.rows || 1))), cols = Math.max(1, Math.min(60, Math.round(a.cols || 1)));
-        o.rows = rows; o.cols = cols; (replica.marks || (replica.marks = [])).push(o);
+        var turn = norm360(a.turn || 0), swap = turn % 180 === 90;
+        o.rows = swap ? cols : rows; o.cols = swap ? rows : cols; (replica.marks || (replica.marks = [])).push(o);
         if (a.pallets !== false) {
-          var cw = o.w / cols, ch = o.h / rows, pw = Math.min(cw * 0.8, toU(PALLET.w)), ph = Math.min(ch * 0.8, toU(PALLET.d)), n = 0;
-          for (var rr = 0; rr < rows; rr++) for (var cc = 0; cc < cols; cc++) { if (n >= 999) break; (replica.pallets || (replica.pallets = [])).push({ x: o.x + cw * (cc + 0.5) - pw / 2, y: o.y + ch * (rr + 0.5) - ph / 2, w: pw, h: ph, plate: a.floor, _oid: oid + 1 + n++, _add: a.id }); }
+          var bw = toU(a.w), bh = toU(a.d), cw = bw / cols, ch = bh / rows, pw = Math.min(cw * 0.8, toU(PALLET.w)), ph = Math.min(ch * 0.8, toU(PALLET.d)), n = 0;
+          var cs = Math.cos(turn * Math.PI / 180), sn = Math.sin(turn * Math.PI / 180), ww = swap ? ph : pw, hh = swap ? pw : ph;
+          for (var rr = 0; rr < rows; rr++) for (var cc = 0; cc < cols; cc++) { if (n >= 999) break; var px = cw * (cc + 0.5) - bw / 2, py = ch * (rr + 0.5) - bh / 2; (replica.pallets || (replica.pallets = [])).push({ x: o.x + o.w / 2 + px * cs - py * sn - ww / 2, y: o.y + o.h / 2 + px * sn + py * cs - hh / 2, w: ww, h: hh, plate: a.floor, _oid: oid + 1 + n++, _add: a.id }); }
         }
       }
     });
@@ -201,15 +204,17 @@
       var w = "layoutAdds[" + (a && typeof a.id === "string" && a.id ? a.id : i) + "]";
       if (!a || typeof a !== "object") { E(w, "must be an object"); return; }
       if (typeof a.id !== "string" || !a.id) E(w + ".id", "missing id (a short unique text)"); else if (seen[a.id]) E(w, "duplicate id"); else seen[a.id] = 1;
-      if (!ADD_KINDS[a.kind]) { E(w + ".kind", "one of " + Object.keys(ADD_KINDS).join(", ")); return; }
+      if (!addKind(a.kind)) { E(w + ".kind", "one of " + Object.keys(ADD_KINDS).join(", ")); return; }
       if (floors.indexOf(a.floor) < 0) { E(w + ".floor", "unknown floor " + JSON.stringify(a.floor) + " (floors: " + floors.join(", ") + ")"); return; }
       var z = zoneU(layout, a.floor), inZone = function (x, y) { return toU(x) >= z[0] - 3 && toU(x) <= z[2] + 3 && toU(y) >= z[1] - 3 && toU(y) <= z[3] + 3; };
-      if (a.kind === "wall") { if (!Array.isArray(a.a) || !Array.isArray(a.b) || ![a.a[0], a.a[1], a.b[0], a.b[1]].every(fin)) E(w, "a wall needs a: [x, y] and b: [x, y] in metres"); else if (!inZone(a.a[0], a.a[1]) || !inZone(a.b[0], a.b[1])) E(w, "the wall is outside floor " + a.floor); return; }
+      if (a.kind === "wall") { if (!Array.isArray(a.a) || !Array.isArray(a.b) || a.a.length !== 2 || a.b.length !== 2 || ![a.a[0], a.a[1], a.b[0], a.b[1]].every(fin)) E(w, "a wall needs a: [x, y] and b: [x, y] in metres"); else if (a.a[0] === a.b[0] && a.a[1] === a.b[1]) E(w, "a wall needs different endpoints"); else if (!inZone(a.a[0], a.a[1]) || !inZone(a.b[0], a.b[1])) E(w, "the wall is outside floor " + a.floor); return; }
       if (!fin(a.x) || !fin(a.y)) { E(w, "x and y (the north-west corner, metres) must be numbers"); return; }
       ["w", "d", "h"].forEach(function (f) { if (a[f] != null && !(fin(a[f]) && a[f] > 0 && a[f] < 200)) E(w + "." + f, "metres, more than 0"); });
-      if (a.turn != null && [0, 90, 180, 270].indexOf(norm360(a.turn)) < 0) E(w + ".turn", "0, 90, 180 or 270");
+      if (a.turn != null && (!fin(a.turn) || [0, 90, 180, 270].indexOf(a.turn) < 0)) E(w + ".turn", "0, 90, 180 or 270");
       if (a.color != null && !/^#[0-9a-fA-F]{6}$/.test(a.color)) E(w + ".color", "a colour like #5b6b82");
-      ["rows", "cols"].forEach(function (f) { if (a[f] != null && !(fin(a[f]) && a[f] >= 1 && a[f] <= 60)) E(w + "." + f, "1 to 60"); });
+      ["rows", "cols"].forEach(function (f) { if (a[f] != null && !(fin(a[f]) && a[f] % 1 === 0 && a[f] >= 1 && a[f] <= 60)) E(w + "." + f, "whole numbers 1 to 60"); });
+      if (a.pallets != null && typeof a.pallets !== "boolean") E(w + ".pallets", "true or false");
+      if (a.kind === "storage" && a.pallets !== false && (a.rows || 1) * (a.cols || 1) > 999) E(w, "storage with pallets supports at most 999 cells (split into more additions)");
       var r = addRect(a); if (!(r.w > 0 && r.d > 0)) { E(w, "w and d (metres) are required for kind " + a.kind); return; }
       if (!inZone(r.x, r.y) || !inZone(r.x + r.w, r.y + r.d)) E(w, "the item (" + r.x + ", " + r.y + ") to (" + (r.x + r.w) + ", " + (r.y + r.d) + ") is outside floor " + a.floor + " (x " + toM(z[0]) + " to " + toM(z[2]) + ", y " + toM(z[1]) + " to " + toM(z[3]) + " m)");
     });
@@ -387,7 +392,7 @@
     });
     if (errors.length) return { errors: errors, warnings: warnings };
     if (!(scene.paths || []).length) E("paths", "a playable scene needs at least one path");
-    if (opts && opts.structureOnly) return { errors: errors, warnings: warnings };
+    if (opts && opts.structureOnly) { checkAdds(scene.layoutAdds || [], Object.keys(layoutIn.plates), layoutIn, E); return { errors: errors, warnings: warnings }; }
     var layout = { plates: layoutIn.plates, elevators: layoutIn.elevators || [], replica: clone(layoutIn.replica) };
     if (!scene || typeof scene !== "object") { E("scene", "not a JSON object"); return { errors: errors, warnings: warnings }; }
     if (scene.format !== FORMAT) E("format", 'must be "' + FORMAT + '"');

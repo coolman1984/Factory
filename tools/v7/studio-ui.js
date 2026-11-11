@@ -599,7 +599,7 @@ window.MFX = {
   // test and automation surface
   flush: () => { if (dirty) saveNow(); }, canUndo: () => undoStack.length > 0, canRedo: () => redoStack.length > 0,
   replaceScene: (scene, how) => { commit(how || "load scene", () => { const w = fromScene(scene); for (const k of Object.keys(doc)) delete doc[k]; Object.assign(doc, w); }); saveNow(); render(); renderLanes(); },
-  toScene, doc, ed, cam, commit, undo, redo, apply, select, startPlace, placeAt, autoRoute, routeBetween, checkFlow, validateFlow, relink, addKey, addCaption, evalDirector, startTake, stopTake, rec, setEditor, setTab, setPad, saveNow, moveSelTo, rotateSelBy, deleteSel, duplicateSel, nudge, syncRep, buildRepIndex, repIndex: () => repIndex, flyTo, viewPreset, setLock, zoomBy, goFree, dragVertex, dragSegment, footprints, solidsOf, gridFor,
+  reloadLayout, toScene, doc, ed, cam, commit, undo, redo, apply, select, startPlace, placeAt, autoRoute, routeBetween, checkFlow, validateFlow, relink, addKey, addCaption, evalDirector, startTake, stopTake, rec, setEditor, setTab, setPad, saveNow, moveSelTo, rotateSelBy, deleteSel, duplicateSel, nudge, syncRep, buildRepIndex, repIndex: () => repIndex, flyTo, viewPreset, setLock, zoomBy, goFree, dragVertex, dragSegment, footprints, solidsOf, gridFor,
 };
 
 /* ---------- start ---------- */

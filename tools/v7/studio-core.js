@@ -52,11 +52,19 @@ function toScene() {
   const originalOps = fromLayoutEdits(doc.layoutEdits || []);
   if (JSON.stringify(originalOps) === JSON.stringify(doc.replica)) sc.layoutEdits = clone(doc.layoutEdits || []);
   else {
-    for (const door of clone(doc.doors || [])) {
-      const i = sc.layoutEdits.findIndex((e) => e.target === door.target);
-      if (i >= 0) { Object.assign(door, sc.layoutEdits[i]); sc.layoutEdits.splice(i, 1); }
-      sc.layoutEdits.push(door);
+    // An unrelated edit must not flatten an existing ordered wall/door sequence.
+    const pending = sc.layoutEdits, out = [], seen = new Set();
+    for (const e of doc.layoutEdits || []) {
+      const [kind, id] = e.target.split(":"), tag = REP_KIND_OF[kind] + ":" + id;
+      if (JSON.stringify(originalOps[tag]) === JSON.stringify(doc.replica[tag])) out.push(clone(e));
+      else if (!seen.has(e.target)) {
+        const op = pending.find(x => x.target === e.target);
+        const door = (doc.doors || []).find(x => x.target === e.target);
+        if (op || door) out.push(Object.assign({}, door && clone(door), op));
+      }
+      seen.add(e.target);
     }
+    sc.layoutEdits = out.concat(pending.filter(e => !seen.has(e.target)));
   }
   foldAdds(sc);
   sc.director = clone(doc.director); sc.takes = clone(doc.takes); sc.viewpoints = clone(doc.bookmarks); sc.studio = clone(doc.settings);
@@ -66,9 +74,11 @@ function toScene() {
    doc.adds is the list as loaded; doc.replica ops are totals from the loaded data, so folding is recomputed on every save. */
 function foldAdds(sc) {
   const BASE = SCN.ADD_BASE || 100000, adds = clone(doc.adds || []); sc.layoutAdds = adds;
+  const cutTargets = new Set((sc.layoutEdits || []).filter(e => e.door).map(e => e.target));
   sc.layoutEdits = (sc.layoutEdits || []).filter((e) => {
-    const m = /^([a-z]+):(\d+)$/.exec(e.target || ""); if (!m || +m[2] < BASE || e.delete || e.door) return true;
+    const m = /^([a-z]+):(\d+)$/.exec(e.target || ""); if (!m || +m[2] < BASE || e.delete || e.door || cutTargets.has(e.target)) return true;
     const n = +m[2] - BASE, a = adds[Math.floor(n / 1000)]; if (!a || n % 1000 !== 0 || a.kind === "storage") return true;
+    const into = (SCN.ADD_KINDS[a.kind] || {}).into; if (REP_NAME_OF[into] !== m[1]) return true;
     const dx = e.move ? e.move[0] : 0, dy = e.move ? e.move[1] : 0;
     if (a.kind === "wall") { if (e.turn) return true; const t = (p) => [+(p[0] + dx).toFixed(3), +(p[1] + dy).toFixed(3)]; a.a = t(a.a); a.b = t(a.b); return false; }
     const K = (SCN.ADD_KINDS || {})[a.kind] || {}, dims = (turn) => { let w = a.w != null ? a.w : K.w, d = a.d != null ? a.d : K.d; if (((turn % 360) + 360) % 180 === 90) [w, d] = [d, w]; return [w, d]; };
@@ -104,6 +114,14 @@ const stepPlate = (s) => { const n = doc.nodes[s.node]; return n ? n.plate || pl
 
 /* ---------- undo / redo / autosave ---------- */
 const undoStack = [], redoStack = [];
+const loadedAdds = JSON.stringify(doc.adds), loadedEdits = JSON.stringify(doc.layoutEdits), reloadKey = "mf7:layout-history:" + PROJECT;
+// Only a successful, matching reload may restore history. Scenes normalize folded additions before the next session.
+try {
+  const h = JSON.parse(sessionStorage.getItem(reloadKey) || "null"); sessionStorage.removeItem(reloadKey);
+  if (h && h.baseHash === MF7.baseHash && h.scene === JSON.stringify(MF7.scene)) {
+    for (const [stack, entries] of [[undoStack, h.undo], [redoStack, h.redo]]) for (const e of entries) stack.push({ label: e.label, json: JSON.stringify(fromScene(e.scene)), rebuild: e.rebuild });
+  }
+} catch { /* History is optional; the scene is still in localStorage. */ }
 let dirty = false, saveTimer = 0, lastSaved = "", listeners = [];
 const snapshot = () => JSON.stringify(doc);
 const onChange = (fn) => listeners.push(fn);
@@ -114,8 +132,19 @@ function saveNow() {
   clearTimeout(saveTimer); const s = snapshot();
   try { const sc = toScene(); MF7.scene = sc; if (window.MFS) MFS.setScene(sc); localStorage.setItem(storageKey(), JSON.stringify({ scene: sc, baseHash: MF7.baseHash, savedAt: new Date().toISOString(), fileName: window.MFS ? MFS.state.fileName : "" })); lastSaved = s; dirty = false; status("Saved in this browser"); }
   catch (e) { status("Could not save: " + (e && e.message || e), true); }
-  emit("save");
+  emit("save"); return !dirty && lastSaved === s;
 }function scheduleSave() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 600); emit("dirty"); }
+function reloadLayout(scene, how) {
+  if (scene) { const before = snapshot(); restore(JSON.stringify(fromScene(scene))); undoStack.push({ label: how || "load layout", json: before, rebuild: "all" }); if (undoStack.length > 120) undoStack.shift(); redoStack.length = 0; dirty = true; }
+  if (!saveNow()) { X.tip("Layout kept in memory: save in this browser failed; export the scene before reloading."); return false; }
+  const current = snapshot();
+  try {
+    const pack = stack => stack.map(e => { restore(e.json); return { label: e.label, rebuild: e.rebuild, scene: toScene() }; });
+    const undo = pack(undoStack), redo = pack(redoStack); restore(current);
+    sessionStorage.setItem(reloadKey, JSON.stringify({ baseHash: MF7.baseHash, scene: JSON.stringify(MF7.scene), undo, redo }));
+  } catch (e) { restore(current); X.tip("Could not preserve layout undo: " + e.message); return false; }
+  setTimeout(() => location.reload(), 350); return true;
+}
 function emit(what) { for (const fn of listeners) try { fn(what); } catch (e) { console.error(e); } }
 let statusHandler = null; const status = (msg, bad) => statusHandler && statusHandler(msg, bad);
 /* commit(label, fn, rebuild): run fn() to change the document, record undo, push the result into the player and autosave.
@@ -138,8 +167,8 @@ function commitFrom(before, label, rebuild = "all") {
   scheduleSave(); emit("commit"); return true;
 }
 function cancelTo(before, rebuild = "all") { restore(before); apply(rebuild); emit("commit"); }
-function undo() { const u = undoStack.pop(); if (!u) return X.tip("Nothing to undo"); redoStack.push({ label: u.label, json: snapshot(), rebuild: u.rebuild }); restore(u.json); apply(u.rebuild === "replica" ? "replica" : "all"); scheduleSave(); emit("commit"); X.tip("Undo: " + u.label); }
-function redo() { const r = redoStack.pop(); if (!r) return X.tip("Nothing to redo"); undoStack.push({ label: r.label, json: snapshot(), rebuild: r.rebuild }); restore(r.json); apply(r.rebuild === "replica" ? "replica" : "all"); scheduleSave(); emit("commit"); X.tip("Redo: " + r.label); }
+function undo() { const u = undoStack.pop(); if (!u) return X.tip("Nothing to undo"); redoStack.push({ label: u.label, json: snapshot(), rebuild: u.rebuild }); restore(u.json); if (JSON.stringify(doc.adds) !== loadedAdds || JSON.stringify(doc.layoutEdits) !== loadedEdits) { reloadLayout(); return; } apply(u.rebuild === "replica" ? "replica" : "all"); scheduleSave(); emit("commit"); X.tip("Undo: " + u.label); }
+function redo() { const r = redoStack.pop(); if (!r) return X.tip("Nothing to redo"); undoStack.push({ label: r.label, json: snapshot(), rebuild: r.rebuild }); restore(r.json); if (JSON.stringify(doc.adds) !== loadedAdds || JSON.stringify(doc.layoutEdits) !== loadedEdits) { reloadLayout(); return; } apply(r.rebuild === "replica" ? "replica" : "all"); scheduleSave(); emit("commit"); X.tip("Redo: " + r.label); }
 
 /* push the document into the player: data D (fresh copies, the player decorates them), replica instances, props */
 let applyHooks = { replica: () => {}, props: () => {}, after: () => {} };

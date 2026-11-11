@@ -1,11 +1,12 @@
 // Guided camera calmness: play every path with the guided camera and measure, per path, the camera's turning speed
 // (degrees of azimuth per story second: max = 95th percentile and absolute max, avg) and the number of direction changes
-// (turn episodes: the azimuth moves more than 10 deg between two calm moments), plus hidden-trolley samples.
+// (turn episodes: the azimuth moves more than 10 deg between two calm moments). Use test-camera-v5.mjs for visibility.
 // Usage: node tools/v7/camera-calm.mjs <player.html> [--speed 3] [--tabs inj1,inj2,eps,press] [--json out.json]
 import { writeFileSync } from "node:fs";
 import { openPage } from "./cdp.mjs";
 const args = process.argv.slice(2), file = args[0], opt = {}; for (let i = 1; i < args.length; i += 2) opt[args[i].replace(/^--/, "")] = args[i + 1];
 const speed = +(opt.speed || 3), tabs = (opt.tabs || "inj1,inj2,eps,press").split(","), out = [];
+if (!Number.isFinite(speed) || speed <= 0 || speed > 8 || tabs.some(t => !["inj1","inj2","eps","press"].includes(t))) throw new Error("positive --speed up to 8 and known --tabs required");
 for (const tab of tabs) {
   const pg = await openPage(file, tab);
   try {
@@ -35,6 +36,7 @@ for (const tab of tabs) {
       const row = { tab, path: r.id, seconds: +(r.total - r.intro).toFixed(1), p95: +p95.toFixed(1), max: +max.toFixed(1), avg: +avg.toFixed(2), changes: episodes, maxAt: +maxAt.toFixed(1), perMin: +(episodes / Math.max(1, (r.total - r.intro) / 60)).toFixed(1) };
       out.push(row); console.log(`${tab.padEnd(5)} ${r.id.padEnd(16)} ${String(row.seconds).padStart(6)} s  turn avg ${row.avg} deg/s, 95% ${row.p95}, max ${row.max} at ${row.maxAt} s; direction changes ${row.changes} (${row.perMin}/min)`);
     }
+    if (pg.errors.length) throw new Error(pg.errors.join(" | "));
   } finally { await pg.close(); }
 }
 if (opt.json) writeFileSync(opt.json, JSON.stringify(out, null, 1));

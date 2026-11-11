@@ -114,7 +114,8 @@ function buildRepIndex() {
     for (let i = 0; i < tags.length; i++) { const t = tags[i]; if (!t) continue; let r = repIndex.get(t); if (!r) repIndex.set(t, (r = { tag: t, parts: [] })); r.parts.push({ entry, i, m0: arr.slice(i * 16, i * 16 + 16), b0: entry.base ? entry.base.slice(i * 4, i * 4 + 4) : null }); }
   }
   for (const k of KINDS) for (const o of RP[k] || []) { const r = repIndex.get(k + ":" + o._oid); if (r) { r.kind = k; r.obj = o; r.base = clone(o); r.plate = o.plate; } }
-  for (const [t, r] of repIndex) if (!r.obj) repIndex.delete(t);
+  // Door fragments are generated pieces, not independently addressable scene targets.
+  for (const [t, r] of repIndex) if (!r.obj || !/^[a-z]+:\d+$/.test(t)) repIndex.delete(t);
 }
 const repCentre = (k, o) => (k === "walls" ? [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2] : k === "columns" ? [o.p[0], o.p[1]] : [o.x + o.w / 2, o.y + o.h / 2]);
 function repRect(k, o) {
@@ -134,7 +135,7 @@ function syncRep(tag) {
   mA.makeTranslation(cx + dx, 0, cz + dy); mB.makeRotationY(ang); mC.makeTranslation(-cx, 0, -cz); mA.multiply(mB).multiply(mC);
   for (const p of r.parts) {
     const arr = p.entry.im.instanceMatrix.array, o = p.i * 16;
-    if (del) { for (let k = 0; k < 16; k++) arr[o + k] = 0; if (p.b0) for (let k = 0; k < 4; k++) p.entry.base[p.i * 4 + k] = 0; }
+    if (del) { for (let k = 0; k < 16; k++) arr[o + k] = 0; arr[o + 15] = 1; if (p.b0) for (let k = 0; k < 4; k++) p.entry.base[p.i * 4 + k] = 0; }
     else { mD.fromArray(p.m0); mD.premultiply(mA); mD.toArray(arr, o); if (p.b0) for (let k = 0; k < 4; k++) p.entry.base[p.i * 4 + k] = p.b0[k]; }
     p.entry.im.instanceMatrix.needsUpdate = true;
   }
@@ -391,8 +392,9 @@ function placeAt(h, keep) {
   else if (a.lay) {
     const s = LAY_SIZES[a.lay], it = { id: uid(a.lay), kind: a.lay, floor: plate, x: +((x * PT_M) - s.w / 2).toFixed(2), y: +((y * PT_M) - s.d / 2).toFixed(2), w: s.w, d: s.d };
     if (s.rows) { it.rows = s.rows; it.cols = s.cols; }
-    doc.adds = doc.adds || []; doc.adds.push(it); undoStack.push({ label: "add " + s.name, json: JSON.stringify(Object.assign(JSON.parse(snapshot()), { adds: doc.adds.slice(0, -1) })), rebuild: "all" });
-    saveNow(); ed.placing = null; X.tip(s.name + " added to the layout; rebuilding the 3D…"); setTimeout(() => location.reload(), 700); return;
+    const before = snapshot(); doc.adds = doc.adds || []; doc.adds.push(it);
+    undoStack.push({ label: "add " + s.name, json: before, rebuild: "all" }); if (undoStack.length > 120) undoStack.shift(); redoStack.length = 0;
+    dirty = true; ed.placing = null; if (reloadLayout()) X.tip(s.name + " added to the layout; rebuilding the 3D…"); return;
   }
   else if (a.dev) {
     if (a.dev.type === "rfid-auto" && doc.devices.filter((d) => d.type === "rfid-auto").length >= SCN.MAX_GATES) { X.tip(`At most ${SCN.MAX_GATES} auto RFID gates per project`); ed.placing = null; return; }

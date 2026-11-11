@@ -6,7 +6,9 @@ import { loadSceneCore, readProjects, layoutFor } from "./scene-node.mjs";
 import { STAGE } from "./mf-commands.mjs";
 const args = process.argv.slice(2), file = args[0], opt = {}; for (let i = 1; i < args.length; i += 2) opt[args[i].replace(/^--/, "")] = args[i + 1];
 const UNDER = +(opt.under || 0.5), U = 0.3;
-const SC = loadSceneCore(), P = readProjects(`dist/Material_Flow_Player_v${STAGE}.html`), scene = JSON.parse(readFileSync(file, "utf8"));
+if (!Number.isFinite(UNDER) || UNDER <= 0) throw new Error("--under must be positive metres");
+const SC = loadSceneCore(), P = readProjects(opt.player || `dist/Material_Flow_Player_v${STAGE}.html`), scene = JSON.parse(readFileSync(file, "utf8"));
+const report = SC.validate(scene, layoutFor(P, scene.project)); if (report.errors.length) throw new Error("scene must validate before an aisle scan: " + report.errors[0].msg);
 const layout = layoutFor(P, scene.project), res = SC.toInternal(JSON.parse(JSON.stringify(scene)), layout);
 const found = new Map();
 res.data.flows.forEach((f) => f.steps.forEach((s) => {

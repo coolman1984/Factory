@@ -17,7 +17,7 @@ function autosave() {
 }
 
 /* ---------- load a scene (validate, convert, rebuild) ---------- */
-const sameEdits = (a, b) => JSON.stringify((a && a.layoutEdits) || []) === JSON.stringify((b && b.layoutEdits) || []);
+const sameEdits = (a, b) => ["layoutEdits", "layoutAdds"].every(k => JSON.stringify((a && a[k]) || []) === JSON.stringify((b && b[k]) || []));
 function load(scene, how, opts = {}) {
   if (window.MFX) MFX.flush();
   if (window.MFX) MFX.flush();
@@ -26,7 +26,7 @@ function load(scene, how, opts = {}) {
   if (opts.record !== false && !window.MFX) { st.undo.push(clone(st.scene)); if (st.undo.length > 60) st.undo.shift(); st.redo.length = 0; }
   const prev = st.scene; st.scene = clone(scene); MF7.scene = st.scene;
   if (!autosave() && !sameEdits(prev, scene)) { st.scene = prev; MF7.scene = prev; return false; }
-  if (!sameEdits(prev, scene)) { X.tip("The layout edits changed: reloading the factory…"); setTimeout(() => location.reload(), 350); return true; }
+  if (!sameEdits(prev, scene)) { if (window.MFX) return MFX.reloadLayout(scene, how); X.tip("The layout changed: reloading the factory…"); setTimeout(() => location.reload(), 350); return true; }
   if (window.MFX && window.MFX.replaceScene) { window.MFX.replaceScene(scene, how); render(); X.tip(`${how}: ${(scene.paths || []).length} path(s) loaded`); return true; }
   const res = SC.toInternal(clone(scene), { plates: D.plates, elevators: layout().elevators, replica: MF.RP }, { applyLayout: false });
   for (const k of Object.keys(D.nodes)) delete D.nodes[k]; Object.assign(D.nodes, res.data.nodes);

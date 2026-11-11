@@ -117,3 +117,12 @@ Edit the step's `title`, `text`, `wait` (s) or `speed` (m/s). Check with `mf val
 ## 12. Move, turn or delete a rack (or wall, machine, column, pallet block)
 `"layoutEdits": [{ "target": "rack:12", "move": [0, -2] }]` / `"turn": 90` / `"delete": true`; then `mf fix-links` and
 `mf validate` (paths near it may now pass, or be blocked).
+
+## 13. Add factory geometry
+
+Append a `layoutAdds` entry with a unique `id`, `kind`, `floor`, north-west `x`/`y`, and positive `w`/`d` in metres. Use
+`machine`, `line`, `conveyor`, `table`, `rack` or `storage` for simple geometry; `injection`, `press`, `utility` reuse models.
+Walls use `a`/`b` endpoint pairs. Validate against the intended player with `mf validate <scene> --player <player.html>`.
+Use the slide for existence, location and paths, and measured CAD dimensions for sizes; record unresolved differences.
+Keep addition list slots in place when deleting with `layoutEdits` (see the manual for target IDs). Compare the original
+picture, plan and 3D with identical framing, then play every affected path. A clear path does not establish layout accuracy.

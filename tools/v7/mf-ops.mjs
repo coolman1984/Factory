@@ -129,6 +129,7 @@ export function diff(a, b, P) {
   const mv = (x, y) => { const p = x.at || [x.x, x.y], q = y.at || [y.x, y.y]; const d = Math.hypot(q[0] - p[0], q[1] - p[1]); return d > .005 ? `moved ${d.toFixed(2)} m` : "properties"; };
   cmpList("stop", a.stops, b.stops, mv); cmpList("device", a.devices, b.devices, mv); cmpList("object", a.objects, b.objects, mv); cmpList("path", a.paths, b.paths, null);
   if (JSON.stringify(a.layoutEdits || []) !== JSON.stringify(b.layoutEdits || [])) out.push(`~ layoutEdits: ${(a.layoutEdits || []).length} -> ${(b.layoutEdits || []).length}`);
+  if (JSON.stringify(a.layoutAdds || []) !== JSON.stringify(b.layoutAdds || [])) out.push(`~ layoutAdds: ${(a.layoutAdds || []).length} -> ${(b.layoutAdds || []).length}`);
   if (JSON.stringify(a.director || {}) !== JSON.stringify(b.director || {})) out.push("~ director (keys / captions) changed");
   if (P) { const na = numbers(a, P), nb = numbers(b, P); for (const p of nb) { const q = na.find((x) => x.id === p.id); if (q && (Math.abs(q.metres - p.metres) > .05 || Math.abs(q.seconds - p.seconds) > .05)) out.push(`# ${p.id}: ${q.metres.toFixed(1)} m -> ${p.metres.toFixed(1)} m, ${q.seconds.toFixed(1)} s -> ${p.seconds.toFixed(1)} s`); } }
   return out;

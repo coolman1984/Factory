@@ -235,6 +235,26 @@ the layout reference.
 
 Routes, the collision check and the plan follow the edited layout. Changing layout edits in the player reloads the page.
 
+### Added layout items (V7.7.2)
+
+`layoutAdds` appends factory geometry as data; the generated reference below lists every field. `x`/`y` is the north-west
+corner of the final footprint, while `w`/`d`, storage `rows`/`cols` describe the shape before a quarter turn. Walls use two
+different finite endpoints `a`/`b`; turn a wall using a `layoutEdits` operation. Solid additions join the normal router and
+trolley sweep. Storage without pallets is only a floor marking. Storage supports at most 999 pallets per addition; larger
+areas must be split. Added items have no pre-baked shadow; existing shadow repair concerns edited original geometry.
+
+An addition's zero-based list position reserves a numeric slot: `100000 + 1000 * position`. Machines, lines, conveyors,
+tables and models use `machine:<slot>`, racks `rack:<slot>`, walls `wall:<slot>`. Storage pallets use `pallet:<slot+1>` through
+`pallet:<slot+rows*cols>` in original row-major order, including after a turn. Append entries; retain slots when deleting
+geometry with `layoutEdits`. Reordering/removing entries, changing kinds, or changing storage cell counts requires updating
+every affected target. The text `id` alone does not determine these numeric references.
+
+Studio folds simple added-block/rack moves and turns into `layoutAdds` on save. Delete keeps the entry and writes a delete
+edit, so later slots keep their identities. Storage grids are edited as scene data; selecting one pallet edits only that cell.
+Door fragments (`wall:<slot>a/b`) are generated pieces, not independently editable targets: change the parent wall's ordered
+edits in the scene. Imports and Studio layout additions reload the factory after a successful browser save; Studio preserves
+undo/redo across this reload in the current tab. If saving fails, export the in-memory scene before a manual reload.
+
 ## 8. Objects, several trolleys, director (V7.6)
 
 - **`objects`**: placed 3D objects. Each one is `{ "id", "type", "floor", "x", "y", "heading", "w", "d", "h", "color", "name", "text" }`, with `w`, `d` and `h` in metres.
@@ -440,20 +460,20 @@ Every field of the format, generated from `tools/v7/scene-schema.mjs`. `mf docs-
 | `layoutEdits[].delete` | true/false |  |  | false | true | Remove it. |
 | `layoutEdits[].door` | [from, to] | m | along a straight wall | none | [61.65, 65.25] | Cut a doorway into a wall. |
 | `layoutEdits[].note` | text |  | any | none | "owner 2026-11-11" | Why (ignored by the engine). |
-| `layoutAdds[]` | list |  |  | [] |  | New layout items (solid for routes, drawn in 3D and on the plan, movable in the Studio). |
-| `layoutAdds[].id` | text |  | unique | required | "line-a" | Stable id; the Studio and edits use <kind>:<100000 + 1000 x position in this list>. |
+| `layoutAdds[]` | list |  | append only; retain deleted slots | [] |  | New layout items; storage markings alone are not solid. Blocks/racks/walls have Studio transforms; storage grids are edited as data. |
+| `layoutAdds[].id` | text |  | unique | required | "line-a" | Label identity; edits use wall/machine/rack:100000 + 1000 x zero-based list position, pallets use base + 1..999. Never reorder/remove slots with references. |
 | `layoutAdds[].kind` | text |  | injection, press, utility, machine, line, conveyor, table, rack, storage, wall | required | "line" | Models (injection / press / utility) or simple blocks with one style per kind. |
 | `layoutAdds[].floor` | text |  | a floor key | required | "1F" | The floor. |
 | `layoutAdds[].x` | number | m | inside the floor | required | 67.6 | West edge (north-west corner). |
 | `layoutAdds[].y` | number | m | inside the floor | required | 117.5 | North edge. |
-| `layoutAdds[].w` | number | m | > 0 | per kind (injection 2.74) | 4 | East-west size (before turn). |
-| `layoutAdds[].d` | number | m | > 0 | per kind (injection 13.6) | 21 | North-south size (before turn). |
-| `layoutAdds[].h` | number | m | > 0 | machine 2.2, line 1.3, conveyor 0.9, table 0.85 | 1.5 | Height of a simple block. |
+| `layoutAdds[].w` | number | m | > 0 and < 200 | per kind (injection 2.74) | 4 | East-west size (before turn). |
+| `layoutAdds[].d` | number | m | > 0 and < 200 | per kind (injection 13.6) | 21 | North-south size (before turn). |
+| `layoutAdds[].h` | number | m | > 0 and < 200 | machine 2.2, line 1.3, conveyor 0.9, table 0.85 | 1.5 | Height of a simple block. |
 | `layoutAdds[].turn` | number | deg | 0, 90, 180, 270 | 0 | 90 | Turn about the centre (swaps w and d). |
 | `layoutAdds[].color` | text |  | #rrggbb | per kind | "#5b6b82" | Colour of a simple block. |
-| `layoutAdds[].rows` | number |  | 1 to 60 | 1 | 5 | storage: rows of the floor grid. |
-| `layoutAdds[].cols` | number |  | 1 to 60 | 1 | 4 | storage: columns of the floor grid. |
-| `layoutAdds[].pallets` | true/false |  |  | true | false | storage: a low pallet stack in every cell (solid); false = floor markings only (not solid). |
+| `layoutAdds[].rows` | number |  | integer 1 to 60 | 1 | 5 | storage: rows before turn. rows x cols must be <= 999 with pallets. |
+| `layoutAdds[].cols` | number |  | integer 1 to 60 | 1 | 4 | storage: columns before turn; cell ids retain original row-major order through turns. |
+| `layoutAdds[].pallets` | true/false |  | boolean | true | false | storage: one solid low pallet stack per cell (up to 999); false = markings only. |
 | `layoutAdds[].a` | [x, y] | m |  | required for wall | [320, 230] | wall: start. |
 | `layoutAdds[].b` | [x, y] | m |  | required for wall | [330, 230] | wall: end. |
 | `layoutAdds[].label` | text |  | any | none | "PB04" | A name for people (not drawn yet). |
