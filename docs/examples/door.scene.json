@@ -1,0 +1,95 @@
+{
+ "format": "mf-scene",
+ "version": 1,
+ "project": "eps",
+ "layout": "eps",
+ "title": "Sample - EPS doorway",
+ "stops": [
+  {
+   "id": "to-2f",
+   "name": "TO Mapping / GI 2F",
+   "floor": "2F",
+   "x": 362.25,
+   "y": 61.65,
+   "symbol": "mapping",
+   "color": "#00B0F0"
+  },
+  {
+   "id": "main-line",
+   "name": "To Main Line",
+   "floor": "2F",
+   "x": 286.05,
+   "y": 69.15,
+   "symbol": "dest",
+   "color": "#156082"
+  }
+ ],
+ "devices": [],
+ "objects": [],
+ "layoutEdits": [
+  {
+   "target": "wall:165",
+   "door": [
+    61.65,
+    65.25
+   ]
+  },
+  {
+   "target": "wall:170",
+   "door": [
+    61.65,
+    65.25
+   ]
+  }
+ ],
+ "paths": [
+  {
+   "id": "west",
+   "name": "1 · TO to Main Line through two doors",
+   "color": "#7030A0",
+   "steps": [
+    {
+     "id": "s1",
+     "stop": "to-2f",
+     "title": "TO Mapping",
+     "route": {
+      "type": "stay"
+     }
+    },
+    {
+     "id": "s2",
+     "stop": "main-line",
+     "title": "To Main Line",
+     "route": {
+      "type": "points",
+      "points": [
+       [
+        362.25,
+        61.65
+       ],
+       [
+        362.25,
+        63.45
+       ],
+       [
+        290.55,
+        63.45
+       ],
+       [
+        290.55,
+        69.15
+       ],
+       [
+        286.05,
+        69.15
+       ]
+      ]
+     }
+    }
+   ]
+  }
+ ],
+ "director": {},
+ "viewpoints": [],
+ "notes": "Example for docs/RECIPES.md"
+}

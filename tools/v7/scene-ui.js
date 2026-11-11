@@ -12,33 +12,40 @@ const fsOK = typeof window.showSaveFilePicker === "function" && window.isSecureC
 
 /* ---------- autosave ---------- */
 function autosave() {
-  try { localStorage.setItem(KEY, JSON.stringify({ scene: st.scene, baseHash: MF7.baseHash, savedAt: new Date().toISOString(), fileName: st.fileName })); st.savedAt = new Date(); }
-  catch (e) { X.tip("Could not save in this browser: " + e.message); }
+  try { localStorage.setItem(KEY, JSON.stringify({ scene: st.scene, baseHash: MF7.baseHash, savedAt: new Date().toISOString(), fileName: st.fileName })); st.savedAt = new Date(); return true; }
+  catch (e) { X.tip("Could not save in this browser: " + e.message); return false; }
 }
 
 /* ---------- load a scene (validate, convert, rebuild) ---------- */
 const sameEdits = (a, b) => JSON.stringify((a && a.layoutEdits) || []) === JSON.stringify((b && b.layoutEdits) || []);
 function load(scene, how, opts = {}) {
+  if (window.MFX) MFX.flush();
+  if (window.MFX) MFX.flush();
   const t0 = performance.now(), rep = SC.validate(scene, layout()); st.report = rep;
   if (rep.errors.length && !opts.force) { render(); open(true); X.tip(`Not loaded: ${rep.errors.length} error(s) in the scene (see the Scene panel)`); return false; }
-  if (opts.record !== false) { st.undo.push(clone(st.scene)); if (st.undo.length > 60) st.undo.shift(); st.redo.length = 0; }
-  const prev = st.scene; st.scene = clone(scene); MF7.scene = st.scene; autosave();
+  if (opts.record !== false && !window.MFX) { st.undo.push(clone(st.scene)); if (st.undo.length > 60) st.undo.shift(); st.redo.length = 0; }
+  const prev = st.scene; st.scene = clone(scene); MF7.scene = st.scene;
+  if (!autosave() && !sameEdits(prev, scene)) { st.scene = prev; MF7.scene = prev; return false; }
   if (!sameEdits(prev, scene)) { X.tip("The layout edits changed: reloading the factory…"); setTimeout(() => location.reload(), 350); return true; }
-  if (window.MFX && window.MFX.replaceScene) { window.MFX.replaceScene(scene, how); render(); X.tip(`${how}: ${scene.paths.length} path(s) loaded`); return true; }
+  if (window.MFX && window.MFX.replaceScene) { window.MFX.replaceScene(scene, how); render(); X.tip(`${how}: ${(scene.paths || []).length} path(s) loaded`); return true; }
   const res = SC.toInternal(clone(scene), { plates: D.plates, elevators: layout().elevators, replica: MF.RP }, { applyLayout: false });
   for (const k of Object.keys(D.nodes)) delete D.nodes[k]; Object.assign(D.nodes, res.data.nodes);
   D.flows = res.data.flows; D.devices = res.data.devices; if (D.slide && res.data.title) D.slide.title = res.data.title;
   const flow = Math.min(S.flow, D.flows.length - 1); S.flow = flow; X.rebuild(); MF.setFlow(flow);
-  render(); X.tip(`${how}: ${scene.paths.length} path(s) loaded in ${(performance.now() - t0).toFixed(0)} ms${rep.warnings.length ? `, ${rep.warnings.length} warning(s)` : ""}`);
+  render(); X.tip(`${how}: ${(scene.paths || []).length} path(s) loaded in ${(performance.now() - t0).toFixed(0)} ms${rep.warnings.length ? `, ${rep.warnings.length} warning(s)` : ""}`);
   return true;
 }
-function undo() { if (window.MFX && MFX.canUndo()) return MFX.undo(); const s = st.undo.pop(); if (!s) return X.tip("Nothing to undo"); st.redo.push(clone(st.scene)); load(s, "Undo", { record: false, force: true }); }
-function redo() { if (window.MFX && MFX.canRedo()) return MFX.redo(); const s = st.redo.pop(); if (!s) return X.tip("Nothing to redo"); st.undo.push(clone(st.scene)); load(s, "Redo", { record: false, force: true }); }
+function undo() { if (window.MFX) return MFX.undo(); const s = st.undo.pop(); if (!s) return X.tip("Nothing to undo"); st.redo.push(clone(st.scene)); load(s, "Undo", { record: false, force: true }); }
+function redo() { if (window.MFX) return MFX.redo(); const s = st.redo.pop(); if (!s) return X.tip("Nothing to redo"); st.undo.push(clone(st.scene)); load(s, "Redo", { record: false, force: true }); }
 
 /* ---------- files ---------- */
 const TYPES = [{ description: "Material Flow scene", accept: { "application/json": [".json"] } }];
 const text = () => JSON.stringify(st.scene, null, 1) + "\n";
-async function writeHandle(h) { const w = await h.createWritable(); await w.write(text()); await w.close(); }
+async function writeHandle(h) {
+  const w = await h.createWritable();
+  try { await w.write(text()); await w.close(); }
+  catch (e) { try { await w.abort(); } catch {} throw e; }
+}
 async function save() {
   if (window.MFX) MFX.flush();
   if (!st.handle) return saveAs();
@@ -48,6 +55,8 @@ async function save() {
   } catch (e) { X.tip("Direct save failed (" + e.message + "): use Save as or Download"); st.lastSaveError = e.message; render(); }
 }
 async function saveAs() {
+  if (window.MFX) MFX.flush();
+  if (window.MFX) MFX.flush();
   if (!fsOK) return download();
   try {
     const h = await window.showSaveFilePicker({ suggestedName: st.fileName || `${PROJECT}.scene.json`, types: TYPES });
@@ -87,11 +96,11 @@ function render() {
   const s = st.scene, r = st.report, src = st.fileName ? "file " + st.fileName : { "built-in": "the scene built into this player", browser: "your scene saved in this browser", file: "the scene built into this player" }[MF7.source] || MF7.source;
   const list = (items, cls) => items.map((x) => `<li class="${cls}"><b>${esc(x.where)}</b>${esc(x.msg)}</li>`).join("");
   panel.innerHTML = `<div class="hd"><b>Scene file</b><span class="pj">${esc(PROJECT.toUpperCase())}</span><button class="ib xs" id="sc7x" aria-label="Close">✕</button></div>
-    <p class="src">${esc(s.title || "")}<br><small>${s.paths.length} paths · ${s.paths.reduce((n, p) => n + p.steps.length, 0)} steps · ${s.stops.length} stops · ${s.devices.length} devices · from ${esc(src)}${st.savedAt ? " · autosaved " + st.savedAt.toLocaleTimeString() : ""}</small></p>
+    <p class="src">${esc(s.title || "")}<br><small>${(s.paths || []).length} paths · ${(s.paths || []).reduce((n, p) => n + p.steps.length, 0)} steps · ${(s.stops || []).length} stops · ${(s.devices || []).length} devices · from ${esc(src)}${st.savedAt ? " · autosaved " + st.savedAt.toLocaleTimeString() : ""}</small></p>
     ${MF7.stale ? `<p class="warn7">This browser also has an older edited copy (from ${esc(MF7.stale.savedAt || "")}), made before this player file was rebuilt. <button id="sc7stale">Load it</button></p>` : ""}
     ${MF7.error ? `<p class="err7">${esc(MF7.error)}</p>` : ""}
     <div class="acts"><button id="sc7open" title="Open a scene file (Ctrl+O)">Open…</button><button id="sc7save" title="${st.handle ? "Write to " + esc(st.fileName) : "Choose where to save"} (Ctrl+S)">Save</button><button id="sc7as">Save as…</button><button id="sc7dl" title="Download a copy">Download</button></div>
-    <div class="acts"><button id="sc7undo" ${st.undo.length ? "" : "disabled"} title="Ctrl+Z">Undo</button><button id="sc7redo" ${st.redo.length ? "" : "disabled"} title="Ctrl+Y">Redo</button><button id="sc7val" class="pri">Validate</button><button id="sc7reset" class="danger">Reset to built-in</button></div>
+    <div class="acts"><button id="sc7undo" ${(window.MFX ? MFX.canUndo() : st.undo.length) ? "" : "disabled"} title="Ctrl+Z">Undo</button><button id="sc7redo" ${(window.MFX ? MFX.canRedo() : st.redo.length) ? "" : "disabled"} title="Ctrl+Y">Redo</button><button id="sc7val" class="pri">Validate</button><button id="sc7reset" class="danger">Reset to built-in</button></div>
     <p class="hint">Drop a scene file anywhere on the player to load it. ${fsOK ? "Save writes straight back to the file you opened or saved." : "This browser cannot write files directly: Save downloads a copy."}${st.lastSaveError ? ` Last direct save failed: ${esc(st.lastSaveError)}.` : ""}</p>
     ${r ? `<div class="rep ${r.errors.length ? "bad" : "ok"}"><b>${r.errors.length ? r.errors.length + " error(s)" : "Valid"}${r.warnings.length ? ", " + r.warnings.length + " warning(s)" : ""}</b><ul>${list(r.errors, "e")}${list(r.warnings, "w")}</ul></div>` : ""}`;
   $("sc7x").onclick = () => open(false); $("sc7open").onclick = openFile; $("sc7save").onclick = save; $("sc7as").onclick = saveAs; $("sc7dl").onclick = download;
@@ -122,4 +131,4 @@ addEventListener("keydown", (e) => {
 if (MF7.issues && MF7.issues.length) X.tip(MF7.issues[0].msg);
 MF.ready.then(() => { if (MF7.source === "browser") X.tip("Your scene saved in this browser is loaded (Scene file: Reset to built-in to undo)"); if (MF7.error) X.tip(MF7.error); });
 // test and automation surface
-window.MFS = { setScene: (s) => { st.scene = s; MF7.scene = s; render(); }, openFile, get scene() { return st.scene; }, load: (s, o) => load(s, "Loaded", o), validate: () => SC.validate(st.scene, layout()), undo, redo, save, saveAs, download, open, state: st, fsOK };
+window.MFS = { setScene: (s) => { st.scene = s; MF7.scene = s; st.dirty = true; render(); }, openFile, get scene() { return st.scene; }, load: (s, o) => load(s, "Loaded", o), validate: () => SC.validate(st.scene, layout()), undo, redo, save, saveAs, download, open, state: st, fsOK };

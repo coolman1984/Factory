@@ -26,27 +26,43 @@ const plateLabel = (k) => (D.plates[k] && D.plates[k].label) || k;
 const SCN = window.MFScene, MF7 = window.MF7 || {}, U7 = 0.3;
 const OBJ_OF_PROP = { box: "crate", arrow: "floor-arrow", zone: "floor-zone" }, PROP_OF_OBJ = { crate: "box", "floor-arrow": "arrow", "floor-zone": "zone" };
 const REP_NAME_OF = { walls: "wall", columns: "column", racks: "rack", machines: "machine", pallets: "pallet" }, REP_KIND_OF = { wall: "walls", column: "columns", rack: "racks", machine: "machines", pallet: "pallets" };
+function fromLayoutEdits(edits) {
+  const replica = {};
+  for (const e of edits) { const m = /^([a-z]+):(\d+)$/.exec(e.target || ""); if (!m || !REP_KIND_OF[m[1]]) continue; const op = {}; if (e.move) { op.dx = e.move[0] / U7; op.dy = e.move[1] / U7; } if (e.turn) op.rot = e.turn; if (e.delete) op.del = true; replica[REP_KIND_OF[m[1]] + ":" + m[2]] = op; }
+  return replica;
+}
 function fromScene(scene) {
   const res = SCN.toInternal(clone(scene), { plates: D.plates, elevators: X.ELEVATORS || [], replica: RP }, { applyLayout: false }), replica = {};
-  for (const e of scene.layoutEdits || []) { const m = /^([a-z]+):(\d+)$/.exec(e.target || ""); if (!m || !REP_KIND_OF[m[1]]) continue; const op = {}; if (e.move) { op.dx = e.move[0] / U7; op.dy = e.move[1] / U7; } if (e.turn) op.rot = e.turn; if (e.delete) op.del = true; replica[REP_KIND_OF[m[1]] + ":" + m[2]] = op; }
+  Object.assign(replica, fromLayoutEdits(scene.layoutEdits || []));
+  const director = clone(scene.director || {}); for (const d of Object.values(director)) if (d.keys) d.keys.sort((a, b) => a.t - b.t);
   return {
+    notes: scene.notes || "", layout: scene.layout || scene.project, layoutEdits: clone(scene.layoutEdits || []),
     format: "mf7-work", project: PROJECT, title: scene.title || PROJECT, nodes: res.data.nodes, flows: res.data.flows, devices: res.data.devices,
     props: (scene.objects || []).map((o) => ({ id: o.id, type: PROP_OF_OBJ[o.type] || o.type, name: o.name || "", x: o.x / U7, y: o.y / U7, plate: o.floor, rot: o.heading || 0, w: o.w, d: o.d, h: o.h, color: o.color, text: o.text })),
-    replica, doors: clone((scene.layoutEdits || []).filter((e) => e.door)), director: clone(scene.director || {}), takes: clone(scene.takes || []), bookmarks: clone(scene.viewpoints || []),
+    replica, doors: clone((scene.layoutEdits || []).filter((e) => e.door)), director, takes: clone(scene.takes || []), bookmarks: clone(scene.viewpoints || []),
     settings: Object.assign({ snap: .5, ortho: true, lang: "en", shift: 8 }, clone(scene.studio || {})),
   };
 }
 function toScene() {
   const sc = SCN.fromInternal(PROJECT, { nodes: doc.nodes, flows: doc.flows.map((f) => Object.assign({}, f, { steps: f.steps.map(cleanStep) })), devices: doc.devices, title: doc.title });
-  sc.title = doc.title;
+  sc.title = doc.title; sc.notes = doc.notes; sc.layout = doc.layout;
   sc.objects = doc.props.map((p) => { const o = { id: p.id, type: OBJ_OF_PROP[p.type] || p.type, floor: p.plate, x: +(p.x * U7).toFixed(3), y: +(p.y * U7).toFixed(3), heading: p.rot || 0, w: p.w, d: p.d, h: p.h, color: p.color }; if (p.name) o.name = p.name; if (p.text) o.text = p.text; return o; });
   sc.layoutEdits = Object.entries(doc.replica).map(([tag, op]) => { const [k, n] = tag.split(":"), e = { target: REP_NAME_OF[k] + ":" + n }; if (op.dx || op.dy) e.move = [+((op.dx || 0) * U7).toFixed(3), +((op.dy || 0) * U7).toFixed(3)]; if (op.rot) e.turn = op.rot; if (op.del) e.delete = true; return e; }).filter((e) => e.move || e.turn || e.delete);
-  sc.layoutEdits = sc.layoutEdits.concat(clone(doc.doors || []));
+  // Preserve ordered edits (including doors combined with transforms) when Studio has not changed them.
+  const originalOps = fromLayoutEdits(doc.layoutEdits || []);
+  if (JSON.stringify(originalOps) === JSON.stringify(doc.replica)) sc.layoutEdits = clone(doc.layoutEdits || []);
+  else {
+    for (const door of clone(doc.doors || [])) {
+      const i = sc.layoutEdits.findIndex((e) => e.target === door.target);
+      if (i >= 0) { Object.assign(door, sc.layoutEdits[i]); sc.layoutEdits.splice(i, 1); }
+      sc.layoutEdits.push(door);
+    }
+  }
   sc.director = clone(doc.director); sc.takes = clone(doc.takes); sc.viewpoints = clone(doc.bookmarks); sc.studio = clone(doc.settings);
   return sc;
 }
 const FLOW_KEYS0 = ["id", "name", "color", "steps", "trolleys", "headway"];
-const STEP_KEYS0 = ["node", "title", "what", "mode", "view", "dist", "path", "dwell", "lift", "elevator", "speed"];
+const STEP_KEYS0 = ["node", "title", "what", "mode", "view", "dist", "path", "dwell", "lift", "elevator", "speed", "sceneId"];
 const cleanStep = (s) => { const o = {}; for (const k of STEP_KEYS0) if (s[k] !== undefined) o[k] = s[k]; return o; };
 const doc = fromScene(MF7.scene || SCN.fromInternal(PROJECT, D));
 const loadedOps = clone(doc.replica);              // layout edits already built into this session's replica (by the preload)
@@ -59,7 +75,7 @@ const newId = () => nextId++;
 const uid = (p) => p + "-" + Math.random().toString(36).slice(2, 8);
 
 // Elevator of a lift step and the end point of any step (the next step must start there).
-const elevatorOf = (s) => ELEVATORS.find((e) => e.label === s.elevator) || ELEVATORS[0] || null;
+const elevatorOf = (s) => ELEVATORS.find((e) => e.label === s.elevator) || (s.elevator == null ? ELEVATORS[0] : null) || null;
 function stepEnd(f, i) {
   const s = f.steps[i]; if (!s) return null;
   if (s.lift || s.path === "lift") { const e = elevatorOf(s); return e ? [e.high[0], e.high[1]] : null; }
@@ -80,7 +96,7 @@ function storageKey() { return "mf7:scene:" + PROJECT; }
 // write the working copy back as the scene: browser autosave (the preload's format) + the scene file manager's state
 function saveNow() {
   clearTimeout(saveTimer); const s = snapshot();
-  try { const sc = toScene(); MF7.scene = sc; localStorage.setItem(storageKey(), JSON.stringify({ scene: sc, baseHash: MF7.baseHash, savedAt: new Date().toISOString(), fileName: window.MFS ? MFS.state.fileName : "" })); if (window.MFS) MFS.setScene(sc); lastSaved = s; dirty = false; status("Saved in this browser"); }
+  try { const sc = toScene(); MF7.scene = sc; if (window.MFS) MFS.setScene(sc); localStorage.setItem(storageKey(), JSON.stringify({ scene: sc, baseHash: MF7.baseHash, savedAt: new Date().toISOString(), fileName: window.MFS ? MFS.state.fileName : "" })); lastSaved = s; dirty = false; status("Saved in this browser"); }
   catch (e) { status("Could not save: " + (e && e.message || e), true); }
   emit("save");
 }function scheduleSave() { dirty = true; clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 600); emit("dirty"); }
@@ -92,14 +108,18 @@ function commit(label, fn, rebuild = "all") {
   const before = snapshot();
   try { fn(); } catch (e) { restore(before); console.error(e); X.tip("Could not " + label + ": " + (e && e.message || e)); return false; }
   const after = snapshot(); if (after === before) return false;
+  try { apply(rebuild); }
+  catch (e) { restore(before); try { apply("all"); } catch (rollback) { console.error(rollback); } X.tip("Could not " + label + ": " + e.message); return false; }
   undoStack.push({ label, json: before, rebuild }); if (undoStack.length > 120) undoStack.shift(); redoStack.length = 0;
-  apply(rebuild); scheduleSave(); emit("commit"); return true;
+  scheduleSave(); emit("commit"); return true;
 }
 // for live drags: the document was already changed in place since `before` (a snapshot() taken at drag start)
 function commitFrom(before, label, rebuild = "all") {
   if (snapshot() === before) { apply(rebuild === "director" ? "director" : rebuild); return false; }
+  try { apply(rebuild); }
+  catch (e) { restore(before); try { apply("all"); } catch (rollback) { console.error(rollback); } X.tip("Could not " + label + ": " + e.message); return false; }
   undoStack.push({ label, json: before, rebuild }); if (undoStack.length > 120) undoStack.shift(); redoStack.length = 0;
-  apply(rebuild); scheduleSave(); emit("commit"); return true;
+  scheduleSave(); emit("commit"); return true;
 }
 function cancelTo(before, rebuild = "all") { restore(before); apply(rebuild); emit("commit"); }
 function undo() { const u = undoStack.pop(); if (!u) return X.tip("Nothing to undo"); redoStack.push({ label: u.label, json: snapshot(), rebuild: u.rebuild }); restore(u.json); apply(u.rebuild === "replica" ? "replica" : "all"); scheduleSave(); emit("commit"); X.tip("Undo: " + u.label); }
@@ -119,22 +139,8 @@ function apply(what = "all") {
   applyHooks.after(what); return ms;
 }
 
-/* ---------- device footprints (same rule as tools/v5/device-dims.mjs) ---------- */
-function footprints(d) {
-  const k = d.k || DIMS.K, A = DIMS.DIMS || {};
-  if (d.type === "pc") {
-    const a = A.pc || { depth: .7, width: 1.45 }, yaw = d.yawDeg != null ? d.yawDeg : { e: 90, w: -90, n: 180, s: 0 }[d.face || "e"];
-    const horiz = Math.abs(Math.sin(yaw * Math.PI / 180)) > .7, hx = (horiz ? a.depth : a.width) * k * M / 2, hy = (horiz ? a.width : a.depth) * k * M / 2;
-    return [[d.x - hx, d.y - hy, d.x + hx, d.y + hy]];
-  }
-  if (d.type === "rfid-auto") {
-    const a = A["rfid-auto"] || { gap: 2.2 * M, post: .16 * M }, p = a.post / 2 + .1;
-    return d.axis === "y" ? [[d.x - a.gap - p, d.y - p, d.x - a.gap + p, d.y + p], [d.x + a.gap - p, d.y - p, d.x + a.gap + p, d.y + p]]
-      : [[d.x - p, d.y - a.gap - p, d.x + p, d.y - a.gap + p], [d.x - p, d.y + a.gap - p, d.x + p, d.y + a.gap + p]];
-  }
-  if (d.type === "rfid-manual") { const a = A["rfid-manual"] || { width: .36 }, h = a.width * k * M / 2; return [[d.x - h, d.y - h, d.x + h, d.y + h]]; }
-  return [];
-}
+/* ---------- device footprints: canonical scene core, frame units ---------- */
+const footprints = (d) => SCN.footprintsU(d);
 // a prop's plan rectangle (rotated bounding box)
 function propRect(p) {
   const r = (p.rot || 0) * Math.PI / 180, c = Math.abs(Math.cos(r)), s = Math.abs(Math.sin(r)), hw = p.w * M / 2, hd = p.d * M / 2;
@@ -144,120 +150,22 @@ const PROP_SOLID = { box: 1, pallet: 1, rack: 1, column: 1, wall: 1, fence: 1, c
 
 /* ---------- solids per plate (replica + devices + props), with a spatial hash ---------- */
 const solidCache = {};
-function invalidateSolids() { for (const k of Object.keys(solidCache)) delete solidCache[k]; routerCache.clear(); }
+function invalidateSolids() { for (const k of Object.keys(solidCache)) delete solidCache[k]; sharedRouter = null; }
 function solidsOf(plate) {
   if (solidCache[plate]) return solidCache[plate];
-  const out = [];
-  for (const w of RP.walls || []) if (w.plate === plate) {
-    const [ax, ay] = w.a, [bx, by] = w.b, t = .75;
-    if (Math.abs(ax - bx) < 1e-6 || Math.abs(ay - by) < 1e-6) out.push({ r: [Math.min(ax, bx) - t, Math.min(ay, by) - t, Math.max(ax, bx) + t, Math.max(ay, by) + t], what: "wall" });
-    else { const n = Math.ceil(Math.hypot(bx - ax, by - ay)); for (let i = 0; i <= n; i++) { const x = ax + (bx - ax) * i / n, y = ay + (by - ay) * i / n; out.push({ r: [x - t, y - t, x + t, y + t], what: "wall" }); } }
-  }
-  for (const q of RP.columns || []) if (q.plate === plate) out.push({ r: [q.p[0] - 1.45, q.p[1] - 1.45, q.p[0] + 1.45, q.p[1] + 1.45], what: "column" });
-  for (const k of ["racks", "machines", "pallets"]) for (const o of RP[k] || []) if (o.plate === plate) out.push({ r: [o.x, o.y, o.x + o.w, o.y + o.h], what: k.slice(0, -1) });
-  for (const d of doc.devices) if ((d.plate || "1F") === plate) for (const r of footprints(d)) out.push({ r, what: d.label || d.type });
-  for (const p of doc.props) if (p.plate === plate && PROP_SOLID[p.type]) out.push({ r: propRect(p), what: p.name || p.type });
-  const hash = new Map(), C = 16;
-  out.forEach((s, i) => { for (let a = Math.floor(s.r[0] / C); a <= Math.floor(s.r[2] / C); a++) for (let b = Math.floor(s.r[1] / C); b <= Math.floor(s.r[3] / C); b++) { const key = a * 4096 + b; let l = hash.get(key); if (!l) hash.set(key, (l = [])); l.push(i); } });
-  const near = (x, y, rad) => { const set = new Set(); for (let a = Math.floor((x - rad) / C); a <= Math.floor((x + rad) / C); a++) for (let b = Math.floor((y - rad) / C); b <= Math.floor((y + rad) / C); b++) { const l = hash.get(a * 4096 + b); if (l) for (const i of l) set.add(i); } return [...set].map((i) => out[i]); };
-  return (solidCache[plate] = { list: out, near });
+  const extra = doc.props.filter((p) => p.plate === plate && PROP_SOLID[p.type]).map((p) => ({ r: propRect(p), what: p.name || p.type }));
+  return (solidCache[plate] = SCN.solidsU({ replica: RP }, plate, doc.devices, extra));
 }
-
-/* ---------- the V6 router, in the browser (grid A* with a chamfer distance transform) ---------- */
-const STRAIGHT = TROLLEY.halfW + .9, TURN = Math.hypot(TROLLEY.halfW, TROLLEY.halfL) + .45;
-const routerCache = new Map();
-function gridFor(plate) {
-  if (routerCache.has(plate)) return routerCache.get(plate);
-  const zone = plateZone(plate), solids = solidsOf(plate).list.map((s) => s.r);
-  const x0 = Math.floor(zone[0]) - 2, y0 = Math.floor(zone[1]) - 2, W = Math.ceil(zone[2]) - x0 + 4, H = Math.ceil(zone[3]) - y0 + 4;
-  const occ = new Uint8Array(W * H);
-  for (const r of solids) { const i0 = Math.max(0, Math.floor(r[0] - x0)), i1 = Math.min(W - 1, Math.ceil(r[2] - x0) - 1), j0 = Math.max(0, Math.floor(r[1] - y0)), j1 = Math.min(H - 1, Math.ceil(r[3] - y0) - 1); for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) occ[j * W + i] = 1; }
-  const INF = 1e9, d = new Float32Array(W * H); for (let k = 0; k < W * H; k++) d[k] = occ[k] ? 0 : INF;
-  const at = (i, j) => (i < 0 || j < 0 || i >= W || j >= H ? 0 : d[j * W + i]);
-  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) { const k = j * W + i; if (!d[k]) continue; d[k] = Math.min(d[k], at(i - 1, j) + 1, at(i, j - 1) + 1, at(i - 1, j - 1) + 1.414, at(i + 1, j - 1) + 1.414); }
-  for (let j = H - 1; j >= 0; j--) for (let i = W - 1; i >= 0; i--) { const k = j * W + i; if (!d[k]) continue; d[k] = Math.min(d[k], at(i + 1, j) + 1, at(i, j + 1) + 1, at(i + 1, j + 1) + 1.414, at(i - 1, j + 1) + 1.414); }
-  for (let k = 0; k < W * H; k++) d[k] = Math.max(0, d[k] - .5);
-  const g = { x0, y0, W, H, d }; routerCache.set(plate, g); return g;
-}
-const cellOf = (g, x, y) => { const i = Math.floor(x - g.x0), j = Math.floor(y - g.y0); return i < 0 || j < 0 || i >= g.W || j >= g.H ? -1 : j * g.W + i; };
-function snapCell(g, x, y, need) {   // nearest clear cell centre (spiral by rings)
-  const ci = Math.floor(x - g.x0), cj = Math.floor(y - g.y0);
-  for (let r = 0; r < 80; r++) {
-    let best = null, bd = Infinity;
-    for (let j = cj - r; j <= cj + r; j++) for (let i = ci - r; i <= ci + r; i++) {
-      if (Math.max(Math.abs(i - ci), Math.abs(j - cj)) !== r || i < 0 || j < 0 || i >= g.W || j >= g.H) continue;
-      if (g.d[j * g.W + i] < need) continue; const cx = g.x0 + i + .5, cy = g.y0 + j + .5, dd = (cx - x) ** 2 + (cy - y) ** 2; if (dd < bd) { bd = dd; best = [cx, cy]; }
-    }
-    if (best) return best;
-  }
-  return null;
-}
-function astar(g, a, b, turnCost = 14, centre = 5) {
-  const s = cellOf(g, a[0], a[1]), t = cellOf(g, b[0], b[1]); if (s < 0 || t < 0) return null;
-  const Dd = [[1, 0], [0, 1], [-1, 0], [0, -1]], N = g.W * g.H, cost = new Float32Array(N * 4).fill(Infinity), prev = new Int32Array(N * 4).fill(-1);
-  const ti = t % g.W, tj = (t / g.W) | 0, heap = [];
-  const push = (f, s2) => { heap.push([f, s2]); let i = heap.length - 1; while (i) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
-  const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
-  const h = (k) => Math.abs(k % g.W - ti) + Math.abs(((k / g.W) | 0) - tj);
-  for (let dir = 0; dir < 4; dir++) { cost[s * 4 + dir] = 0; push(h(s), s * 4 + dir); }
-  let goal = -1, guard = 0;
-  while (heap.length && guard++ < 6e6) {
-    const [pri, st] = pop(), k = st >> 2, dir = st & 3, c = cost[st];
-    if (pri > c + h(k) + 1e-3) continue;
-    if (k === t) { goal = st; break; }
-    const i = k % g.W, j = (k / g.W) | 0;
-    for (let nd = 0; nd < 4; nd++) {
-      if (nd === ((dir + 2) & 3)) continue;
-      const turn = nd !== dir; if (turn && g.d[k] < TURN && k !== s) continue;
-      const ii = i + Dd[nd][0], jj = j + Dd[nd][1]; if (ii < 0 || jj < 0 || ii >= g.W || jj >= g.H) continue;
-      const kk = jj * g.W + ii; if (g.d[kk] < STRAIGHT && kk !== t) continue;
-      const nc = c + 1 + centre / Math.max(1, g.d[kk]) + (turn ? turnCost : 0), ns = kk * 4 + nd;
-      if (nc < cost[ns]) { cost[ns] = nc; prev[ns] = st; push(nc + h(kk), ns); }
-    }
-  }
-  if (goal < 0) return null;
-  const cells = []; for (let st = goal; st >= 0; st = prev[st]) cells.push(st >> 2); cells.reverse();
-  const pts = cells.map((k) => [g.x0 + k % g.W + .5, g.y0 + ((k / g.W) | 0) + .5]);
-  return simplify(pts);
-}
-// remove duplicate and collinear points (keeps the first and last exactly)
-function simplify(pts) {
-  const out = [];
-  for (const p of pts) {
-    const q = [+p[0], +p[1]], n = out.length;
-    if (n && Math.hypot(q[0] - out[n - 1][0], q[1] - out[n - 1][1]) < 1e-6) continue;
-    if (n >= 2) { const a = out[n - 2], b = out[n - 1]; if (Math.abs((b[0] - a[0]) * (q[1] - b[1]) - (b[1] - a[1]) * (q[0] - b[0])) < 1e-6 && (b[0] - a[0]) * (q[0] - b[0]) + (b[1] - a[1]) * (q[1] - b[1]) >= 0) { out[n - 1] = q; continue; } }
-    out.push(q);
-  }
-  return out;
-}
-// orthogonal L between two points (horizontal first when hFirst)
+// The same grid A* and clearance constants as scene import/Node; Studio props join its solids.
+let sharedRouter = null;
+const gridFor = (plate) => (sharedRouter ||= SCN.makeRouter({ plates: D.plates }, doc.devices, solidsOf)).grid(plate);
+const routeBetween = (a, b, plate) => (sharedRouter ||= SCN.makeRouter({ plates: D.plates }, doc.devices, solidsOf)).route(a, b, plate);
+const simplify = (pts) => SCN.simplify(pts);
 const elbow = (a, b, hFirst = true) => (Math.abs(a[0] - b[0]) < 1e-6 || Math.abs(a[1] - b[1]) < 1e-6 ? [a, b] : hFirst ? [a, [b[0], a[1]], b] : [a, [a[0], b[1]], b]);
-/* routeBetween(a, b, plate): an obstacle-free orthogonal trolley path from a to b (exact ends), or null */
-function routeBetween(a, b, plate) {
-  const g = gridFor(plate);
-  const sa = snapCell(g, a[0], a[1], STRAIGHT + .2), sb = snapCell(g, b[0], b[1], STRAIGHT + .2); if (!sa || !sb) return null;
-  const mid = astar(g, sa, sb); if (!mid) return null;
-  // join the exact ends to the routed cells with short orthogonal jogs (aligned to the first / last routed leg)
-  const first = mid.length > 1 && Math.abs(mid[1][1] - mid[0][1]) < 1e-6, last = mid.length > 1 && Math.abs(mid[mid.length - 1][1] - mid[mid.length - 2][1]) < 1e-6;
-  const head = elbow(a, mid[0], !first), tail = elbow(mid[mid.length - 1], b, last);
-  return simplify([...head, ...mid.slice(1, -1), ...tail]);
-}
 
 /* ---------- collision check: the real trolley footprint swept along every move and turn ---------- */
-function gap(cx, cy, h, r) {
-  const ux = Math.sin(h), uy = Math.cos(h), vx = Math.cos(h), vy = -Math.sin(h), hl = TROLLEY.halfL, hw = TROLLEY.halfW;
-  const cs = [[1, 1], [1, -1], [-1, -1], [-1, 1]].map(([a, b]) => [cx + ux * a * hl + vx * b * hw, cy + uy * a * hl + vy * b * hw]);
-  const bx = [[r[0], r[1]], [r[2], r[1]], [r[2], r[3]], [r[0], r[3]]]; let best = -Infinity;
-  for (const [ax, ay] of [[1, 0], [0, 1], [ux, uy], [vx, vy]]) {
-    let a0 = Infinity, a1 = -Infinity, b0 = Infinity, b1 = -Infinity;
-    for (const [x, y] of cs) { const d = x * ax + y * ay; a0 = Math.min(a0, d); a1 = Math.max(a1, d); }
-    for (const [x, y] of bx) { const d = x * ax + y * ay; b0 = Math.min(b0, d); b1 = Math.max(b1, d); }
-    best = Math.max(best, b0 - a1, a0 - b1);
-  }
-  return best;
-}
-const CLEAR = .3;
+const gap = (cx, cy, h, r) => SCN.gap(cx, cy, h, r);
+const CLEAR = SCN.CLEAR_ERROR / PT_M; // frame units (0.09 m)
 function checkFlow(f) {
   const hits = []; let h;
   f.steps.forEach((s, i) => {
@@ -268,7 +176,7 @@ function checkFlow(f) {
       const [ax, ay] = P[k - 1], [bx, by] = P[k], L = Math.hypot(bx - ax, by - ay); if (L < 1e-6) continue;
       const hh = Math.atan2(bx - ax, by - ay);
       if (h !== undefined) { const dd = wrapPi(hh - h); if (Math.abs(dd) > 1e-3) for (let q = 1; q <= 6; q++) test(ax, ay, h + dd * q / 6); }
-      for (let u = 0; u <= L; u += .5) test(ax + (bx - ax) * u / L, ay + (by - ay) * u / L, hh);
+      for (let n = Math.ceil(L / .5), q = 0; q <= n; q++) test(ax + (bx - ax) * q / n, ay + (by - ay) * q / n, hh);
       h = hh;
     }
   });

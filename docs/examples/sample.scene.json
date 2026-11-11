@@ -1,0 +1,104 @@
+{
+ "format": "mf-scene",
+ "version": 1,
+ "project": "inj1",
+ "layout": "inj1",
+ "title": "Sample - INJ 1",
+ "stops": [
+  {
+   "id": "stop-a",
+   "name": "Stop A (start)",
+   "floor": "1F",
+   "x": 43.5,
+   "y": 178.2,
+   "symbol": "result",
+   "color": "#7030A0"
+  },
+  {
+   "id": "stop-b",
+   "name": "Stop B",
+   "floor": "1F",
+   "x": 43.5,
+   "y": 152.7,
+   "symbol": "result",
+   "color": "#7030A0"
+  },
+  {
+   "id": "stop-c",
+   "name": "Stop C (buffer)",
+   "floor": "1F",
+   "x": 74,
+   "y": 150,
+   "symbol": "area",
+   "color": "#1f6feb"
+  },
+  {
+   "id": "stop-d",
+   "name": "Stop D",
+   "floor": "1F",
+   "x": 90.3,
+   "y": 150.3,
+   "symbol": "area",
+   "color": "#156082"
+  }
+ ],
+ "devices": [],
+ "objects": [],
+ "layoutEdits": [],
+ "paths": [
+  {
+   "id": "sample-1",
+   "name": "1 · Stop A to Stop D",
+   "color": "#1f9d6b",
+   "steps": [
+    {
+     "id": "s1",
+     "stop": "stop-a",
+     "title": "Start",
+     "text": "The trolley starts at Stop A.",
+     "mode": "push",
+     "wait": 1.5,
+     "route": {
+      "type": "stay"
+     }
+    },
+    {
+     "id": "s2",
+     "stop": "stop-b",
+     "title": "To B",
+     "text": "Pushed to Stop B.",
+     "mode": "push",
+     "wait": 1.5,
+     "route": {
+      "type": "auto"
+     }
+    },
+    {
+     "id": "s3",
+     "stop": "stop-c",
+     "title": "To C",
+     "text": "Parked in the buffer.",
+     "mode": "push",
+     "wait": 2,
+     "route": {
+      "type": "auto"
+     }
+    },
+    {
+     "id": "s4",
+     "stop": "stop-d",
+     "title": "To D",
+     "text": "An AGV takes it to Stop D.",
+     "mode": "agv",
+     "wait": 1.8,
+     "route": {
+      "type": "auto"
+     }
+    }
+   ]
+  }
+ ],
+ "director": {},
+ "viewpoints": [],
+ "notes": "Example for docs/RECIPES.md"
+}

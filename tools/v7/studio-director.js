@@ -85,34 +85,50 @@ function stopCamRec() {
 }
 
 /* ---------- video takes: replay the timeline and record the screen picture (WebM) ---------- */
-const rec = { active: false, mr: null, chunks: [], comp: null, cg: null, take: null, started: 0, saved: null };
+const rec = { active: false, mr: null, chunks: [], comp: null, cg: null, take: null, started: 0, saved: null, stream: null, failed: false };
 function newTake() { const f = curFlow(); return { id: uid("take"), name: "Take " + (doc.takes.length + 1), flow: f ? f.id : "", t0: 0, t1: f ? +X.F().total.toFixed(2) : 10, speed: 1, cam: dirOf(f).keys.length ? "director" : "guided", captions: true, card: true, labels: true, quality: "high", fps: 60 }; }
 function pickMime() { for (const m of ["video/mp4;codecs=avc1.640028", "video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; return ""; }
 function startTake(take) {
   if (rec.active) return; if (!window.MediaRecorder) return X.tip("This browser cannot record video");
+  if (!take || !Number.isFinite(take.t0) || !Number.isFinite(take.t1) || take.t0 < 0 || take.t1 <= take.t0 || !Number.isFinite(take.speed) || take.speed <= 0) return X.tip("The take needs a valid time range and positive speed");
   const fi = doc.flows.findIndex((f) => f.id === take.flow); if (fi < 0) return X.tip("The take's flow no longer exists");
+  if (take.t0 >= D.flows[fi].total) return X.tip("The take starts beyond the end of its flow");
+  rec.saved = { cam: S.cam, speed: S.speed, playing: S.playing, flow: S.flow, t: S.t, edOpen: ed.open, stepStop: S.stepStop }; S.stepStop = false;
   if (fi !== S.flow) MF.setFlow(fi);
-  rec.saved = { cam: S.cam, speed: S.speed, playing: S.playing, edOpen: ed.open, stepStop: S.stepStop }; S.stepStop = false;
+  rec.failed = false;
   MF.seek(take.t0); MF.pause(); if (take.cam === "director" && dirOf().keys.length) MF.setCam("director"); else if (take.cam && take.cam !== "keep") MF.setCam(take.cam);
   X.setSpeed(take.speed);
   const w = Math.round(innerWidth / 2) * 2, h = Math.round(innerHeight / 2) * 2;
   rec.comp = rec.comp || document.createElement("canvas"); rec.comp.width = w; rec.comp.height = h; rec.cg = rec.comp.getContext("2d");
-  const stream = rec.comp.captureStream(take.fps || 60), mime = pickMime();
-  try { rec.mr = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: take.quality === "high" ? 16e6 : 8e6 } : undefined); } catch (e) { return X.tip("Video recording failed to start: " + e.message); }
+  const mime = pickMime();
+  try { rec.stream = rec.comp.captureStream(take.fps || 60); rec.mr = new MediaRecorder(rec.stream, mime ? { mimeType: mime, videoBitsPerSecond: take.quality === "high" ? 16e6 : 8e6 } : undefined); } catch (e) { restoreTakeState(); return X.tip("Video recording failed to start: " + e.message); }
   rec.chunks = []; rec.mr.ondataavailable = (e) => { if (e.data && e.data.size) rec.chunks.push(e.data); };
+  rec.mr.onerror = (e) => { rec.failed = true; stopTake(); X.tip("Video recording failed: " + (e.error?.message || "encoder error")); };
   rec.mr.onstop = () => {
+    if (rec.failed || !rec.chunks.length) { restoreTakeState(); return; }
     const blob = new Blob(rec.chunks, { type: (rec.mr && rec.mr.mimeType) || "video/webm" }), a = document.createElement("a"), f = flowById(take.flow);
     a.href = URL.createObjectURL(blob); a.download = `Material_Flow_${PROJECT}_${(f ? f.name : "flow").replace(/[^\w.-]+/g, "_").slice(0, 40)}_${take.name.replace(/[^\w.-]+/g, "_")}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
     X.tip(`Video saved: ${(blob.size / 1048576).toFixed(1)} MB (${a.download})`); emit("rec");
   };
   rec.take = take; rec.active = true; rec.started = performance.now(); document.body.classList.add("rec7");
-  rec.mr.start(250); MF.play(); emit("rec");
+  try { rec.mr.start(250); MF.play(); emit("rec"); }
+  catch (e) { rec.failed = true; rec.active = false; restoreTakeState(); X.tip("Video recording failed to start: " + e.message); }
 }
 function stopTake() {
   if (!rec.active) return; rec.active = false; try { rec.mr.stop(); } catch (e) {}
-  document.body.classList.remove("rec7"); MF.pause();
-  const sv = rec.saved; if (sv) { S.stepStop = sv.stepStop; X.setSpeed(sv.speed); if (sv.cam !== S.cam) MF.setCam(sv.cam === "director" && !dirOf().keys.length ? "guided" : sv.cam); }
+  restoreTakeState();
   emit("rec");
+}
+function restoreTakeState() {
+  if (rec.stream) { for (const track of rec.stream.getTracks()) track.stop(); rec.stream = null; }
+  document.body.classList.remove("rec7"); MF.pause();
+  const sv = rec.saved; rec.saved = null;
+  if (sv) {
+    if (S.flow !== sv.flow) MF.setFlow(sv.flow);
+    MF.seek(sv.t); S.stepStop = sv.stepStop; X.setSpeed(sv.speed);
+    if (sv.cam !== S.cam) MF.setCam(sv.cam === "director" && !dirOf().keys.length ? "guided" : sv.cam);
+    if (sv.playing) MF.play();
+  }
 }
 // composite one video frame: the 3D picture, the plan overlay, labels, the step card and captions
 function rr(g, x, y, w, h, r) { g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, r); else g.rect(x, y, w, h); }
@@ -145,7 +161,7 @@ function compositeFrame() {
     g.globalAlpha = 1; g.textAlign = "left";
   }
 }
-function recFrame() { if (!rec.active) return; compositeFrame(); if (S.t >= rec.take.t1 - 1e-3 || (!S.playing && S.t > rec.take.t0 + .05)) stopTake(); }
+function recFrame() { if (!rec.active) return; try { compositeFrame(); } catch (e) { rec.failed = true; stopTake(); X.tip("Video frame failed: " + e.message); return; } if (S.t >= rec.take.t1 - 1e-3 || (!S.playing && S.t > rec.take.t0 + .05)) stopTake(); }
 
 /* ---------- several trolleys on one path (scene: path.trolleys, path.headway seconds): copies of the trolley start one headway
    apart on the same timeline; the closest distance between two moving trolleys is tracked to show congestion ---------- */

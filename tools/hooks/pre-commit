@@ -1,0 +1,4 @@
+#!/bin/sh
+# Material Flow: a commit is refused while the docs are out of date (generated parts, schema fields, commands, examples, links, changelog).
+# Installed by: node tools/mf.mjs install-hooks
+node tools/mf.mjs docs-check || { echo 'pre-commit: docs-check failed - run node tools/mf.mjs docs-gen and fix the docs (or the changelog) in this commit'; exit 1; }

@@ -97,19 +97,14 @@ function buildProp(p) {
 const propGroups = {}, propObjs = new Map();
 function propGroup(plate) { if (!propGroups[plate]) { const g = new T.Group(); g.name = "MF V7 props " + plate; (X.plates[plate] || X.plates[plateKeys[0]]).add(g); propGroups[plate] = g; } return propGroups[plate]; }
 function syncProps() {
-  for (const o of propObjs.values()) { if (o.parent) o.parent.remove(o); o.traverse((x) => { if (x.material && x.material.name === "MF V7 sign") { x.material.map && x.material.map.dispose(); x.material.dispose(); } if (x.geometry && x.geometry.type === "EdgesGeometry") x.geometry.dispose(); }); }
+  for (const o of propObjs.values()) { if (o.parent) o.parent.remove(o); o.traverse((x) => { for (const mat of new Set(Array.isArray(x.material) ? x.material : [x.material])) if (mat && mat.name === "MF V7 sign") { if (mat.map) mat.map.dispose(); mat.dispose(); } if (x.geometry && x.geometry.type === "EdgesGeometry") { x.geometry.dispose(); if (x.material) x.material.dispose(); } }); }
   propObjs.clear();
   for (const p of doc.props) { const o = buildProp(p); propGroup(p.plate).add(o); propObjs.set(p.id, o); }
 }
 function moveProp3D(p) { const o = propObjs.get(p.id); if (o) { o.position.set(p.x - CX, 0, p.y - CY); o.rotation.y = -(p.rot || 0) * Math.PI / 180; } }
 
 /* ---------- replica objects: an index from tag to instances, live moves, turns and deletes ---------- */
-function applyOp(kind, o, op) {   // same rule as scene-core applyLayoutEdits, in frame units
-  const dx = op.dx || 0, dy = op.dy || 0, rot = (((op.rot || 0) % 360) + 360) % 360;
-  if (kind === "walls") { const mx = (o.a[0] + o.b[0]) / 2 + dx, my = (o.a[1] + o.b[1]) / 2 + dy, r = rot * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r), t = (p) => { const x = p[0] + dx - mx, y = p[1] + dy - my; return [mx + x * c - y * sn, my + x * sn + y * c]; }; o.a = t(o.a); o.b = t(o.b); }
-  else if (kind === "columns") o.p = [o.p[0] + dx, o.p[1] + dy];
-  else { o.x += dx; o.y += dy; if (rot === 90 || rot === 270) { const cx = o.x + o.w / 2, cy = o.y + o.h / 2, w = o.w; o.w = o.h; o.h = w; o.x = cx - o.w / 2; o.y = cy - o.h / 2; if (kind === "machines" && o.type === "injection") o.vertical = !o.vertical; } }
-}
+const applyOp = (kind, o, op) => SCN.applyLayoutOp(kind, o, op.dx || 0, op.dy || 0, (((op.rot || 0) % 360) + 360) % 360);
 let repIndex = null; const repTouched = new Set();
 const mA = new T.Matrix4(), mB = new T.Matrix4(), mC = new T.Matrix4(), mD = new T.Matrix4();
 function buildRepIndex() {
@@ -363,9 +358,9 @@ function deleteSel() {
 }
 function duplicateSel() {
   const sel = ed.sel, o = selObj(); if (!o) return; const off = 3 * M;
-  if (sel.kind === "device") { if (o.type === "rfid-auto" && doc.devices.filter((d) => d.type === "rfid-auto").length >= 8) return X.tip("At most 8 auto RFID gates per project"); commit("duplicate " + (o.label || o.type), () => { const c = clone(o); c.x += off; c.y += off; if (c.lane) c.lane = [c.lane[0] + off, c.lane[1] + off]; c.sym = newId(); delete c.node; doc.devices.push(c); }, "devices"); select({ kind: "device", i: doc.devices.length - 1 }); }
+  if (sel.kind === "device") { if (o.type === "rfid-auto" && doc.devices.filter((d) => d.type === "rfid-auto").length >= SCN.MAX_GATES) return X.tip(`At most ${SCN.MAX_GATES} auto RFID gates per project`); commit("duplicate " + (o.label || o.type), () => { const c = clone(o); c.x += off; c.y += off; if (c.lane) c.lane = [c.lane[0] + off, c.lane[1] + off]; c.sym = newId(); delete c.node; delete c.sceneId; doc.devices.push(c); }, "devices"); select({ kind: "device", i: doc.devices.length - 1 }); }
   else if (sel.kind === "prop") { const c = clone(o); c.id = uid("prop"); c.x += off; c.y += off; commit("duplicate " + (o.name || o.type), () => doc.props.push(c), "props"); select({ kind: "prop", id: c.id }); }
-  else if (sel.kind === "node") { const id = newId(), c = clone(o); c.id = id; c.x += off; c.y += off; c.target = [c.x, c.y]; c.text = (c.text || "Stop") + " copy"; commit("duplicate stop", () => { doc.nodes[id] = c; }); select({ kind: "node", id }); }
+  else if (sel.kind === "node") { const id = newId(), c = clone(o); c.id = id; delete c.sceneId; c.x += off; c.y += off; c.target = [c.x, c.y]; c.text = (c.text || "Stop") + " copy"; commit("duplicate stop", () => { doc.nodes[id] = c; }); select({ kind: "node", id }); }
   else X.tip("Replica objects can be moved, turned or deleted; add new ones from the Add list");
 }
 
@@ -390,7 +385,7 @@ function placeAt(h, keep) {
   const kind = ed.placing.kind, a = ADD[kind], x = snapV(h.x), y = snapV(h.y), plate = h.plate;
   if (a.prop) { const p = Object.assign({ id: uid("prop"), type: a.prop, x, y, plate, rot: 0 }, clone(PROP_TYPES[a.prop])); p.name = PROP_TYPES[a.prop].name; commit("add " + p.name, () => doc.props.push(p), "props"); select({ kind: "prop", id: p.id }); }
   else if (a.dev) {
-    if (a.dev.type === "rfid-auto" && doc.devices.filter((d) => d.type === "rfid-auto").length >= 8) { X.tip("At most 8 auto RFID gates per project"); ed.placing = null; return; }
+    if (a.dev.type === "rfid-auto" && doc.devices.filter((d) => d.type === "rfid-auto").length >= SCN.MAX_GATES) { X.tip(`At most ${SCN.MAX_GATES} auto RFID gates per project`); ed.placing = null; return; }
     const d = Object.assign({ x, y, plate, k: DIMS.K, sym: newId() }, clone(a.dev));
     if (d.type === "rfid-manual") { d.lane = snapLane([x, y], plate); d.x = d.lane[0] - 2 * M; d.y = d.lane[1]; }
     commit("add " + d.label, () => doc.devices.push(d), "devices"); select({ kind: "device", i: doc.devices.length - 1 });

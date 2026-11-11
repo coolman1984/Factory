@@ -78,7 +78,7 @@ player file is rebuilt with a different baked scene, the baked scene wins and th
 | `project` | yes | the tab: `inj1`, `inj2`, `eps` or `press`; must match the player tab it is loaded into |
 | `layout` | no | same as `project` (the built-in factory replica) |
 | `title` | no | text shown in the top bar |
-| `stops`, `devices`, `paths`, `layoutEdits` | no | lists (default empty); see sections 4 to 7 |
+| `stops`, `devices`, `paths`, `layoutEdits` | no | lists; playable scenes need at least one path with a step and a valid stop; see sections 4 to 7 |
 | `objects`, `director`, `viewpoints` | no | accepted now; shown from later versions (section 8) |
 | `notes` | no | free text for people and agents; ignored by the engine |
 
@@ -231,7 +231,7 @@ Routes, the collision check and the plan follow the edited layout. Changing layo
 
 - **`objects`**: placed 3D objects. Each one is `{ "id", "type", "floor", "x", "y", "heading", "w", "d", "h", "color", "name", "text" }`, with `w`, `d` and `h` in metres.
   - Types: `crate`, `pallet`, `rack`, `column`, `wall`, `fence`, `cone`, `floor-arrow`, `floor-zone`, `sign` (`text` is shown on the sign), `trolley`.
-- **Several trolleys** on a path: set `"trolleys": 1..12` on the path, and `"headway"` for the seconds between trolley starts. The Studio's Numbers tab shows the closest distance between moving trolleys; under 3 m counts as congestion.
+- **Several trolleys** on a path: set `"trolleys": 1..12` (whole numbers) on the path, and `"headway"` for the seconds between trolley starts. The Studio's Numbers tab shows the closest distance between moving trolleys; under 3 m counts as congestion.
 - **`director`**: one entry per path id, `{ "keys": [...], "caps": [...] }`, plus a top-level `takes` list. Normally you edit these in the Studio's Director tab.
   - **keys** are camera keys:
     - `t`: story seconds
@@ -244,7 +244,9 @@ Routes, the collision check and the plan follow the edited layout. Changing layo
     - `pos`: `lower`, `upper`, `center`, `left` or `right`
     - `style`: `glass`, `cinema`, `banner` or `minimal`
     - `size`: 0.7 to 1.8
-- **`viewpoints`**: saved camera shots 1 to 6.
+- **`viewpoints`**: saved camera shots 1 to 6, using the same camera pose fields as keys (no `t` required); empty slots may be `null`.
+- **`takes`**: entries with unique `id`, text `name`, path id `flow`, `t0 < t1` (nonnegative seconds), positive `speed` up to 8, optional `fps` from 1 to 120, `cam`, `quality`, `captions`, `card`, and `labels`. Record through Studio.
+- Keys and captions need unique `id` within their respective lists. Camera poses must be finite with positive `dist`; following keys need finite `ox`, `oy`, `oz`. The validator rejects malformed lists, translations and time ranges before import.
 - **`studio`**: editor settings: `snap`, `ortho`, caption language `lang`, and `shift` (hours).
 ## 9. Reference data
 
@@ -298,7 +300,7 @@ It is company data: keep it in `private/`.
   - `the trolley passes 0.05 m from <object> …; needs at least 0.09 m`
 
   The real trolley footprint is swept every 7.5 cm along each leg and through each corner turn. The objects checked are walls,
-  columns, racks, machines, pallets and devices (after layout edits).
+  columns, racks, machines, pallets and devices (after layout edits). Studio additionally includes placed solid props in routing and collision marks; Node validation does not yet sweep props.
 - **Devices:**
   - a device overlaps a layout object or another device
   - a scanner with `stops: true` is not on a path
@@ -370,3 +372,131 @@ AGV takes it to Kitting.
 4. Validate it: `node tools/mf-validate.mjs private/v7/proof/inj1.scene.json` returns `OK - 0 error(s), 0 warning(s)`.
 5. Drop the file onto the player, or bake it in. The tab now has a third button, and the path plays through all 4 steps in
    51.4 s. No engine code was changed. This exact scene is the proof test of V7.1 (`tools/v7/stage1-test.mjs`).
+
+## 13. Field reference (generated)
+
+Every field of the format, generated from `tools/v7/scene-schema.mjs`. `mf docs-check` fails when a scene uses a field missing here.
+
+<!-- GENERATED:fields (mf docs-gen; do not edit by hand) -->
+| field | type | unit | allowed values | default | example | meaning |
+|---|---|---|---|---|---|---|
+| `format` | text |  | "mf-scene" | required | "mf-scene" | File type marker. |
+| `version` | number |  | 1 | required | 1 | Format version. |
+| `project` | text |  | inj1, inj2, eps, press (the player tabs) | required | "inj1" | The tab this scene describes; must match the tab it is loaded into. |
+| `layout` | text |  | same as project | project | "inj1" | The built-in factory replica the scene sits on. |
+| `title` | text |  | any | project | "INJ 1 – Trolley paths" | Top-bar title. |
+| `notes` | text |  | any | "" | "made by agent X" | Free text; ignored by the engine. |
+| `stops[]` | list |  |  | [] |  | Named points where steps end. |
+| `stops[].id` | text |  | unique, lowercase-with-dashes | required | "final-scan" | Stable id; steps and devices refer to it. |
+| `stops[].name` | text |  | any | the id | "Final Scan / GR" | Label chip text. |
+| `stops[].floor` | text |  | a floor key of the tab (1F, 2F) | required | "1F" | Floor the stop is on. |
+| `stops[].x` | number | m | inside the floor | required | 43.5 | Plan x (right). |
+| `stops[].y` | number | m | inside the floor | required | 152.7 | Plan y (down). |
+| `stops[].symbol` | text |  | result, mapping, quality, area, dest, scan, lift, wip, obama | "area" | "result" | Floor symbol (circle, square, hexagon, ...). |
+| `stops[].color` | text |  | #rrggbb | "#156082" | "#7030A0" | Symbol colour. |
+| `devices[]` | list |  |  | [] |  | PCs, auto RFID gates, handheld scanners. |
+| `devices[].id` | text |  | unique | required | "pc-final-scan" | Stable id. |
+| `devices[].type` | text |  | pc, rfid-gate, scanner | required | "pc" | Device kind. |
+| `devices[].floor` | text |  | a floor key | required | "1F" | Floor. |
+| `devices[].x` | number | m |  | required (pc, rfid-gate) | 41.26 | Centre (pc: desk + tower; gate: lane centre). |
+| `devices[].y` | number | m |  | required (pc, rfid-gate) | 152.98 | Centre. |
+| `devices[].label` | text |  | any | type name | "Prod. Result / GR PC" | Name shown in chips and lists. |
+| `devices[].kind` | text |  | result, mapping, quality | "result" | "mapping" | pc only: which PC (floor symbol circle / square / hexagon). |
+| `devices[].heading` | number | deg | 0 north, clockwise | 90 | 90 | pc only: direction the desk front faces. |
+| `devices[].size` | number | x | 0.5 to 4 | 2.4 | 2.4 | pc and scanner: icon scale (1 = real size). |
+| `devices[].serves` | text |  | a stop id | none | "final-scan" | pc only: the screen lights while the trolley is at this stop. |
+| `devices[].done` | text |  | any | none | "Final scan / GR done" | pc and scanner: chip text when the work is done. |
+| `devices[].color` | text |  | #rrggbb | "#7030A0" | "#7030A0" | pc only: floor symbol colour. |
+| `devices[].lane` | text |  | north-south, east-west | "north-south" | "east-west" | rfid-gate only: driving direction through the gate. |
+| `devices[].at` | [x, y] | m | on a path leg when stops is true | required (scanner) | [43.5, 185.7] | scanner only: lane point where the tag is read. |
+| `devices[].stand` | [x, y] | m | beside the lane | 0.6 m west of at | [42.9, 185.7] | scanner only: where the stand is. |
+| `devices[].stops` | true/false |  |  | false | true | scanner only: the trolley stops at `at` for 1.8 s and is scanned. |
+| `devices[].stop` | text |  | a stop id | none | "manual-rfid-scan" | scanner only: scan during the wait at this stop instead. |
+| `objects[]` | list |  |  | [] |  | Placed 3D objects. |
+| `objects[].id` | text |  | unique | required | "crate-1" | Stable id. |
+| `objects[].type` | text |  | crate, pallet, rack, column, wall, fence, cone, floor-arrow, floor-zone, sign, trolley | required | "crate" | Object kind. |
+| `objects[].floor` | text |  | a floor key | required | "1F" | Floor. |
+| `objects[].x` | number | m | inside the floor | required | 60 | Centre x. |
+| `objects[].y` | number | m | inside the floor | required | 150 | Centre y. |
+| `objects[].heading` | number | deg | clockwise | 0 | 90 | Turn (width runs along x at 0). |
+| `objects[].w` | number | m | > 0 | per type | 1.2 | Width. |
+| `objects[].d` | number | m | > 0 | per type | 1 | Depth. |
+| `objects[].h` | number | m | > 0 | per type | 1 | Height. |
+| `objects[].color` | text |  | #rrggbb | per type | "#c9a26b" | Colour. |
+| `objects[].name` | text |  | any | type name | "Spare crate" | Name in lists. |
+| `objects[].text` | text |  | any (\n = new line) | "INFO" | "KITTING" | sign only: text on the sign. |
+| `layoutEdits[]` | list |  |  | [] |  | Changes to the built-in factory (walls, columns, racks, machines, pallets). |
+| `layoutEdits[].target` | text |  | wall:N, column:N, rack:N, machine:N, pallet:N (ids in LAYOUT_REFERENCE) | required | "wall:77" | The layout object. |
+| `layoutEdits[].move` | [dx, dy] | m |  | none | [0, -0.6] | Move it. |
+| `layoutEdits[].turn` | number | deg | 0, 90, 180, 270 | 0 | 90 | Turn it about its centre. |
+| `layoutEdits[].delete` | true/false |  |  | false | true | Remove it. |
+| `layoutEdits[].door` | [from, to] | m | along a straight wall | none | [61.65, 65.25] | Cut a doorway into a wall. |
+| `layoutEdits[].note` | text |  | any | none | "owner 2026-11-11" | Why (ignored by the engine). |
+| `paths[]` | list |  |  | [] |  | Trolley journeys (one tab button each). |
+| `paths[].id` | text |  | unique | required | "inj1-wh" | Stable id; director entries use it. |
+| `paths[].name` | text |  | keep the leading number `1 ·` | the id | "1 · Item Slip to W/H to Main Line" | Tab button text. |
+| `paths[].color` | text |  | #rrggbb | "#7030A0" | "#7030A0" | Path colour. |
+| `paths[].trolleys` | number |  | 1 to 12 | 1 | 3 | Trolleys on this path, one headway apart. |
+| `paths[].headway` | number | s | 1 to 3600 | 30 | 20 | Seconds between trolley starts. |
+| `paths[].steps[]` | list |  | at least one | required |  | The journey, step by step. |
+| `paths[].steps[].id` | text |  | unique in the path | required | "s2" | Stable step id. |
+| `paths[].steps[].stop` | text |  | a stop id | required | "final-scan" | Where the step ends. |
+| `paths[].steps[].title` | text |  | any | "" | "Final Scan" | Card heading and steps-list name. |
+| `paths[].steps[].text` | text |  | any | "" | "Pushed by hand to Final Scan." | Card explanation. |
+| `paths[].steps[].mode` | text |  | push, agv, manual | "push" | "agv" | How it moves (badge on the card). |
+| `paths[].steps[].wait` | number | s | 0 to 600 | 0.7 | 1.8 | Wait at the stop after arriving. |
+| `paths[].steps[].speed` | number | m/s | 0.2 to 8 | 4 | 2.5 | Cruise speed while moving. |
+| `paths[].steps[].camera` | object |  | { distance, view } | none | { "distance": 90 } | Guided camera for this step. |
+| `paths[].steps[].camera.distance` | number | m | > 3 | 90 | 60 | How far the guided camera stays. |
+| `paths[].steps[].camera.view` | text |  | 2d, 3d | "3d" | "3d" | Kept from V6 (informational). |
+| `paths[].steps[].route` | object |  |  | { "type": "stay" } | { "type": "auto" } | How the trolley reaches the stop. |
+| `paths[].steps[].route.type` | text |  | stay, points, auto, elevator | required | "points" | stay = already there; points = exact line; auto = engine routes; elevator = ride up. |
+| `paths[].steps[].route.points` | list of [x, y] | m | first = previous end, last = the stop | required (points) | [[43.5, 178.2], [43.5, 152.7]] | The exact line. |
+| `paths[].steps[].route.elevator` | text |  | an elevator label (LAYOUT_REFERENCE) | required (elevator) | "Elev 5" | The elevator to ride (lower to upper landing). |
+| `director` | map |  | path id -> { keys, caps } | {} |  | Camera keys and captions per path (Studio Director tab, or mf key / mf caption). |
+| `director{id}` | object |  | { keys, caps } |  |  | One path's camera keys and captions. |
+| `director{id}.keys[]` | list |  |  | [] |  | Camera keys on the story timeline. |
+| `director{id}.keys[].id` | text |  | unique | made by the tool | "key-a1b2c3" | Key id. |
+| `director{id}.keys[].t` | number | s | 0 to path length (story time, intro included) | required | 28.2 | When the camera is at this key. |
+| `director{id}.keys[].ease` | text |  | smooth, linear, in, out, cut | "smooth" | "cut" | How the camera arrives here. |
+| `director{id}.keys[].follow` | true/false |  |  | false | true | Ride with the trolley (target = trolley + ox, oy, oz). |
+| `director{id}.keys[].x` | number | engine unit | world x (plan x / 0.3 - centre) | required | -12.5 | Camera target x (use mf key or the Studio, not by hand). |
+| `director{id}.keys[].y` | number | engine unit |  | required | 0 | Camera target height. |
+| `director{id}.keys[].z` | number | engine unit | world z (plan y / 0.3 - centre) | required | 40 | Camera target z. |
+| `director{id}.keys[].ox` | number | engine unit |  | 0 | 0 | follow keys: offset from the trolley. |
+| `director{id}.keys[].oy` | number | engine unit |  | 2 | 2 | follow keys: offset from the trolley. |
+| `director{id}.keys[].oz` | number | engine unit |  | 0 | 0 | follow keys: offset from the trolley. |
+| `director{id}.keys[].dist` | number | engine unit | metres / 0.3 | required | 133.3 | Camera distance. |
+| `director{id}.keys[].az` | number | rad | -heading in radians | required | -0.785 | Camera azimuth. |
+| `director{id}.keys[].pol` | number | rad | 0 = straight down | required | 0.873 | Camera polar angle (90° - tilt). |
+| `director{id}.keys[].fov` | number | deg | 8 to 90 (48 mm = 28°) | 28 | 28 | Vertical field of view. |
+| `director{id}.caps[]` | list |  |  | [] |  | Captions over the scene. |
+| `director{id}.caps[].id` | text |  | unique | made by the tool | "cap-x1y2z3" | Caption id. |
+| `director{id}.caps[].t0` | number | s | story time | required | 17.2 | Shown from. |
+| `director{id}.caps[].t1` | number | s | > t0 | required | 21.2 | Shown until. |
+| `director{id}.caps[].title` | text or {en, ar, ko} |  |  | "" | { "en": "Manual scan", "ar": "مسح يدوي" } | Heading (per language). |
+| `director{id}.caps[].text` | text or {en, ar, ko} |  |  | "" | "The operator scans the tag." | Body (per language). |
+| `director{id}.caps[].pos` | text |  | lower, upper, center, left, right | "lower" | "lower" | Where on screen. |
+| `director{id}.caps[].style` | text |  | glass, cinema, banner, minimal | "glass" | "cinema" | Look. |
+| `director{id}.caps[].size` | number | x | 0.7 to 1.8 | 1 | 1.2 | Text size. |
+| `takes[]` | list |  |  | [] |  | Saved video recipes (Studio Director tab; mf take renders without saving one). |
+| `takes[].id` | text |  | unique | made by the tool | "take-1" | Take id. |
+| `takes[].name` | text |  | any | "Take 1" | "Full ride" | File name part. |
+| `takes[].flow` | text |  | a path id | required | "inj1-wh" | Path to film. |
+| `takes[].t0` | number | s | story time | 0 | 0 | From. |
+| `takes[].t1` | number | s | story time | path end | 76.2 | To. |
+| `takes[].speed` | number | x | 0.5, 1, 1.5, 2, 3 | 1 | 2 | Playback speed while recording. |
+| `takes[].cam` | text |  | director, guided, chase, keep | "director" | "guided" | Camera. |
+| `takes[].captions` | true/false |  |  | true | true | Draw captions. |
+| `takes[].card` | true/false |  |  | true | true | Draw the step card. |
+| `takes[].labels` | true/false |  |  | true | true | Draw stop labels. |
+| `takes[].quality` | text |  | high (16 Mbit/s), normal (8 Mbit/s) | "high" | "high" | Bit rate. |
+| `takes[].fps` | number |  | 30, 60 | 60 | 60 | Frame rate. |
+| `viewpoints[]` | list |  | 6 slots | [] |  | Camera pad shots 1-6 (engine units: x, y, z, dist, az, pol, fov). |
+| `studio` | object |  |  | {} |  | Editor settings. |
+| `studio.snap` | number | m | 0, 0.1, 0.5, 1, 2 | 0.5 | 0.5 | Snap grid. |
+| `studio.ortho` | true/false |  |  | true | true | Paths keep square legs while editing. |
+| `studio.lang` | text |  | en, ar, ko | "en" | "ar" | Caption language shown. |
+| `studio.shift` | number | h | 1 to 24 | 8 | 8 | Shift length for trips per shift. |
+<!-- /GENERATED:fields -->
+

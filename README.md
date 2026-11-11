@@ -18,3 +18,7 @@ Interactive full-screen player for the material-flow deck: step by step like sli
 - `src/replica.js`: the 3D factory (instanced) and the clean 2D plan. Atmosphere comes from Digital Factory's `DFAtmos`.
 - `node tools/shot-high.mjs <folder>`: slow look at the full-quality pipeline.
 - Scale: 1 slide point = 0.30 m, cross-checked on truck, column grid and machine length. It is an estimate, not a survey.
+
+## Project knowledge and agent onboarding
+
+Start with [docs/START_HERE.md](docs/START_HERE.md), [docs/STATUS.md](docs/STATUS.md) and [AGENTS.md](AGENTS.md). The knowledge base includes the project map, proven runbooks, decisions, investigation history, lessons and repository-scoped skills. The local CAD export has its own `dist/SEEG_Y26_AI_Package/START_HERE.md`; extraction does not resume paused player implementation.

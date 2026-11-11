@@ -24,7 +24,7 @@
     var built = (window.MF7_LIGHT_ERASE || {})[id] || {}; Object.keys(built).forEach(function (pl) { built[pl].forEach(function (r) { add(pl, r); }); });
     var names = { wall: "walls", column: "columns", rack: "racks", machine: "machines", pallet: "pallets" };
     (scene.layoutEdits || []).forEach(function (e) {
-      if (!e.delete && !e.move && !e.turn) return; var m = /^([a-z]+):(\d+)$/.exec(String(e.target || "")), k = m && names[m[1]]; if (!k) return;
+      if (!e.delete && !e.move && !e.turn && !e.door) return; var m = /^([a-z]+):(\d+)$/.exec(String(e.target || "")), k = m && names[m[1]]; if (!k) return;
       var list = baseReplica[k] || []; for (var i = 0; i < list.length; i++) if ((list[i]._oid != null ? list[i]._oid : i) === +m[2]) { add(list[i].plate, rectOfLayout(k, list[i])); break; }
     });
     return out;
@@ -89,12 +89,20 @@
     out.lightBox = {}; var LB = (window.MF7_LIGHT_BOX || {})[id] || {}; Object.keys(LB).forEach(function (pl) { var e = LB[pl]; out.lightBox[pl] = { box: e.box, ext: (e.ext || []).map(function (x) { var src = all && all[x.tab] && all[x.tab].light && all[x.tab].light[x.plate]; return { box: x.box, src: src || null }; }) }; });
     out.baseHash = baseHash; out.base = base; try { out.lightErase = eraseRects(id, scene, out.baseReplica); } catch (e) { out.lightErase = {}; }
     try {
-      var res = SC.toInternal(JSON.parse(JSON.stringify(scene)), SC.layoutOf(p));
+      if (scene !== base) {
+        var checkLayout = SC.layoutOf(p); checkLayout.project = id; checkLayout.replica = out.baseReplica;
+        var report = SC.validate(scene, checkLayout, { structureOnly: true });
+        if (report.errors.length) throw new Error(report.errors[0].where + ": " + report.errors[0].msg);
+      }
+      var fresh = SC.layoutOf(p); fresh.replica = JSON.parse(JSON.stringify(out.baseReplica));
+      var res = SC.toInternal(JSON.parse(JSON.stringify(scene)), fresh);
+      if (res.issues.some(function (i) { return i.level === "error"; })) throw new Error(res.issues[0].msg);
+      Object.assign(p.replica, fresh.replica);
       p.data.nodes = res.data.nodes; p.data.flows = res.data.flows; p.data.devices = res.data.devices; if (res.data.title && p.data.slide) p.data.slide.title = res.data.title;
       p.data.orderConfirmed = true; out.issues = res.issues; out.scene = scene;
     } catch (e) {
       out.error = "The scene could not be loaded (" + (e && e.message || e) + "); the built-in scene is shown.";
-      if (scene !== base) { var r2 = SC.toInternal(JSON.parse(JSON.stringify(base)), SC.layoutOf(p)); p.data.nodes = r2.data.nodes; p.data.flows = r2.data.flows; p.data.devices = r2.data.devices; out.scene = base; out.source = "built-in"; }
+      if (scene !== base) { var fallback = SC.layoutOf(p); fallback.replica = JSON.parse(JSON.stringify(out.baseReplica)); var r2 = SC.toInternal(JSON.parse(JSON.stringify(base)), fallback); Object.assign(p.replica, fallback.replica); p.data.nodes = r2.data.nodes; p.data.flows = r2.data.flows; p.data.devices = r2.data.devices; out.scene = base; out.source = "built-in"; out.lightErase = eraseRects(id, base, out.baseReplica); }
     }
   };
 })();

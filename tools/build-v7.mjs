@@ -5,14 +5,26 @@
 // any scene given with --bake). Each engine patch must match exactly once, so a different V6 fails loudly.
 // Usage: node tools/build-v7.mjs [stage=7.1] [--in dist/Material_Flow_Player_v6.html] [--out dist/Material_Flow_Player_v<stage>.html]
 //        [--bake a.scene.json b.scene.json ...]   (default: every file in private/v7/scenes)
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import { resolve, dirname, relative, isAbsolute } from "node:path";
 import vm from "node:vm";
 import { playerPatches, replicaPatches } from "./v7/engine-patches.mjs";
 
-const args = process.argv.slice(2), opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
-const stage = args[0] && !args[0].startsWith("--") ? args[0] : "7.1";
+const args = process.argv.slice(2);
+const stage = args[0] && !args[0].startsWith("--") ? args.shift() : "7.1";
+const options = {}, bakeArgs = [];
+for (let i = 0; i < args.length; i++) {
+  const key = args[i];
+  if (key === "--bake") {
+    while (i + 1 < args.length && !args[i + 1].startsWith("--")) bakeArgs.push(args[++i]);
+    if (!bakeArgs.length) throw new Error("--bake needs scene files");
+    options[key] = true;
+  } else if (key === "--no-docs-check") options[key] = true;
+  else if (["--in", "--out"].includes(key) && args[i + 1] && !args[i + 1].startsWith("--")) options[key] = args[++i];
+  else throw new Error("unknown option or missing value: " + key);
+}
+const opt = (k, d) => options[k] ?? d;
 // each inner list is one script scope (the scene manager and the Studio have their own names)
 const STAGES = {
   "7.1": { groups: [["scene-ui.js"]], css: ["scene-ui.css"] },
@@ -22,8 +34,11 @@ const STAGES = {
 };
 if (!STAGES[stage]) throw new Error(`unknown stage ${stage} (built so far: ${Object.keys(STAGES).join(", ")})`);
 const inFile = opt("--in", "dist/Material_Flow_Player_v6.html"), outFile = opt("--out", `dist/Material_Flow_Player_v${stage}.html`);
-const bi = args.indexOf("--bake"), bakeFiles = bi >= 0 ? args.slice(bi + 1).filter((a) => !a.startsWith("--")) : existsSync("private/v7/scenes") ? readdirSync("private/v7/scenes").filter((f) => f.endsWith(".scene.json")).map((f) => "private/v7/scenes/" + f) : [];
-for (const f of ["v4", "v5", "v6"]) if (resolve(outFile) === resolve(`dist/Material_Flow_Player_${f}.html`)) throw new Error("earlier versions are read-only");
+const bakeFiles = options["--bake"] ? bakeArgs : existsSync("private/v7/scenes") ? readdirSync("private/v7/scenes").filter((f) => f.endsWith(".scene.json")).map((f) => "private/v7/scenes/" + f) : [];
+const outPath = resolve(outFile).toLowerCase();
+const archiveRelative = relative(resolve("dist/versions"), resolve(outFile));
+if (outPath === resolve(inFile).toLowerCase() || (!archiveRelative.startsWith("..") && !isAbsolute(archiveRelative))) throw new Error("input and archived versions are read-only");
+for (const f of ["v4", "v5", "v6", "v7.1", "v7.6", "v7.7"]) if (outPath === resolve(`dist/Material_Flow_Player_${f}.html`).toLowerCase()) throw new Error("earlier versions are read-only; use --out dist/test/<name>.html");
 let html = readFileSync(inFile, "utf8");
 const once = (src, find, repl, what) => { const n = src.split(find).length - 1; if (n !== 1) throw new Error(`patch "${what}": expected exactly one match, found ${n}`); return src.replace(find, () => repl); };
 // some embedded scripts use CRLF line ends: a multi-line patch that does not match with LF is tried with CRLF
@@ -33,7 +48,7 @@ const safe = (js) => js.replace(/<\/script/gi, "<\\/script");
 
 // 1. scenes baked in + scene core + preload, before the project data picks its tab
 const bundle = { format: "mf-scene-bundle", projects: {} };
-for (const f of bakeFiles) { const o = JSON.parse(readFileSync(f, "utf8")); if (o.format !== "mf-scene" || !o.project) throw new Error(`${f}: not a scene file`); bundle.projects[o.project] = o; }
+for (const f of bakeFiles) { const o = JSON.parse(readFileSync(f, "utf8")); if (o.format !== "mf-scene" || !o.project) throw new Error(`${f}: not a scene file`); if (Object.hasOwn(bundle.projects, o.project)) throw new Error(`${f}: duplicate baked project ${o.project}`); bundle.projects[o.project] = o; }
 // walls that V4 had and this player does not (V6 removed the rooms beside Kitting): their shadows are baked into the floor light
 // and get repainted at load. Rooms = clusters of touching removed walls.
 const lightErase = {};
@@ -76,7 +91,21 @@ html = once(html, "<title>Material Flow Player V6</title>", `<title>Material Flo
 html = once(html, "<tr><td>2 / 3 / A</td>", "<tr><td>Ctrl+O / Ctrl+S</td><td>Open / save the scene file (also in the Scene file panel)</td></tr><tr><td>Ctrl+Z / Ctrl+Y</td><td>Undo / redo a scene change</td></tr><tr><td>2 / 3 / A</td>", "help: scene keys");
 
 // every inline script must at least parse (a broken add-on would silently leave the player without it)
-{ const re = /<script(?: id="[^"]*")?>([\s\S]*?)<\/script>/g; let m, n = 0; while ((m = re.exec(html))) { if (m[1].length > 3e6) continue; try { new vm.Script(m[1]); n++; } catch (e) { throw new Error(`inline script ${n + 1} does not parse: ${e.message}`); } } console.log(`syntax: ${n} inline scripts parse`); }
+{ const re = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi; let m, n = 0;
+  while ((m = re.exec(html))) {
+    const type = /\btype\s*=\s*["']([^"']+)["']/i.exec(m[1]);
+    if (/\bsrc\s*=/i.test(m[1]) || (type && !/^(?:text|application)\/(?:java|ecma)script$/i.test(type[1]))) continue;
+    try { new vm.Script(m[2]); n++; } catch (e) { throw new Error(`inline script ${n + 1} does not parse: ${e.message}`); }
+  }
+  console.log(`syntax: ${n} inline scripts parse`);
+}
+mkdirSync(dirname(outFile), { recursive: true });
+// docs must match the code before a real player is written (test builds under dist/test/ and --no-docs-check skip it)
+if (!options["--no-docs-check"] && !resolve(outFile).toLowerCase().startsWith(resolve("dist/test").toLowerCase())) {
+  const { docsCheck } = await import("./v7/docs-check.mjs"), problems = await docsCheck();
+  if (problems.length) { for (const p of problems) console.log("DOCS " + p); throw new Error(`docs-check failed (${problems.length} problem(s)): fix the docs, the changelog or the examples (node tools/mf.mjs docs-gen for generated parts)`); }
+  console.log("docs-check OK");
+}
 writeFileSync(outFile, html);
 console.log(`baked-light clean-up: ${JSON.stringify(lightErase)}`);
 console.log(`${outFile}: ${(html.length / 1048576).toFixed(2)} MB, sha256 ${createHash("sha256").update(html).digest("hex").slice(0, 16)}; ${playerPatches.length + replicaPatches.length} engine patches; scenes: ${Object.keys(bundle.projects).join(", ") || "none"}`);

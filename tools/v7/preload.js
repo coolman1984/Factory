@@ -1,3 +1,4 @@
+// DEAD PROTOTYPE: not included by any V7 build stage. Current preload is preload-scene.js (mf-scene v1).
 /* V7 Studio preload: runs before the project data is handed to the player. If this browser has a saved Studio scene for the
    project (or the file carries a baked one in #mf7-embedded), its nodes, flows, devices and replica edits replace the original
    data before anything is built. The untouched original stays in the file: "Reset to original" just forgets the saved scene. */

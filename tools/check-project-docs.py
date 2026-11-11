@@ -28,7 +28,7 @@ def main():
             candidate=(p.parent/unquote(href)).resolve();links+=1
             if not exists(candidate):errors.append(f'{p.relative_to(root)}: missing relative link {href}')
     skills=list((root/'.agents/skills').glob('*/SKILL.md'))
-    expected={'material-flow-project','material-flow-cad-extraction','material-flow-knowledge-maintenance'}
+    expected={'material-flow-project','material-flow-cad-extraction','material-flow-knowledge-maintenance','material-flow-scene-engine','material-flow-scene-editing','material-flow-directing','material-flow-engine-maintenance'}
     if {p.parent.name for p in skills}!=expected:errors.append('Project skill discovery set differs from the documented inventory')
     for p in skills:
         body=p.read_text(encoding='utf8');parts=body.split('---',2)

@@ -1,18 +1,20 @@
 // Converts the V6 player's data (the owner's 10 paths on 4 tabs) into scene files and proves the round trip:
 // scene -> internal gives back the same stops, paths and devices as V6 (to 1e-6 frame units).
-// Usage: node tools/v7/export-scenes.mjs [player=dist/Material_Flow_Player_v6.html] [outDir=private/v7/scenes]
-import { mkdirSync, writeFileSync } from "node:fs";
+// Usage: node tools/v7/export-scenes.mjs [player=dist/Material_Flow_Player_v6.html] [outDir=private/v7/scenes] [--overwrite]
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { loadSceneCore, readProjects, layoutFor } from "./scene-node.mjs";
 
-const [player = "dist/Material_Flow_Player_v6.html", outDir = "private/v7/scenes"] = process.argv.slice(2);
+const args = process.argv.slice(2), overwrite = args.includes("--overwrite");
+const [player = "dist/Material_Flow_Player_v6.html", outDir = "private/v7/scenes"] = args.filter((a) => a !== "--overwrite");
 const SC = loadSceneCore(), P = readProjects(player);
-mkdirSync(outDir, { recursive: true });
+const pending = [];
+for (const tab of Object.keys(P)) if (existsSync(`${outDir}/${tab}.scene.json`) && !overwrite) throw new Error(`Refusing to overwrite ${outDir}/${tab}.scene.json; choose a new output directory or explicitly pass --overwrite`);
 let bad = 0;
 const near = (a, b) => Math.abs(a - b) < 1e-6;
 for (const tab of Object.keys(P)) {
   const data = P[tab].data, scene = SC.fromInternal(tab, data);
   scene.title = data.slide && data.slide.title || tab;
-  writeFileSync(`${outDir}/${tab}.scene.json`, JSON.stringify(scene, null, 1));
+  pending.push([`${outDir}/${tab}.scene.json`, JSON.stringify(scene, null, 1)]);
   // round trip
   const back = SC.toInternal(JSON.parse(JSON.stringify(scene)), layoutFor(P, tab)).data, idMap = {};
   const orig = Object.values(data.nodes); Object.values(back.nodes).forEach((n, i) => { idMap[orig[i].id] = n.id; if (!near(n.x, orig[i].x) || !near(n.y, orig[i].y) || n.plate !== orig[i].plate || n.kind !== orig[i].kind) { bad++; console.log(tab, "stop differs", orig[i].id); } });
@@ -35,4 +37,6 @@ for (const tab of Object.keys(P)) {
   console.log(`${tab}: ${scene.stops.length} stops, ${scene.devices.length} devices, ${scene.paths.length} paths, ${scene.paths.reduce((n, p) => n + p.steps.length, 0)} steps -> ${outDir}/${tab}.scene.json`);
 }
 if (bad) { console.log(`ROUND TRIP FAILED: ${bad} difference(s)`); process.exit(1); }
+mkdirSync(outDir, { recursive: true });
+for (const [file, text] of pending) writeFileSync(file, text);
 console.log("Round trip OK: every stop, step, path point and device comes back exactly");

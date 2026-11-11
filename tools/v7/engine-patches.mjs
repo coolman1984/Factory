@@ -3,6 +3,8 @@
 // came from, add the Studio frame hooks (pre: before the camera, post: after the overlay) and expose the internals to the Studio
 // as MF.x. Nothing here changes how V6 looks or plays when the Studio is closed.
 export const playerPatches = [
+  // ---- V7.7.1: a new path (tab button) computes its guided-camera angles at once instead of during playback
+  ["  function setFlow(i) { S.flow = i; E = D.flows[i].E || E; shown = -1; seek(0); pause(); renderFlow(); }", "  function setFlow(i) { S.flow = i; E = D.flows[i].E || E; shown = -1; seek(0); pause(); renderFlow(); try { prefetchAisles(i); } catch (e) { console.warn(\"aisle prefetch\", e); } }", "prefetch camera angles on a path change"],
   // ---- V7.7.1 preparing screen: after loading, render the fully risen factory behind a "Preparing" card until frame time is
   //      stable (30 frames in a row under 22 ms), then start the opening rise. If it is still slow after 4 s, skip the rise and
   //      start at step 1 with the factory up. MF.prepared resolves when the story may start (tests and tools wait for it).
@@ -13,19 +15,22 @@ export const playerPatches = [
     const el = PREP.el = document.createElement("div"); el.id = "prep7";
     el.innerHTML = '<div><b>Preparing the 3D factory…</b><i></i><small>Warming up the graphics so the film runs smoothly</small></div>'; document.body.appendChild(el);
   }
+  // the guided camera chooses a viewing angle per path segment (48 sight tests, ~50 ms on a big floor): do all of them up front
+  function prefetchAisles(fi) { const f = D.flows[fi]; if (!f) return; const lp = { seg: 0, lift: null }; for (const it of f.items) if (it.sched && !it.s.lift) for (let k = 0; k < Math.max(1, it.sched.pts.length - 1); k++) { lp.seg = k; aisleAz(it, lp, it.s.dist * 1.2); } }
   function prepFrame(raw) {
-    PREP.frames++; PREP.good = raw < .022 ? PREP.good + 1 : 0;
-    REP.rise(1); for (const f of floors) f.art.material = f.surfaceMaterial; scene.updateMatrixWorld(); renderer.render(scene, camera);
-    const waited = performance.now() - PREP.t0, bar = PREP.el && PREP.el.querySelector("i"); if (bar) bar.style.width = Math.min(100, Math.max(PREP.good / 30, waited / 4000) * 100) + "%";
-    if (PREP.good >= 30 || waited > 4000) {
-      PREP.active = false; PREP.skipped = PREP.good < 30;
-      for (const f of floors) f.art.material = f.planMaterial; REP.rise(S.R); lastR = -1;
-      if (PREP.skipped) { const first = F().items[1]; if (first && S.t < first.t0) { S.R = 1; seek(first.t0); } }
+    // dry-run the real opening (story 0 -> INTRO + 1.5 s at 2x) behind the cover, so every state it will draw is warm
+    PREP.frames++; PREP.t = (PREP.t || 0) + Math.min(raw, .05) * 3; S.t = Math.min(PREP.t, F().total); frame(Math.min(raw, .05), S.t);
+    PREP.good = raw < .022 ? PREP.good + 1 : 0;
+    const waited = performance.now() - PREP.t0, bar = PREP.el && PREP.el.querySelector("i"); if (bar) bar.style.width = Math.min(100, Math.max(PREP.t / (INTRO + 1.5), waited / 6000) * 100) + "%";
+    const ran = PREP.t >= INTRO + 1.5;
+    if ((ran && PREP.good >= 20) || waited > 6000) {
+      try { SIGHT.warm(); prefetchAisles(S.flow); } catch (e) { console.warn("sight warm-up", e); }
+      PREP.active = false; PREP.skipped = !(ran && PREP.good >= 20);
+      const first = F().items[1]; S.R = PREP.skipped ? 1 : 0; lastR = -1; seek(PREP.skipped && first ? first.t0 : 0); frame(0, S.t);
       if (PREP.el) { PREP.el.classList.add("out"); setTimeout(() => PREP.el && PREP.el.remove(), 400); }
       metrics.prep = { frames: PREP.frames, ms: Math.round(waited), skipped: PREP.skipped }; last = performance.now(); PREP.done(metrics.prep);
     }
-  }
-  function tick(now) {
+  }  function tick(now) {
     const raw = Math.max(0, (now - last) / 1000); last = now;
     if (PREP.active) { prepFrame(raw); requestAnimationFrame(tick); return; }`, "preparing screen (tick)"],
   ["    metrics.lastMask = 0; event(\"startup-warmup\", start); last = performance.now(); requestAnimationFrame(tick);", "    metrics.lastMask = 0; event(\"startup-warmup\", start); last = performance.now(); if (query.get(\"prep\") !== \"0\") prepStart(); else PREP.done({ frames: 0, ms: 0, skipped: false }); requestAnimationFrame(tick);", "preparing screen (start)"],
@@ -55,7 +60,9 @@ export const playerPatches = [
       for (const q of [.01, .06, .12, .2, .3]) for (const o of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) if (seen(eyeAt(L, d, az + o, q, eye))) return take();
       eyeAt(L, d, az, .005, eye); return take();
     }
-    return { ensure, seen: (P) => { targets(frameLot); return { box: clearLine(P, L), floor: floorClear(P), L: L.toArray().map((v) => +v.toFixed(1)) }; }, clearLine, choose, transitionPol, chasePol, boxes, stats,`, "sight: rescue the real eye"],
+    // V7.7.1: build the sight boxes and the meshes' bounding data now (behind the preparing screen), not in the first guided frame
+    function warm() { if (!built) build(); targets(frameLot); floorClear(camera.position); exactClear(camera.position); }
+    return { warm, ensure, seen: (P) => { targets(frameLot); return { box: clearLine(P, L), floor: floorClear(P), L: L.toArray().map((v) => +v.toFixed(1)) }; }, clearLine, choose, transitionPol, chasePol, boxes, stats,`, "sight: rescue the real eye"],
   ["      // A spring or a seek can leave the rendered eye below its safe goal. Guard the actual eye too.", "      if ((S.cam === \"guided\" || S.cam === \"follow\") && !flat() && S.R > .9 && !stepAt(S.t).s.intro) SIGHT.ensure(camera.position, cameraTarget, eyeVelocity);   // V7.7: never hidden\n      // A spring or a seek can leave the rendered eye below its safe goal. Guard the actual eye too.", "guided camera never hidden"],
   // ---- owner (image 24): the "pale light cones" are the planar floor reflection mirroring the tall rack posts; off by default
   //      (?reflect=1 turns it back on). It also saves one extra scene render every third frame.

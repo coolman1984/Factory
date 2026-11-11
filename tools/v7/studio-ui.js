@@ -91,7 +91,7 @@ $("tbChecks").onclick = () => { setTab("paths"); const hit = ed.hits[0]; if (hit
 function syncToolbar() {
   $("tbSnap").value = String(doc.settings.snap); $("tbOrtho").classList.toggle("on", !!doc.settings.ortho);
   const c = ed.hits.length, l = ed.issues.length; $("tbChecks").className = "chk7 " + (c || l ? "bad" : "ok"); $("tbChecks").textContent = c || l ? `${c} clash${c === 1 ? "" : "es"} · ${l} link issue${l === 1 ? "" : "s"}` : "No clashes";
-  $("tbSave").textContent = dirty ? "Saving…" : MF7.source === "original" && !undoStack.length && !localSaved() ? "Original" : "Saved"; $("tbUndo").disabled = !undoStack.length; $("tbRedo").disabled = !redoStack.length;
+  $("tbSave").textContent = dirty ? "Saving…" : MF7.source === "built-in" && !undoStack.length && !localSaved() ? "Original" : "Saved"; $("tbUndo").disabled = !undoStack.length; $("tbRedo").disabled = !redoStack.length;
 }
 function localSaved() { try { return !!localStorage.getItem(storageKey()); } catch (e) { return false; } }
 statusHandler = (msg, bad) => { syncToolbar(); if (bad) X.tip(msg); };
@@ -121,7 +121,7 @@ function render() {
   syncToolbar();
 }
 // bind inputs: data-f="path" fields write through set(path, value) and commit on change
-function bindFields(root, onSet) { root.querySelectorAll("[data-f]").forEach((el) => { const ev = el.type === "range" ? "input" : "change"; el.addEventListener(ev, () => onSet(el.dataset.f, el.type === "checkbox" ? el.checked : el.type === "number" || el.type === "range" ? +el.value : el.value, el)); }); }
+function bindFields(root, onSet) { root.querySelectorAll("[data-f]").forEach((el) => { const ev = el.type === "range" ? "input" : "change"; el.addEventListener(ev, () => onSet(el.dataset.f, el.type === "checkbox" ? el.checked : el.type === "number" || el.type === "range" ? (el.value === "" ? "" : +el.value) : el.value, el)); }); }
 const opt = (v, label, cur) => `<option value="${esc(v)}" ${String(v) === String(cur) ? "selected" : ""}>${esc(label)}</option>`;
 const nodeOptions = (cur, none) => (none ? opt("", "(none)", cur) : "") + nodeList().sort((a, b) => String(a.text).localeCompare(String(b.text))).map((n) => opt(n.id, nodeName(n) + " · " + plateLabel(n.plate || plateOf(n.x, n.y)), cur)).join("");
 
@@ -230,8 +230,8 @@ function renderSteps() {
   list.querySelectorAll("[data-dn]").forEach((b) => (b.onclick = () => moveStep(+b.dataset.dn, +b.dataset.dn + 1)));
   const acts = {
     newFlow: () => { const n = nodeList()[0]; if (!n) return X.tip("Add a stop first"); const nf = { id: uid("flow"), name: "New flow", color: "#2bd4c0", steps: [{ node: n.id, title: n.text || "Start", what: "The trolley starts here.", mode: "flow", view: "3d", dist: 300, path: null, dwell: 1.2 }] }; commit("new flow", () => doc.flows.push(nf)); MF.setFlow(doc.flows.length - 1); ed.stepSel = 0; render(); },
-    dupFlow: () => { const c = clone(f); c.id = uid("flow"); c.name = f.name + " (copy)"; commit("duplicate flow", () => doc.flows.splice(fi + 1, 0, c)); if (doc.director[f.id]) doc.director[c.id] = clone(doc.director[f.id]); MF.setFlow(fi + 1); render(); },
-    delFlow: () => { if (doc.flows.length < 2) return X.tip("A project keeps at least one flow"); if (!acts.delFlow.armed) { acts.delFlow.armed = true; X.tip("Click Delete flow again to confirm"); setTimeout(() => (acts.delFlow.armed = false), 3000); return; } acts.delFlow.armed = false; commit("delete flow " + f.name, () => { doc.flows.splice(fi, 1); delete doc.director[f.id]; }); MF.setFlow(Math.max(0, fi - 1)); render(); },
+    dupFlow: () => { const c = clone(f); c.id = uid("flow"); c.name = f.name + " (copy)"; commit("duplicate flow", () => { doc.flows.splice(fi + 1, 0, c); if (doc.director[f.id]) doc.director[c.id] = clone(doc.director[f.id]); }); MF.setFlow(fi + 1); render(); },
+    delFlow: () => { if (doc.flows.length < 2) return X.tip("A project keeps at least one flow"); if (!acts.delFlow.armed) { acts.delFlow.armed = true; X.tip("Click Delete flow again to confirm"); setTimeout(() => (acts.delFlow.armed = false), 3000); return; } acts.delFlow.armed = false; commit("delete flow " + f.name, () => { doc.flows.splice(fi, 1); delete doc.director[f.id]; doc.takes = doc.takes.filter((t) => t.flow !== f.id); }); MF.setFlow(Math.max(0, fi - 1)); render(); },
     left: () => { if (fi < 1) return; commit("move flow", () => { const [x] = doc.flows.splice(fi, 1); doc.flows.splice(fi - 1, 0, x); }); MF.setFlow(fi - 1); render(); },
     right: () => { if (fi >= doc.flows.length - 1) return; commit("move flow", () => { const [x] = doc.flows.splice(fi, 1); doc.flows.splice(fi + 1, 0, x); }); MF.setFlow(fi + 1); render(); },
     route: () => autoRoute(fi, ed.stepSel),
@@ -269,19 +269,19 @@ function renderDirector() {
   const d = dirOf(), f = curFlow(), total = X.F().total;
   body.innerHTML = `<div class="sec"><h4>Camera shots · ${esc(f ? f.name : "")}</h4><p class="hint">Frame the view with the pad or the mouse, then add a key. The director camera glides through the keys along the timeline. A trolley-locked key rides with the trolley.</p>
     <div class="acts"><button data-a="key" class="pri">+ Key here (K)</button><button data-a="keyF">+ Trolley-locked key</button><button data-a="rec" class="${camRec.on ? "recon" : ""}">${camRec.on ? "■ Stop camera recording" : "● Record camera move"}</button><button data-a="play">${S.cam === "director" ? "Director camera on" : "▶ Watch director cut"}</button></div>
-    <ul class="list7 keys">${d.keys.map((k) => `<li data-k="${k.id}" class="${dsel.key === k.id ? "on" : ""}"><input type="number" step="0.1" min="0" max="${total.toFixed(1)}" data-f="t:${k.id}" value="${k.t.toFixed(2)}" title="Time (s)"><select data-f="ease:${k.id}" title="How the camera arrives at this key">${opt("smooth", "Smooth", k.ease)}${opt("linear", "Linear", k.ease)}${opt("in", "Ease in", k.ease)}${opt("out", "Ease out", k.ease)}${opt("cut", "Cut", k.ease)}</select><label class="chk" title="Ride with the trolley"><input type="checkbox" data-f="follow:${k.id}" ${k.follow ? "checked" : ""}>ride</label><button data-go="${k.id}" title="Go to this key">Go</button><button data-up="${k.id}" title="Replace with the current view">Set</button><button data-del="${k.id}" class="danger" title="Delete">✕</button></li>`).join("") || "<li class='empty'>No keys yet</li>"}</ul></div>
+    <ul class="list7 keys">${d.keys.map((k) => `<li data-k="${esc(k.id)}" class="${dsel.key === k.id ? "on" : ""}"><input type="number" step="0.1" min="0" max="${total.toFixed(1)}" data-f="t:${esc(k.id)}" value="${k.t.toFixed(2)}" title="Time (s)"><select data-f="ease:${esc(k.id)}" title="How the camera arrives at this key">${opt("smooth", "Smooth", k.ease)}${opt("linear", "Linear", k.ease)}${opt("in", "Ease in", k.ease)}${opt("out", "Ease out", k.ease)}${opt("cut", "Cut", k.ease)}</select><label class="chk" title="Ride with the trolley"><input type="checkbox" data-f="follow:${esc(k.id)}" ${k.follow ? "checked" : ""}>ride</label><button data-go="${esc(k.id)}" title="Go to this key">Go</button><button data-up="${esc(k.id)}" title="Replace with the current view">Set</button><button data-del="${esc(k.id)}" class="danger" title="Delete">✕</button></li>`).join("") || "<li class='empty'>No keys yet</li>"}</ul></div>
     <div class="sec"><h4>Captions</h4><label>Language shown and edited<select id="capLang">${LANGS.map(([v, l]) => opt(v, l, lang())).join("")}</select></label><p class="hint">Explanation texts shown over the scene for a time range (also in recorded videos). The step cards are edited in Steps.</p><div class="acts"><button data-a="cap" class="pri">+ Caption here</button></div>
-    ${d.caps.map((c) => `<div class="card7 cap ${dsel.cap === c.id ? "on" : ""}" data-c="${c.id}"><div class="g3"><label>From (s)<input type="number" step="0.1" min="0" data-f="t0:${c.id}" value="${c.t0.toFixed(1)}"></label><label>To (s)<input type="number" step="0.1" min="0" data-f="t1:${c.id}" value="${c.t1.toFixed(1)}"></label><label>Size<input type="range" min="0.7" max="1.8" step="0.05" data-f="size:${c.id}" value="${c.size || 1}"></label></div>
-      <label>Title (${lang().toUpperCase()})<input dir="${lang() === "ar" ? "rtl" : "ltr"}" data-f="title:${c.id}" value="${esc(trEdit(c.title))}" placeholder="${esc(tr(c.title, "en"))}"></label><label>Text (${lang().toUpperCase()})<textarea dir="${lang() === "ar" ? "rtl" : "ltr"}" rows="2" data-f="text:${c.id}" placeholder="${esc(tr(c.text, "en"))}">${esc(trEdit(c.text))}</textarea></label>
-      <div class="g2"><label>Place<select data-f="pos:${c.id}">${opt("lower", "Lower third", c.pos)}${opt("upper", "Top", c.pos)}${opt("center", "Centre", c.pos)}${opt("left", "Left", c.pos)}${opt("right", "Right", c.pos)}</select></label><label>Style<select data-f="style:${c.id}">${opt("glass", "Glass", c.style)}${opt("cinema", "Cinema", c.style)}${opt("banner", "Banner", c.style)}${opt("minimal", "Minimal", c.style)}</select></label></div>
-      <div class="acts"><button data-cs="${c.id}">Start = now</button><button data-ce="${c.id}">End = now</button><button data-cg="${c.id}">Go</button><button data-cd="${c.id}" class="danger">Delete</button></div></div>`).join("")}</div>
+    ${d.caps.map((c) => `<div class="card7 cap ${dsel.cap === c.id ? "on" : ""}" data-c="${esc(c.id)}"><div class="g3"><label>From (s)<input type="number" step="0.1" min="0" data-f="t0:${esc(c.id)}" value="${c.t0.toFixed(1)}"></label><label>To (s)<input type="number" step="0.1" min="0" data-f="t1:${esc(c.id)}" value="${c.t1.toFixed(1)}"></label><label>Size<input type="range" min="0.7" max="1.8" step="0.05" data-f="size:${esc(c.id)}" value="${c.size || 1}"></label></div>
+      <label>Title (${lang().toUpperCase()})<input dir="${lang() === "ar" ? "rtl" : "ltr"}" data-f="title:${esc(c.id)}" value="${esc(trEdit(c.title))}" placeholder="${esc(tr(c.title, "en"))}"></label><label>Text (${lang().toUpperCase()})<textarea dir="${lang() === "ar" ? "rtl" : "ltr"}" rows="2" data-f="text:${esc(c.id)}" placeholder="${esc(tr(c.text, "en"))}">${esc(trEdit(c.text))}</textarea></label>
+      <div class="g2"><label>Place<select data-f="pos:${esc(c.id)}">${opt("lower", "Lower third", c.pos)}${opt("upper", "Top", c.pos)}${opt("center", "Centre", c.pos)}${opt("left", "Left", c.pos)}${opt("right", "Right", c.pos)}</select></label><label>Style<select data-f="style:${esc(c.id)}">${opt("glass", "Glass", c.style)}${opt("cinema", "Cinema", c.style)}${opt("banner", "Banner", c.style)}${opt("minimal", "Minimal", c.style)}</select></label></div>
+      <div class="acts"><button data-cs="${esc(c.id)}">Start = now</button><button data-ce="${esc(c.id)}">End = now</button><button data-cg="${esc(c.id)}">Go</button><button data-cd="${esc(c.id)}" class="danger">Delete</button></div></div>`).join("")}</div>
     <div class="sec"><h4>Video takes</h4><p class="hint">A take replays a time range of a flow and saves it as a video (WebM) with the director camera, labels, cards and captions. Edit a take and record it again at any time.</p>
     <div class="acts"><button data-a="take" class="pri">+ New take</button></div>
-    ${doc.takes.map((t) => `<div class="card7 take" data-tk="${t.id}"><label>Name<input data-f="name:${t.id}" value="${esc(t.name)}"></label><label>Flow<select data-f="flow:${t.id}">${doc.flows.map((fl) => opt(fl.id, fl.name, t.flow)).join("")}</select></label>
-      <div class="g3"><label>In (s)<input type="number" step="0.1" min="0" data-f="t0:${t.id}" value="${t.t0.toFixed(1)}"></label><label>Out (s)<input type="number" step="0.1" min="0" data-f="t1:${t.id}" value="${t.t1.toFixed(1)}"></label><label>Speed<select data-f="speed:${t.id}">${[.5, 1, 1.5, 2, 3].map((v) => opt(v, v + "x", t.speed)).join("")}</select></label></div>
-      <div class="g2"><label>Camera<select data-f="cam:${t.id}">${opt("director", "Director cut", t.cam)}${opt("guided", "Guided", t.cam)}${opt("chase", "Ride with the trolley", t.cam)}${opt("keep", "As it is now", t.cam)}</select></label><label>Quality<select data-f="quality:${t.id}">${opt("high", "High (16 Mbit/s)", t.quality)}${opt("normal", "Normal (8 Mbit/s)", t.quality)}</select></label></div>
-      <div class="chks"><label class="chk"><input type="checkbox" data-f="captions:${t.id}" ${t.captions ? "checked" : ""}>Captions</label><label class="chk"><input type="checkbox" data-f="card:${t.id}" ${t.card ? "checked" : ""}>Step card</label><label class="chk"><input type="checkbox" data-f="labels:${t.id}" ${t.labels ? "checked" : ""}>Labels</label></div>
-      <div class="acts"><button data-ti="${t.id}">In = now</button><button data-to="${t.id}">Out = now</button><button data-tp="${t.id}">▶ Preview</button><button data-tr="${t.id}" class="pri">● Record video</button><button data-td="${t.id}" class="danger">✕</button></div></div>`).join("")}</div>`;
+    ${doc.takes.map((t) => `<div class="card7 take" data-tk="${esc(t.id)}"><label>Name<input data-f="name:${esc(t.id)}" value="${esc(t.name)}"></label><label>Flow<select data-f="flow:${esc(t.id)}">${doc.flows.map((fl) => opt(fl.id, fl.name, t.flow)).join("")}</select></label>
+      <div class="g3"><label>In (s)<input type="number" step="0.1" min="0" data-f="t0:${esc(t.id)}" value="${t.t0.toFixed(1)}"></label><label>Out (s)<input type="number" step="0.1" min="0" data-f="t1:${esc(t.id)}" value="${t.t1.toFixed(1)}"></label><label>Speed<select data-f="speed:${esc(t.id)}">${[.5, 1, 1.5, 2, 3].map((v) => opt(v, v + "x", t.speed)).join("")}</select></label></div>
+      <div class="g2"><label>Camera<select data-f="cam:${esc(t.id)}">${opt("director", "Director cut", t.cam)}${opt("guided", "Guided", t.cam)}${opt("chase", "Ride with the trolley", t.cam)}${opt("keep", "As it is now", t.cam)}</select></label><label>Quality<select data-f="quality:${esc(t.id)}">${opt("high", "High (16 Mbit/s)", t.quality)}${opt("normal", "Normal (8 Mbit/s)", t.quality)}</select></label></div>
+      <div class="chks"><label class="chk"><input type="checkbox" data-f="captions:${esc(t.id)}" ${t.captions ? "checked" : ""}>Captions</label><label class="chk"><input type="checkbox" data-f="card:${esc(t.id)}" ${t.card ? "checked" : ""}>Step card</label><label class="chk"><input type="checkbox" data-f="labels:${esc(t.id)}" ${t.labels ? "checked" : ""}>Labels</label></div>
+      <div class="acts"><button data-ti="${esc(t.id)}">In = now</button><button data-to="${esc(t.id)}">Out = now</button><button data-tp="${esc(t.id)}">▶ Preview</button><button data-tr="${esc(t.id)}" class="pri">● Record video</button><button data-td="${esc(t.id)}" class="danger">✕</button></div></div>`).join("")}</div>`;
   $("capLang").onchange = (e) => { commit("caption language", () => { doc.settings.lang = e.target.value; }, "director"); render(); };
   const acts = { key: () => addKey(), keyF: () => addKey({ follow: true }), rec: () => (camRec.on ? stopCamRec() : startCamRec()), play: () => { if (!dirOf().keys.length) return X.tip("Add camera keys first"); MF.setCam("director"); MF.seek(0); MF.play(); render(); }, cap: addCaption, take: () => commit("new take", () => doc.takes.push(newTake()), "director") };
   body.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => { acts[b.dataset.a](); render(); renderLanes(); }));
@@ -315,7 +315,7 @@ function renderProject() {
   body.innerHTML = `<div class="sec card7"><div class="ct"><b>${esc(doc.title)}</b><span>${esc(PROJECT)}</span></div><label>Title<input data-f="title" value="${esc(doc.title)}"></label>
     <p class="hint">This view started from ${src}. Every change is saved in this browser automatically (Ctrl+S saves at once). Export the scene to keep it as a file or share it; Import loads one.</p>
     <div class="acts"><button data-a="save" class="pri">Save scene file</button><button data-a="export">Download scene (.json)</button><button data-a="import">Open scene file…</button><button data-a="reset" class="danger">Reset to original</button></div>
-    <input type="file" id="imp7" accept=".json,application/json" hidden>${MF7.error ? `<p class="bad">The saved scene had a problem: ${esc(MF7.error)}</p>` : ""}</div>
+    ${MF7.error ? `<p class="bad">The saved scene had a problem: ${esc(MF7.error)}</p>` : ""}</div>
     <div class="sec card7"><div class="ct"><b>This scene</b></div><p class="hint">${doc.flows.length} flows · ${doc.flows.reduce((n, f) => n + f.steps.length, 0)} steps · ${nodeList().length} stops · ${doc.devices.length} devices · ${doc.props.length} props · ${Object.keys(doc.replica).length} replica edits · ${Object.values(doc.director).reduce((n, d) => n + (d.keys || []).length, 0)} camera keys · ${Object.values(doc.director).reduce((n, d) => n + (d.caps || []).length, 0)} captions · ${doc.takes.length} takes</p><p class="hint">Undo history: ${undoStack.length} change(s).</p></div>
     <div class="sec card7"><div class="ct"><b>Keys and mouse</b></div><table class="keys7">
     <tr><td>Left drag</td><td>Orbit (on an object: move it)</td></tr><tr><td>Right drag / Shift</td><td>Pan</td></tr><tr><td>Wheel</td><td>Zoom toward the cursor</td></tr><tr><td>Double-click</td><td>Fly to that point (on a path leg: add a corner)</td></tr>
@@ -327,11 +327,6 @@ function renderProject() {
     reset: () => { if (!acts.reset.armed) { acts.reset.armed = true; X.tip("Click Reset again within 3 s: the saved scene is forgotten and the original comes back"); setTimeout(() => (acts.reset.armed = false), 3000); return; } try { localStorage.removeItem(storageKey()); } catch (e) {} location.reload(); },
   };
   body.querySelectorAll("[data-a]").forEach((b) => (b.onclick = () => acts[b.dataset.a]()));
-  $("imp7").onchange = async (e) => {
-    const file = e.target.files[0]; if (!file) return;
-    try { const o = JSON.parse(await file.text()); if (!o || o.format !== "mf7-scene") throw new Error("not a Material Flow scene file"); if (o.project && o.project !== PROJECT) throw new Error(`this scene is for ${o.project}; open that tab first`); localStorage.setItem(storageKey(), JSON.stringify(o)); location.reload(); }
-    catch (err) { X.tip("Import failed: " + err.message); }
-  };
   bindFields(body, (f, v) => commit("rename project", () => { doc.title = v; }));
 }
 
@@ -343,14 +338,14 @@ function renderLanes() {
   const show = ed.open, total = X.F().total || 1; lanes.style.display = show ? "block" : "none"; document.body.classList.toggle("lanes7", show);
   stepMarks.innerHTML = ""; if (!show) return;
   const d = dirOf(), pct = (t) => clamp(t / total * 100, 0, 100) + "%";
-  $("lnKeys").innerHTML = d.keys.map((k) => `<i class="kf ${k.ease} ${dsel.key === k.id ? "on" : ""} ${k.follow ? "fol" : ""}" data-k="${k.id}" style="left:${pct(k.t)}" title="${fmtT(k.t)} · ${k.ease}${k.follow ? " · rides with the trolley" : ""}"></i>`).join("");
-  $("lnCaps").innerHTML = d.caps.map((c) => `<i class="cb ${dsel.cap === c.id ? "on" : ""}" data-c="${c.id}" style="left:${pct(c.t0)};width:calc(${pct(c.t1)} - ${pct(c.t0)})" title="${esc(c.title || c.text)}"><b>${esc(c.title || c.text)}</b><u class="e0"></u><u class="e1"></u></i>`).join("");
+  $("lnKeys").innerHTML = d.keys.map((k) => `<i class="kf ${k.ease} ${dsel.key === k.id ? "on" : ""} ${k.follow ? "fol" : ""}" data-k="${esc(k.id)}" style="left:${pct(k.t)}" title="${fmtT(k.t)} · ${k.ease}${k.follow ? " · rides with the trolley" : ""}"></i>`).join("");
+  $("lnCaps").innerHTML = d.caps.map((c) => `<i class="cb ${dsel.cap === c.id ? "on" : ""}" data-c="${esc(c.id)}" style="left:${pct(c.t0)};width:calc(${pct(c.t1)} - ${pct(c.t0)})" title="${esc(tr(c.title || c.text))}"><b>${esc(tr(c.title || c.text))}</b><u class="e0"></u><u class="e1"></u></i>`).join("");
   const items = X.F().items;
   stepMarks.innerHTML = items.map((it, j) => (j < 2 ? "" : `<b class="smk" data-j="${j}" style="left:${pct(it.tm)}" title="Step ${it.i}: ${esc(it.s.title)} · drag to change when it arrives"></b>`)).join("");
   // drags
   const trackT = (el, e) => { const r = el.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width, 0, 1) * total; };
   const dragEl = (sel, onMove, onUp) => lanes.querySelectorAll(sel).forEach((el) => {
-    el.onpointerdown = (e) => { e.stopPropagation(); e.preventDefault(); el.setPointerCapture(e.pointerId); const before = snapshot(), t0 = trackT(el.parentElement, e); let moved = false; el.onpointermove = (ev) => { moved = true; onMove(el, trackT(el.parentElement, ev) - t0, e); renderLanesSoft(); }; el.onpointerup = () => { el.onpointermove = null; if (moved) commitFrom(before, "retime", "director"); else onUp(el); render(); renderLanes(); }; };
+    el.onpointerdown = (e) => { e.stopPropagation(); e.preventDefault(); el.setPointerCapture(e.pointerId); const before = snapshot(), t0 = trackT(el.parentElement, e); let moved = false; el.onpointermove = (ev) => { moved = true; onMove(el, trackT(el.parentElement, ev) - t0, e); renderLanesSoft(); }; el.onpointerup = () => { el.onpointermove = null; if (moved) { sortKeys(d); commitFrom(before, "retime", "director"); } else onUp(el); render(); renderLanes(); }; };
   });
   const keyStart = new Map(), capStart = new Map();
   dragEl(".kf", (el, dt) => { const k = d.keys.find((q) => q.id === el.dataset.k); if (!keyStart.has(k.id)) keyStart.set(k.id, k.t); k.t = +clamp(keyStart.get(k.id) + dt, 0, total).toFixed(2); }, (el) => { const k = d.keys.find((q) => q.id === el.dataset.k); dsel.key = k.id; MF.seek(k.t); MF.pause(); if (ed.tab !== "director") setTab("director"); });
@@ -439,7 +434,7 @@ stage.onpointermove = (e) => {
 };
 stage.onpointerup = stage.onpointercancel = (e) => {
   if (!sd) return; const d = sd; stage.classList.remove("drag");
-  if (d.mode === "edit") { d.h.up(d.moved); sd = null; render(); return; }
+  if (d.mode === "edit") { if (e.type === "pointercancel") d.h.cancel(); else d.h.up(d.moved); sd = null; render(); return; }
   const click = !d.moved && e.type === "pointerup";
   if (click && d.btn === 0) { if (ed.open) editClick(e); else if (S.measure) { const hh = X.hitFloor(e); if (hh) { if (S.pts.length === 2) S.pts = []; S.pts.push(hh.point.clone()); } } }
   if (click && d.btn === 2 && ed.open) {
@@ -582,7 +577,7 @@ let lastFlow = S.flow, lastTotal = 0;
 onChange((w) => {
   if (w === "select" || w === "commit" || w === "tool" || w === "director" || w === "rec") { render(); if (w !== "select") renderLanes(); }
   if (w === "checks") syncToolbar(); if (w === "save" || w === "dirty") syncToolbar();
-  if (w === "commit") syncPad();
+  if (w === "commit") { syncPad(); if (window.MFS) MFS.setScene(toScene()); }
 });
 applyHooks.after = (what) => { if (what !== "director") { runChecks(); } renderLanes(); };
 

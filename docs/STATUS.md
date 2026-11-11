@@ -99,3 +99,8 @@ ode tools/v7/export-scenes.mjs (V6 data -> `private/v7/scenes/*.scene.json`; INJ
 
 ## V7.7.1 - 2026-11-11 (owner: hide the slow opening)
 Preparing screen: after loading, the risen factory renders behind a 'Preparing the 3D factory' card until 30 frames in a row are under 22 ms (or 4 s: then the rise is skipped and the story starts at step 1). `MF.prepared` resolves when the story may start; all test tools wait for it. `?prep=0` turns it off. Test `tools/v7/start-test.mjs`: 0 of 10 fresh starts with visible stutter (prep 0.6-0.9 s, 58.8-59.6 fps in the first 10 s). Open: Press path 2, 1 guided-camera sample hidden (owner accepted).
+
+
+## V7.7.1 Phase A review — 2026-11-11
+
+Direct authorized review and safe fixes are documented in [REVIEW_REPORT.md](REVIEW_REPORT.md): stable scene identities/round trips, shared Studio geometry/router, validation, undo/save transactions, recorder cleanup, build/export guards and headless test recovery. The original 10 paths pass V6 identity. Startup stutter remains open: first candidate run 2/4 failures, sequential comparison baseline 2/4 versus candidate 1/4. Do not describe the suite as all passing. Final receipts, deferred findings and the changed-file inventory are in the report. Company scenes were not edited; earlier players and version archives retain their hashes. No git or delegation was used.

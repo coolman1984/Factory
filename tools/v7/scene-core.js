@@ -40,13 +40,15 @@
   /* ---------------- internal -> scene ---------------- */
   function fromInternal(project, data, opts) {
     opts = opts || {};
-    var usedStop = {}, stopId = {}, stops = [];
+    var usedStop = Object.create(null), stopId = Object.create(null), stops = [];
+    Object.values(data.nodes).forEach(function (n) { if (n.sceneId) usedStop[n.sceneId] = 1; });
     Object.keys(data.nodes).forEach(function (k) {
-      var n = data.nodes[k], id = slug(n.text || n.kind || "stop", usedStop); stopId[n.id] = id;
+      var n = data.nodes[k], id = n.sceneId || slug(n.text || n.kind || "stop", usedStop); stopId[n.id] = id;
       var s = { id: id, name: n.text || "", floor: n.plate, x: toM(n.x), y: toM(n.y), symbol: n.kind, color: n.fill };
       stops.push(s);
     });
-    var usedDev = {}, devices = (data.devices || []).map(function (d) {
+    var usedDev = Object.create(null); (data.devices || []).forEach(function (d) { if (d.sceneId) usedDev[d.sceneId] = 1; });
+    var devices = (data.devices || []).map(function (d) {
       var o;
       if (d.type === "pc") {
         o = { id: slug("pc " + (d.label || ""), usedDev), type: "pc", kind: d.kind, floor: d.plate || "1F", x: toM(d.x), y: toM(d.y), heading: d.yawDeg != null ? norm360(180 - d.yawDeg) : HEADING_OF_FACE[d.face || "e"], size: d.k || DIMS.K, label: d.label || "" };
@@ -60,13 +62,14 @@
         if (d.node != null && stopId[d.node]) o.stop = stopId[d.node];
         if (d.done) o.done = d.done;
       } else return null;
+      if (d.sceneId) o.id = d.sceneId;
       return o;
     }).filter(Boolean);
     var paths = data.flows.map(function (f) {
-      var usedStep = {};
-      var po = { id: f.id, name: f.name, color: f.color || "#7030A0" }; if (f.trolleys > 1) { po.trolleys = f.trolleys; po.headway = f.headway || 30; }
+      var usedStep = Object.create(null); f.steps.forEach(function (s) { if (s.sceneId) usedStep[s.sceneId] = 1; });
+      var po = { id: f.id, name: f.name, color: f.color || "#7030A0" }; if (f.trolleys != null) po.trolleys = f.trolleys; if (f.headway != null) po.headway = f.headway;
       return Object.assign(po, { steps: f.steps.map(function (s, i) {
-        var o = { id: "s" + (i + 1), stop: stopId[s.node], title: s.title || "" };
+        var o = { id: s.sceneId || slug("s" + (i + 1), usedStep), stop: stopId[s.node], title: s.title || "" };
         usedStep[o.id] = 1;
         if (s.what) o.text = s.what;
         o.mode = MODES_OUT[s.mode] || "push";
@@ -88,10 +91,10 @@
   // { data: { nodes, flows, devices, title }, stopIds: { sceneId: internalId }, issues: [] }.
   function toInternal(scene, layout, opts) {
     opts = opts || {}; var issues = [];
-    var nodes = {}, idOf = {}, next = 1;
+    var nodes = {}, idOf = Object.create(null), next = 1;
     (scene.stops || []).forEach(function (s) {
       var id = next++; idOf[s.id] = id;
-      nodes[id] = { id: id, x: toU(s.x), y: toU(s.y), plate: s.floor, kind: s.symbol || "area", mode: "manual", fill: s.color || "#156082", text: s.name || s.id, target: [toU(s.x), toU(s.y)] };
+      nodes[id] = { id: id, sceneId: s.id, x: toU(s.x), y: toU(s.y), plate: s.floor, kind: s.symbol || "area", mode: "manual", fill: s.color || "#156082", text: s.name || s.id, target: [toU(s.x), toU(s.y)] };
     });
     if (opts.applyLayout !== false) applyLayoutEdits(scene.layoutEdits || [], layout.replica, issues);
     var sym = 1, devices = (scene.devices || []).map(function (d) {
@@ -129,7 +132,7 @@
         prevEnd = Array.isArray(o.path) ? o.path[o.path.length - 1].slice() : n ? [n.x, n.y] : prevEnd;
         return o;
       });
-      var fo = { id: p.id, name: p.name || p.id, color: p.color || "#7030A0", steps: steps }; if (p.trolleys > 1) { fo.trolleys = Math.min(12, Math.round(p.trolleys)); fo.headway = p.headway > 0 ? p.headway : 30; } return fo;
+      var fo = { id: p.id, name: p.name || p.id, color: p.color || "#7030A0", steps: steps }; if (p.trolleys != null) fo.trolleys = Math.min(12, Math.round(p.trolleys)); if (p.headway != null) fo.headway = p.headway; return fo;
     });
     return { data: { nodes: nodes, flows: flows, devices: devices, title: scene.title }, stopIds: idOf, issues: issues };
   }
@@ -142,16 +145,21 @@
     for (var i = 0; i < arr.length; i++) if (arr[i]._oid === oid) return { kind: k, obj: arr[i], index: i };
     return null;
   }
+  // Translation in frame units; clockwise turn in degrees about the object centre.
+  function applyLayoutOp(kind, o, dx, dy, rot) {
+      if (kind === "walls") { var mx = (o.a[0] + o.b[0]) / 2 + dx, my = (o.a[1] + o.b[1]) / 2 + dy, r = rot * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r); var t = function (p) { var x = p[0] + dx - mx, y = p[1] + dy - my; return [mx + x * c - y * sn, my + x * sn + y * c]; }; o.a = t(o.a); o.b = t(o.b); }
+      else if (kind === "columns") o.p = [o.p[0] + dx, o.p[1] + dy];
+      else { o.x += dx; o.y += dy; if (rot === 90 || rot === 270) { var cx = o.x + o.w / 2, cy = o.y + o.h / 2, w = o.w; o.w = o.h; o.h = w; o.x = cx - o.w / 2; o.y = cy - o.h / 2; if (kind === "machines" && o.type === "injection") o.vertical = !o.vertical; } }
+  }
   function applyLayoutEdits(edits, replica, issues) {
     stampLayout(replica);
     edits.forEach(function (e, i) {
       var f = findLayoutObject(replica, e.target); if (!f) { issues && issues.push({ level: "error", where: "layoutEdits[" + i + "]", msg: "unknown layout object " + JSON.stringify(e.target) }); return; }
       var o = f.obj, dx = e.move ? toU(e.move[0]) : 0, dy = e.move ? toU(e.move[1]) : 0, rot = norm360(e.turn || 0);
-      if (f.kind === "walls") { var mx = (o.a[0] + o.b[0]) / 2 + dx, my = (o.a[1] + o.b[1]) / 2 + dy, r = rot * Math.PI / 180, c = Math.cos(r), sn = Math.sin(r); var t = function (p) { var x = p[0] + dx - mx, y = p[1] + dy - my; return [mx + x * c - y * sn, my + x * sn + y * c]; }; o.a = t(o.a); o.b = t(o.b); }
-      else if (f.kind === "columns") o.p = [o.p[0] + dx, o.p[1] + dy];
-      else { o.x += dx; o.y += dy; if (rot === 90 || rot === 270) { var cx = o.x + o.w / 2, cy = o.y + o.h / 2, w = o.w; o.w = o.h; o.h = w; o.x = cx - o.w / 2; o.y = cy - o.h / 2; if (f.kind === "machines" && o.type === "injection") o.vertical = !o.vertical; } }
+      applyLayoutOp(f.kind, o, dx, dy, rot);
       if (e.door) {   // cut a doorway into a straight wall: door = [from, to] in metres along the wall
         if (f.kind !== "walls" || !Array.isArray(e.door) || e.door.length !== 2) { issues && issues.push({ level: "error", where: "layoutEdits[" + i + "].door", msg: "door needs a wall target and [from, to] in metres along the wall" }); return; }
+        if (Math.abs(o.a[0] - o.b[0]) > 1e-6 && Math.abs(o.a[1] - o.b[1]) > 1e-6) { issues && issues.push({ level: "error", where: "layoutEdits[" + i + "].door", msg: "door needs a horizontal or vertical wall" }); return; }
         var ax = Math.abs(o.a[1] - o.b[1]) < Math.abs(o.a[0] - o.b[0]) ? 0 : 1, lo = Math.min(o.a[ax], o.b[ax]), hi = Math.max(o.a[ax], o.b[ax]), d0 = toU(Math.min(e.door[0], e.door[1])), d1 = toU(Math.max(e.door[0], e.door[1]));
         if (d1 <= lo || d0 >= hi) { issues && issues.push({ level: "error", where: "layoutEdits[" + i + "].door", msg: "the door [" + e.door + "] is not on " + e.target + " (it runs from " + toM(lo) + " to " + toM(hi) + " m)" }); return; }
         var mk = function (s0, s1, tag) { var c = JSON.parse(JSON.stringify(o)); c.a[ax] = s0; c.b[ax] = s1; c._oid = o._oid + tag; return c; };
@@ -174,7 +182,7 @@
     if (d.type === "rfid-manual") { var hh = DIMS.scanner.width * k * M / 2; return [[d.x - hh, d.y - hh, d.x + hh, d.y + hh]]; }
     return [];
   }
-  function solidsU(layout, plate, devices) {
+  function solidsU(layout, plate, devices, extra) {
     var R = layout.replica, out = [];
     (R.walls || []).forEach(function (w) {
       if (w.plate !== plate) return; var ax = w.a[0], ay = w.a[1], bx = w.b[0], by = w.b[1], t = 0.75;
@@ -184,16 +192,17 @@
     (R.columns || []).forEach(function (q) { if (q.plate === plate) out.push({ r: [q.p[0] - 1.45, q.p[1] - 1.45, q.p[0] + 1.45, q.p[1] + 1.45], what: "column:" + q._oid }); });
     ["racks", "machines", "pallets"].forEach(function (k) { (R[k] || []).forEach(function (o) { if (o.plate === plate) out.push({ r: [o.x, o.y, o.x + o.w, o.y + o.h], what: LAYOUT_NAME[k] + ":" + o._oid }); }); });
     (devices || []).forEach(function (d) { if ((d.plate || "1F") === plate) footprintsU(d).forEach(function (r) { out.push({ r: r, what: (d.sceneId ? "device " + d.sceneId : d.label || d.type), device: true }); }); });
+    out = out.concat(extra || []);
     var C = 16, hash = {};
     out.forEach(function (s, i) { for (var a = Math.floor(s.r[0] / C); a <= Math.floor(s.r[2] / C); a++) for (var b = Math.floor(s.r[1] / C); b <= Math.floor(s.r[3] / C); b++) (hash[a + ":" + b] || (hash[a + ":" + b] = [])).push(i); });
     return { list: out, near: function (x, y, rad) { var seen = {}, res = []; for (var a = Math.floor((x - rad) / C); a <= Math.floor((x + rad) / C); a++) for (var b = Math.floor((y - rad) / C); b <= Math.floor((y + rad) / C); b++) { var l = hash[a + ":" + b]; if (l) for (var j = 0; j < l.length; j++) if (!seen[l[j]]) { seen[l[j]] = 1; res.push(out[l[j]]); } } return res; } };
   }
   var TR = DIMS.trolley, STRAIGHT = TR.halfW + 0.9, TURN = Math.hypot(TR.halfW, TR.halfL) + 0.45;
-  function makeRouter(layout, devices) {
+  function makeRouter(layout, devices, solidsFor) {
     var grids = {};
     function grid(plate) {
       if (grids[plate]) return grids[plate];
-      var zone = zoneU(layout, plate), solids = solidsU(layout, plate, devices).list;
+      var zone = zoneU(layout, plate), solids = (solidsFor ? solidsFor(plate) : solidsU(layout, plate, devices)).list;
       var x0 = Math.floor(zone[0]) - 2, y0 = Math.floor(zone[1]) - 2, W = Math.ceil(zone[2]) - x0 + 4, H = Math.ceil(zone[3]) - y0 + 4, occ = new Uint8Array(W * H);
       solids.forEach(function (s) { var r = s.r, i0 = Math.max(0, Math.floor(r[0] - x0)), i1 = Math.min(W - 1, Math.ceil(r[2] - x0) - 1), j0 = Math.max(0, Math.floor(r[1] - y0)), j1 = Math.min(H - 1, Math.ceil(r[3] - y0) - 1); for (var j = j0; j <= j1; j++) for (var i = i0; i <= i1; i++) occ[j * W + i] = 1; });
       var INF = 1e9, d = new Float32Array(W * H), k;
@@ -234,7 +243,7 @@
       return simplify(cells.map(function (k2) { return [g.x0 + k2 % g.W + 0.5, g.y0 + ((k2 / g.W) | 0) + 0.5]; }));
     }
     function elbow(a, b, hFirst) { return Math.abs(a[0] - b[0]) < 1e-9 || Math.abs(a[1] - b[1]) < 1e-9 ? [a, b] : hFirst ? [a, [b[0], a[1]], b] : [a, [a[0], b[1]], b]; }
-    return { route: function (a, b, plate) {
+    return { grid: grid, route: function (a, b, plate) {
       var g = grid(plate), sa = snap(g, a[0], a[1], STRAIGHT + 0.2), sb = snap(g, b[0], b[1], STRAIGHT + 0.2); if (!sa || !sb) return null;
       var mid = astar(g, sa, sb); if (!mid) return null;
       var first = mid.length > 1 && Math.abs(mid[1][1] - mid[0][1]) < 1e-9, last = mid.length > 1 && Math.abs(mid[mid.length - 1][1] - mid[mid.length - 2][1]) < 1e-9;
@@ -269,8 +278,53 @@
   var CLEAR_ERROR = 0.09, CLEAR_WARN = 0.15;            // metres between the trolley and any solid
   /* validate(scene, layout) -> { errors: [{where, msg}], warnings: [...], stats }. layout = a fresh built-in layout
      ({ plates, elevators, replica }); its replica is copied, the layout edits are applied to the copy. */
-  function validate(scene, layoutIn) {
+  function validate(scene, layoutIn, opts) {
     var errors = [], warnings = [], E = function (w, m) { errors.push({ where: w, msg: m }); }, Wn = function (w, m) { warnings.push({ where: w, msg: m }); };
+    var obj = function (v) { return v !== null && typeof v === "object" && !Array.isArray(v); };
+    var finite = function (v) { return typeof v === "number" && isFinite(v); };
+    var point = function (v) { return Array.isArray(v) && v.length === 2 && v.every(finite); };
+    if (!obj(scene)) { E("scene", "not a JSON object"); return { errors: errors, warnings: warnings }; }
+    ["stops", "devices", "objects", "layoutEdits", "paths", "takes", "viewpoints"].forEach(function (k) {
+      if (scene[k] == null) return;
+      if (!Array.isArray(scene[k])) { E(k, "must be a list"); return; }
+      scene[k].forEach(function (v, i) { if (!obj(v) && !(k === "viewpoints" && v === null)) E(k + "[" + i + "]", "must be an object"); });
+    });
+    if (errors.length) return { errors: errors, warnings: warnings };
+    (scene.paths || []).forEach(function (p, i) {
+      var w = "paths[" + i + "].steps";
+      if (!Array.isArray(p.steps) || !p.steps.length) { E(w, "a path needs at least one step"); return; }
+      p.steps.forEach(function (s, j) {
+        var ws = w + "[" + j + "]";
+        if (!obj(s)) { E(ws, "must be an object"); return; }
+        if (s.route != null && !obj(s.route)) E(ws + ".route", "must be an object");
+        else if (s.route && s.route.type === "points" && (!Array.isArray(s.route.points) || s.route.points.length < 2 || !s.route.points.every(point))) E(ws + ".route.points", "a list of at least two [x, y] points in metres");
+      });
+    });
+    (scene.devices || []).forEach(function (d, i) {
+      if (d.type === "scanner" && !point(d.at)) E("devices[" + i + "].at", "[x, y] in metres");
+      if (d.stand != null && !point(d.stand)) E("devices[" + i + "].stand", "[x, y] in metres");
+    });
+    (scene.layoutEdits || []).forEach(function (e, i) {
+      if (e.move != null && !point(e.move)) E("layoutEdits[" + i + "].move", "[dx, dy] in metres");
+      if (e.door != null && (!point(e.door) || e.door[0] === e.door[1])) E("layoutEdits[" + i + "].door", "two different finite wall coordinates in metres");
+    });
+    if (scene.director != null && !obj(scene.director)) E("director", "must be an object keyed by path id");
+    else Object.keys(scene.director || {}).forEach(function (id) {
+      var d = scene.director[id], w = "director[" + id + "]";
+      if (!obj(d)) { E(w, "must be an object"); return; }
+      ["keys", "caps"].forEach(function (k) {
+        if (d[k] == null) return;
+        if (!Array.isArray(d[k])) { E(w + "." + k, "must be a list"); return; }
+        d[k].forEach(function (v, i) {
+          var wk = w + "." + k + "[" + i + "]";
+          if (!obj(v)) { E(wk, "must be an object"); return; }
+          (k === "keys" ? ["t", "x", "y", "z", "dist", "az", "pol"] : ["t0", "t1"]).forEach(function (field) { if (!finite(v[field])) E(wk + "." + field, "must be finite"); });
+        });
+      });
+    });
+    if (errors.length) return { errors: errors, warnings: warnings };
+    if (!(scene.paths || []).length) E("paths", "a playable scene needs at least one path");
+    if (opts && opts.structureOnly) return { errors: errors, warnings: warnings };
     var layout = { plates: layoutIn.plates, elevators: layoutIn.elevators || [], replica: clone(layoutIn.replica) };
     if (!scene || typeof scene !== "object") { E("scene", "not a JSON object"); return { errors: errors, warnings: warnings }; }
     if (scene.format !== FORMAT) E("format", 'must be "' + FORMAT + '"');
@@ -284,10 +338,10 @@
       return true;
     };
     var arr = function (k) { if (scene[k] == null) return []; if (!Array.isArray(scene[k])) { E(k, "must be a list"); return []; } return scene[k]; };
-    var uniq = function (list, where) { var seen = {}; list.forEach(function (o, i) { if (!o || typeof o.id !== "string" || !o.id) E(where + "[" + i + "].id", "missing id (a short unique text)"); else if (seen[o.id]) E(where + "[" + o.id + "]", "duplicate id"); else seen[o.id] = 1; }); return seen; };
+    var uniq = function (list, where) { var seen = Object.create(null); list.forEach(function (o, i) { if (!o || typeof o.id !== "string" || !o.id) E(where + "[" + i + "].id", "missing id (a short unique text)"); else if (seen[o.id]) E(where + "[" + o.id + "]", "duplicate id"); else seen[o.id] = 1; }); return seen; };
     var stops = arr("stops"), devices = arr("devices"), objects = arr("objects"), edits = arr("layoutEdits"), paths = arr("paths");
     var stopIds = uniq(stops, "stops"); uniq(devices, "devices"); uniq(objects, "objects"); uniq(paths, "paths");
-    var stopOf = {}; stops.forEach(function (s) { stopOf[s.id] = s; inFloor("stops[" + s.id + "]", s.floor, s.x, s.y); if (s.symbol != null && SYMBOLS.indexOf(s.symbol) < 0) E("stops[" + s.id + "].symbol", "one of " + SYMBOLS.join(", ")); if (s.color != null && !isColor(s.color)) E("stops[" + s.id + "].color", "a colour like #7030A0"); });
+    var stopOf = Object.create(null); stops.forEach(function (s) { stopOf[s.id] = s; inFloor("stops[" + s.id + "]", s.floor, s.x, s.y); if (s.symbol != null && SYMBOLS.indexOf(s.symbol) < 0) E("stops[" + s.id + "].symbol", "one of " + SYMBOLS.join(", ")); if (s.color != null && !isColor(s.color)) E("stops[" + s.id + "].color", "a colour like #7030A0"); });
     edits.forEach(function (e, i) { var w = "layoutEdits[" + i + "]"; if (e.move && !(Array.isArray(e.move) && e.move.length === 2 && isNum(e.move[0]) && isNum(e.move[1]))) E(w + ".move", "[dx, dy] in metres"); if (e.turn != null && [0, 90, 180, 270].indexOf(norm360(e.turn)) < 0) E(w + ".turn", "0, 90, 180 or 270"); });
     var issues = []; applyLayoutEdits(edits, layout.replica, issues); issues.forEach(function (x) { E(x.where, x.msg); });
     devices.forEach(function (d) {
@@ -299,22 +353,27 @@
       if (d.size != null && (!isNum(d.size) || d.size < 0.5 || d.size > 4)) E(w + ".size", "0.5 to 4 (icon scale; 1 = real size)");
     });
     var nGates = devices.filter(function (d) { return d.type === "rfid-gate"; }).length; if (nGates > MAX_GATES) E("devices", nGates + " RFID gates; at most " + MAX_GATES + " per tab");
-    objects.forEach(function (o) { var w = "objects[" + o.id + "]"; if (OBJECT_TYPES.indexOf(o.type) < 0) E(w + ".type", "one of " + OBJECT_TYPES.join(", ")); else inFloor(w, o.floor, o.x, o.y); });
+    objects.forEach(function (o) { var w = "objects[" + o.id + "]"; if (OBJECT_TYPES.indexOf(o.type) < 0) E(w + ".type", "one of " + OBJECT_TYPES.join(", ")); else inFloor(w, o.floor, o.x, o.y);
+      ["w", "d", "h"].forEach(function (k) { if (!isNum(o[k]) || o[k] <= 0) E(w + "." + k, "positive metres"); });
+      if (o.heading != null && !isNum(o.heading)) E(w + ".heading", "finite degrees");
+      if (o.color != null && !isColor(o.color)) E(w + ".color", "a colour like #7030A0");
+    });
 
+    if (errors.length) return { errors: errors, warnings: warnings };
     var conv = toInternal(scene, { plates: layout.plates, elevators: layout.elevators, replica: layout.replica }, { applyLayout: false });
     conv.issues.forEach(function (x) { E(x.where, x.msg); });
     var internalDevices = conv.data.devices;
     paths.forEach(function (p, pi) {
       var w = "paths[" + p.id + "]"; if (!Array.isArray(p.steps) || !p.steps.length) { E(w + ".steps", "a path needs at least one step"); return; }
       if (p.color != null && !isColor(p.color)) E(w + ".color", "a colour like #7030A0");
-      if (p.trolleys != null && (!isNum(p.trolleys) || p.trolleys < 1 || p.trolleys > 12)) E(w + ".trolleys", "1 to 12 trolleys on this path");
+      if (p.trolleys != null && (!isNum(p.trolleys) || p.trolleys < 1 || p.trolleys > 12 || p.trolleys % 1 !== 0)) E(w + ".trolleys", "1 to 12 trolleys on this path");
       if (p.headway != null && (!isNum(p.headway) || p.headway < 1 || p.headway > 3600)) E(w + ".headway", "1 to 3600 seconds between trolleys");
       var sid = uniq(p.steps, w + ".steps"); void sid;
       var f = conv.data.flows[pi], prevEnd = null, prevFloor = null;
       p.steps.forEach(function (s, i) {
         var ws = w + ".steps[" + s.id + "]", st = stopOf[s.stop], r = s.route || { type: "stay" }, fs = f.steps[i];
         if (!st) { E(ws + ".stop", "unknown stop " + JSON.stringify(s.stop)); return; }
-        if (s.mode != null && !MODES_IN[s.mode]) E(ws + ".mode", '"push", "agv" or "manual"');
+        if (s.mode != null && !Object.prototype.hasOwnProperty.call(MODES_IN, s.mode)) E(ws + ".mode", '"push", "agv" or "manual"');
         if (s.wait != null && (!isNum(s.wait) || s.wait < 0 || s.wait > 600)) E(ws + ".wait", "0 to 600 seconds");
         if (s.speed != null && (!isNum(s.speed) || s.speed < 0.2 || s.speed > 8)) E(ws + ".speed", "0.2 to 8 m/s");
         if (["stay", "points", "auto", "elevator"].indexOf(r.type) < 0) { E(ws + ".route.type", '"stay", "points", "auto" or "elevator"'); return; }
@@ -342,7 +401,7 @@
             var hh = Math.atan2(bx - ax, by - ay);
             var test = function (x, y, hd, leg) { sol.near(x, y, 8).forEach(function (o) { var g = gap(x, y, hd, o.r) * U; if (g < CLEAR_WARN && (!found[o.what] || g < found[o.what].g)) found[o.what] = { g: g, x: x, y: y, leg: leg }; }); };
             if (h !== undefined) { var dd = Math.atan2(Math.sin(hh - h), Math.cos(hh - h)); if (Math.abs(dd) > 1e-3) for (var q = 1; q <= 18; q++) test(ax, ay, h + dd * q / 18, k); }
-            for (var u = 0; u <= L; u += 0.25) test(ax + (bx - ax) * u / L, ay + (by - ay) * u / L, hh, k);
+            for (var qn = Math.ceil(L / 0.25), qi = 0; qi <= qn; qi++) test(ax + (bx - ax) * qi / qn, ay + (by - ay) * qi / qn, hh, k);
             h = hh;
           }
           Object.keys(found).forEach(function (what) { var f0 = found[what], g = f0.g; (g < CLEAR_ERROR ? E : Wn)(ws + ".route", (g < 0 ? "the trolley hits " : "the trolley passes " + g.toFixed(2) + " m from ") + what + " on leg " + f0.leg + " at (" + toM(f0.x).toFixed(1) + ", " + toM(f0.y).toFixed(1) + ")" + (g < CLEAR_ERROR ? "; needs at least " + CLEAR_ERROR + " m" : "")); }); void worst;
@@ -366,11 +425,45 @@
         }
       });
     });
-    var dir = scene.director || {}; Object.keys(dir).forEach(function (pid) { if (!paths.some(function (p) { return p.id === pid; })) E("director[" + pid + "]", "unknown path"); });
+    var text = function (v) { return typeof v === "string" || (obj(v) && Object.keys(v).every(function (k) { return ["en", "ar", "ko"].indexOf(k) >= 0 && typeof v[k] === "string"; })); };
+    var cameraPose = function (v, w) {
+      ["x", "y", "z", "dist", "az", "pol"].forEach(function (k) { if (!finite(v[k])) E(w + "." + k, "must be a finite camera value (engine units)"); });
+      if (!(v.dist > 0)) E(w + ".dist", "must be positive");
+      if (v.fov != null && (!finite(v.fov) || v.fov <= 0 || v.fov >= 180)) E(w + ".fov", "between 0 and 180 degrees");
+    };
+    var dir = scene.director || {}; Object.keys(dir).forEach(function (pid) {
+      var w = "director[" + pid + "]", d = dir[pid];
+      if (!paths.some(function (p) { return p.id === pid; })) E(w, "unknown path");
+      uniq(d.keys || [], w + ".keys"); uniq(d.caps || [], w + ".caps");
+      (d.keys || []).forEach(function (k, i) {
+        var wk = w + ".keys[" + i + "]"; cameraPose(k, wk);
+        if (!finite(k.t) || k.t < 0) E(wk + ".t", "nonnegative story seconds");
+        if (k.follow && ![k.ox, k.oy, k.oz].every(finite)) E(wk, "follow keys need finite ox, oy, oz offsets");
+        if (k.ease != null && ["smooth", "linear", "in", "out", "cut"].indexOf(k.ease) < 0) E(wk + ".ease", "unknown easing");
+      });
+      (d.caps || []).forEach(function (c, i) {
+        var wc = w + ".caps[" + i + "]";
+        if (!finite(c.t0) || !finite(c.t1) || c.t0 < 0 || c.t1 <= c.t0) E(wc, "caption needs 0 <= t0 < t1 in seconds");
+        ["title", "text"].forEach(function (k) { if (c[k] != null && !text(c[k])) E(wc + "." + k, "text or translations keyed by en, ar, ko"); });
+        if (c.size != null && (!finite(c.size) || c.size < .7 || c.size > 1.8)) E(wc + ".size", "0.7 to 1.8");
+        if (c.pos != null && ["lower", "upper", "center", "left", "right"].indexOf(c.pos) < 0) E(wc + ".pos", "unknown caption position");
+        if (c.style != null && ["glass", "cinema", "banner", "minimal"].indexOf(c.style) < 0) E(wc + ".style", "unknown caption style");
+      });
+    });
+    (scene.viewpoints || []).forEach(function (v, i) { if (v) cameraPose(v, "viewpoints[" + i + "]"); });
+    uniq(scene.takes || [], "takes");
+    (scene.takes || []).forEach(function (t, i) {
+      var w = "takes[" + i + "]";
+      if (!paths.some(function (p) { return p.id === t.flow; })) E(w + ".flow", "unknown path");
+      if (!finite(t.t0) || !finite(t.t1) || t.t0 < 0 || t.t1 <= t.t0) E(w, "take needs 0 <= t0 < t1 in seconds");
+      if (!finite(t.speed) || t.speed <= 0 || t.speed > 8) E(w + ".speed", "positive speed up to 8");
+      if (typeof t.name !== "string") E(w + ".name", "must be text");
+      if (t.fps != null && (!finite(t.fps) || t.fps < 1 || t.fps > 120)) E(w + ".fps", "1 to 120 frames per second");
+    });
 
     return { errors: errors, warnings: warnings, stats: { stops: stops.length, devices: devices.length, paths: paths.length, steps: paths.reduce(function (n, p) { return n + (p.steps || []).length; }, 0) } };
   }
 
-  var api = { FORMAT: FORMAT, VERSION: VERSION, UNIT: U, DIMS: DIMS, MAX_GATES: MAX_GATES, fromInternal: fromInternal, toInternal: toInternal, validate: validate, layoutOf: layoutOf, stampLayout: stampLayout, applyLayoutEdits: applyLayoutEdits, makeRouter: makeRouter, solidsU: solidsU, footprintsU: footprintsU, floorOfU: floorOfU, simplify: simplify, CLEAR_ERROR: CLEAR_ERROR, CLEAR_WARN: CLEAR_WARN };
+  var api = { FORMAT: FORMAT, VERSION: VERSION, UNIT: U, DIMS: DIMS, MAX_GATES: MAX_GATES, fromInternal: fromInternal, toInternal: toInternal, validate: validate, layoutOf: layoutOf, stampLayout: stampLayout, applyLayoutEdits: applyLayoutEdits, applyLayoutOp: applyLayoutOp, gap: gap, makeRouter: makeRouter, solidsU: solidsU, footprintsU: footprintsU, floorOfU: floorOfU, simplify: simplify, CLEAR_ERROR: CLEAR_ERROR, CLEAR_WARN: CLEAR_WARN };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.MFScene = api;
 })(typeof window !== "undefined" ? window : this);
