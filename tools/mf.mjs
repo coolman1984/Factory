@@ -114,15 +114,13 @@ const run = {
   },
   async take() {
     const f = pos[0], s = readScene(f), P = projects(); validateOrDie(s, P); if (!opt.path) die("--path id"); const pi = s.paths.findIndex((p) => p.id === opt.path); if (pi < 0) die("unknown path " + opt.path);
+    if (!["guided", "director", "chase", "follow"].includes(opt.cam || "director")) die("camera must be guided, director, chase or follow");
     const pg = await page(bakeTemp(f, s), s.project);
     try {
-      const info = await pg.ev(`(() => { MF.setFlow(${pi}); const total = MF.D.flows[${pi}].total; const t = { id: "cli", name: ${JSON.stringify(opt.name || "take")}, flow: ${JSON.stringify(opt.path)}, t0: ${opt.from != null ? +opt.from : 0}, t1: ${opt.to != null ? +opt.to : "total"}, speed: ${+(opt.speed || 1)}, cam: ${JSON.stringify(opt.cam || "director")}, captions: true, card: true, labels: true, quality: "high", fps: 60 };
-        if (t.cam === "director" && !MFX.doc.director[t.flow]?.keys?.length) t.cam = "guided"; const o = URL.createObjectURL; URL.createObjectURL = (b) => { if (b instanceof Blob && /video/.test(b.type)) window.__take = b; return o(b); }; MFX.startTake(t); return { cam: t.cam, seconds: (t.t1 - t.t0) / t.speed }; })()`);
-      const t0 = Date.now(); while (await pg.ev(`MFX.rec.active`)) { await pg.wait(1000); if (Date.now() - t0 > 1800000) die("take did not end"); } await pg.wait(2500);
-      const meta = await pg.ev(`(async () => { const b = window.__take; if (!b) return null; window.__buf = new Uint8Array(await b.arrayBuffer()); return { type: b.type, size: b.size }; })()`); if (!meta) die("no video was produced");
-      const ext = /mp4/.test(meta.type) ? "mp4" : "webm", out = opt.out || `dist/test/take-${s.project}-${opt.path}.${ext}`, parts = [];
-      for (let o = 0; o < meta.size; o += 4 << 20) parts.push(Buffer.from(await pg.ev(`(() => { const a = window.__buf.subarray(${o}, ${o + (4 << 20)}); let s = ""; for (let i = 0; i < a.length; i += 32768) s += String.fromCharCode.apply(null, a.subarray(i, i + 32768)); return btoa(s); })()`), "base64"));
-      writeFileSync(out, Buffer.concat(parts)); console.log(`${out}: ${meta.type}, ${(meta.size / 1048576).toFixed(1)} MB, about ${info.seconds.toFixed(1)} s, camera ${info.cam}`);
+      const take = await pg.ev(`(() => { MF.setFlow(${pi}); const total = MF.D.flows[${pi}].total; const t = { flow: ${JSON.stringify(opt.path)}, name: ${JSON.stringify(opt.name || "take")}, t0: ${opt.from != null ? +opt.from : 0}, t1: ${opt.to != null ? +opt.to : "total"}, speed: ${+(opt.speed || 1)}, cam: ${JSON.stringify(opt.cam || "director")}, captions: true, card: true, labels: true, fps: ${+(opt.fps || 30)} }; if (t.cam === "director" && !MFX.doc.director[t.flow]?.keys?.length) t.cam = "guided"; return t; })()`);
+      if (!["guided", "director", "chase", "follow"].includes(take.cam)) throw new Error("camera must be guided, director, chase or follow");
+      const { exportFilm } = await import("./v7/film-export.mjs");
+      await exportFilm(pg, take, opt.out || `dist/test/take-${s.project}-${opt.path}.mp4`);
     } finally { await pg.close(); }
   },
   async "docs-gen"() { const { docsGen } = await import("./v7/docs-check.mjs"); const f = await docsGen(); console.log(f.length ? "updated " + f.join(", ") : "generated docs already current"); },

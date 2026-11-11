@@ -46,3 +46,10 @@ Recovered the saved review, completed camera rescue and Studio layout fixes, and
 new test build. See [the V7.7.2 report](REVIEW_REPORT_772.md) for findings, fixes, deliberately retained limits, ranked ideas,
 changed files and final receipts. All generated evidence stays in `dist/test/`; release integration belongs to the lead.
 No git, delegation, upload, company-scene edit or historical player replacement was performed.
+
+
+## 2026-11-11 — Step 0 camera/director/film recovery
+
+Completed the authorized restart recovery without git, delegation or scene edits. The replacement owner images move
+Part B to private findings only; the lead owns scene data. Review, measured limits and tests are recorded in
+[the camera/layout report](REVIEW_CAMERA_LAYOUT_772.md) and [V8 progress](plans/V8_PROGRESS.md). Release remains M0.

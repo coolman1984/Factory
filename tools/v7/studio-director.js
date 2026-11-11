@@ -7,8 +7,7 @@ const keyPose = (k, t, out) => {   // a key's pose at story time t (trolley-lock
   if (k.follow) { const p = trolleyWorld(t, tmpV); out.x = p.x + k.ox; out.y = p.y + k.oy; out.z = p.z + k.oz; } else { out.x = k.x; out.y = k.y; out.z = k.z; }
   out.dist = k.dist; out.az = k.az; out.pol = k.pol; out.fov = k.fov || BASE_FOV; return out;
 };
-const PA = {}, PB = {}, P0 = {}, P3 = {}, POSE = {};
-const cr = (p0, p1, p2, p3, u) => { const u2 = u * u, u3 = u2 * u; return .5 * (2 * p1 + (-p0 + p2) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u2 + (-p0 + 3 * p1 - 3 * p2 + p3) * u3); };
+const PA = {}, PB = {}, POSE = {};
 function evalDirector(t, d = dirOf()) {
   const K = d.keys; if (!K.length) return null;
   if (t <= K[0].t) return Object.assign({}, keyPose(K[0], t, POSE));
@@ -17,10 +16,11 @@ function evalDirector(t, d = dirOf()) {
   const a = K[i], b = K[i + 1]; keyPose(a, t, PA);
   if (b.ease === "cut" || b.t - a.t < 1e-3) return Object.assign({}, PA);
   keyPose(b, t, PB); let u = (t - a.t) / (b.t - a.t);
-  if (b.ease === "linear") { /* constant speed */ } else if (b.ease === "in") u = u * u; else if (b.ease === "out") u = 1 - (1 - u) * (1 - u); else u = smooth(u);
-  const pk = K[i - 1] && b.ease !== "cut" && a.ease !== "cut" ? keyPose(K[i - 1], t, P0) : PA, nk = K[i + 2] && K[i + 2].ease !== "cut" ? keyPose(K[i + 2], t, P3) : PB;
+  if (b.ease === "linear") { /* constant speed */ } else if (b.ease === "in") u = u * u; else if (b.ease === "out") u = 1 - (1 - u) * (1 - u); else u = u * u * u * (10 + u * (-15 + 6 * u));
   const out = {};
-  for (const ax of ["x", "y", "z"]) out[ax] = cr(pk[ax], PA[ax], PB[ax], nk[ax], u);
+  // Convex interpolation cannot overshoot a hold or pull a cut into the preceding shot. Evaluate both follow
+  // endpoints at the same story time: a pair of equal follow offsets stays exactly locked, without double damping.
+  for (const ax of ["x", "y", "z"]) out[ax] = lerp(PA[ax], PB[ax], u);
   out.dist = Math.exp(lerp(Math.log(PA.dist), Math.log(PB.dist), u)); out.az = PA.az + wrapPi(PB.az - PA.az) * u; out.pol = lerp(PA.pol, PB.pol, u); out.fov = lerp(PA.fov, PB.fov, u);
   return out;
 }
@@ -63,10 +63,10 @@ function drawCaptions() {
 }
 
 /* ---------- record a camera move as keys (while playing) ---------- */
-const camRec = { on: false, keys: [], last: -1 };
-function startCamRec() { if (!curFlow()) return; goFree(true); camRec.on = true; camRec.keys = []; camRec.last = -1; if (!S.playing) MF.play(); X.tip("Recording your camera moves: drive with the pad or the mouse; press Stop when done"); emit("director"); }
+const camRec = { on: false, keys: [], last: -1, flow: null };
+function startCamRec() { if (!curFlow()) return; goFree(true); camRec.on = true; camRec.keys = []; camRec.last = -1; camRec.flow = curFlow().id; if (!S.playing) MF.play(); X.tip("Recording your camera moves: drive with the pad or the mouse; press Stop when done"); emit("director"); }
 function sampleCamRec() {
-  if (!camRec.on) return; if (!S.playing) { stopCamRec(); return; }
+  if (!camRec.on) return; if (!S.playing || curFlow()?.id !== camRec.flow || S.t < camRec.last) { stopCamRec(); return; }
   if (camRec.last >= 0 && S.t - camRec.last < .25) return; camRec.last = S.t; const c = currentPose(); camRec.keys.push({ t: +S.t.toFixed(2), x: c.x, y: c.y, z: c.z, dist: c.dist, az: c.az, pol: c.pol, fov: c.fov });
 }
 function stopCamRec() {
@@ -80,22 +80,22 @@ function stopCamRec() {
   }
   keep.push(K[K.length - 1]);
   const t0 = keep[0].t, t1 = keep[keep.length - 1].t;
-  commit("record camera move", () => { const d = dirOf(); d.keys = d.keys.filter((q) => q.t < t0 - .01 || q.t > t1 + .01); for (const k of keep) d.keys.push({ id: uid("key"), ease: "smooth", follow: false, ...k }); sortKeys(d); }, "director");
+  commit("record camera move", () => { const d = dirOf(flowById(camRec.flow)); d.keys = d.keys.filter((q) => q.t < t0 - .01 || q.t > t1 + .01); for (const k of keep) d.keys.push({ id: uid("key"), ease: "smooth", follow: false, ...k }); sortKeys(d); }, "director");
   X.tip(`Camera move recorded: ${keep.length} keys from ${fmtT(t0)} to ${fmtT(t1)}`); emit("director");
 }
 
 /* ---------- video takes: replay the timeline and record the screen picture (WebM) ---------- */
-const rec = { active: false, mr: null, chunks: [], comp: null, cg: null, take: null, started: 0, saved: null, stream: null, failed: false };
+const rec = { active: false, warming: false, mr: null, chunks: [], comp: null, cg: null, take: null, started: 0, saved: null, stream: null, failed: false, error: null };
 function newTake() { const f = curFlow(); return { id: uid("take"), name: "Take " + (doc.takes.length + 1), flow: f ? f.id : "", t0: 0, t1: f ? +X.F().total.toFixed(2) : 10, speed: 1, cam: dirOf(f).keys.length ? "director" : "guided", captions: true, card: true, labels: true, quality: "high", fps: 60 }; }
 function pickMime() { for (const m of ["video/mp4;codecs=avc1.640028", "video/mp4;codecs=avc1.42E01E", "video/mp4", "video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]) if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; return ""; }
-function startTake(take) {
+async function startTake(take) {
   if (rec.active) return; if (!window.MediaRecorder) return X.tip("This browser cannot record video");
   if (!take || !Number.isFinite(take.t0) || !Number.isFinite(take.t1) || take.t0 < 0 || take.t1 <= take.t0 || !Number.isFinite(take.speed) || take.speed <= 0) return X.tip("The take needs a valid time range and positive speed");
   const fi = doc.flows.findIndex((f) => f.id === take.flow); if (fi < 0) return X.tip("The take's flow no longer exists");
   if (take.t0 >= D.flows[fi].total) return X.tip("The take starts beyond the end of its flow");
   rec.saved = { cam: S.cam, speed: S.speed, playing: S.playing, flow: S.flow, t: S.t, edOpen: ed.open, stepStop: S.stepStop }; S.stepStop = false;
   if (fi !== S.flow) MF.setFlow(fi);
-  rec.failed = false;
+  rec.failed = false; rec.error = null;
   MF.seek(take.t0); MF.pause(); if (take.cam === "director" && dirOf().keys.length) MF.setCam("director"); else if (take.cam && take.cam !== "keep") MF.setCam(take.cam);
   X.setSpeed(take.speed);
   const w = Math.round(innerWidth / 2) * 2, h = Math.round(innerHeight / 2) * 2;
@@ -110,8 +110,15 @@ function startTake(take) {
     a.href = URL.createObjectURL(blob); a.download = `Material_Flow_${PROJECT}_${(f ? f.name : "flow").replace(/[^\w.-]+/g, "_").slice(0, 40)}_${take.name.replace(/[^\w.-]+/g, "_")}.${/mp4/.test(blob.type) ? "mp4" : "webm"}`; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
     X.tip(`Video saved: ${(blob.size / 1048576).toFixed(1)} MB (${a.download})`); emit("rec");
   };
-  rec.take = take; rec.active = true; rec.started = performance.now(); document.body.classList.add("rec7");
-  try { rec.mr.start(250); MF.play(); emit("rec"); }
+  rec.take = { ...take, t1: Math.min(take.t1, D.flows[fi].total) }; rec.active = true; rec.warming = true; document.body.classList.add("rec7");
+  try {
+    await document.fonts.ready;
+    // Warm this shot and its overlays at a frozen story time, before the recorder has a timestamp.
+    const deadline = performance.now() + 6000; let good = 0, last = performance.now();
+    while (rec.active && performance.now() < deadline && good < 20) { await new Promise(requestAnimationFrame); const now = performance.now(); good = now - last < 24 ? good + 1 : 0; last = now; compositeFrame(); }
+    if (!rec.active) return;
+    rec.warming = false; rec.started = performance.now(); rec.mr.start(250); MF.play(); emit("rec");
+  }
   catch (e) { rec.failed = true; rec.active = false; restoreTakeState(); X.tip("Video recording failed to start: " + e.message); }
 }
 function stopTake() {
@@ -155,13 +162,45 @@ function compositeFrame() {
   if (take.captions) for (const el of capLayer.children) {
     const op = +el.style.opacity || 0; if (op <= .01) continue; const r = el.getBoundingClientRect(), cs = getComputedStyle(el), b = el.firstChild, p = el.lastChild;
     g.globalAlpha = op; g.fillStyle = cs.backgroundColor && cs.backgroundColor !== "rgba(0, 0, 0, 0)" ? cs.backgroundColor : "rgba(12,36,78,.82)"; rr(g, r.left, r.top, r.width, r.height, parseFloat(cs.borderRadius) || 14); g.fill();
-    const pad = parseFloat(cs.paddingLeft) || 18, ta = cs.textAlign === "center" ? "center" : "left", tx = ta === "center" ? r.left + r.width / 2 : r.left + pad; g.textAlign = ta;
+    const pad = parseFloat(cs.paddingLeft) || 18, ta = cs.textAlign === "center" ? "center" : el.dir === "rtl" ? "right" : "left", tx = ta === "center" ? r.left + r.width / 2 : ta === "right" ? r.right - pad : r.left + pad; g.textAlign = ta; g.direction = el.dir || "ltr";
     if (b.style.display !== "none") { const bs = getComputedStyle(b), br = b.getBoundingClientRect(); g.font = `${bs.fontWeight} ${bs.fontSize} Segoe UI, system-ui`; g.fillStyle = bs.color; g.fillText(b.textContent, tx, br.top + br.height / 2); }
     if (p.style.display !== "none") { const ps = getComputedStyle(p), pr = p.getBoundingClientRect(), lh = parseFloat(ps.lineHeight) || parseFloat(ps.fontSize) * 1.35; g.font = `${ps.fontWeight} ${ps.fontSize} Segoe UI, system-ui`; g.fillStyle = ps.color; let line = "", ly = pr.top + lh / 2; for (const wd of p.textContent.split(/\s+/)) { if (g.measureText(line + " " + wd).width > pr.width + 2 && line) { g.fillText(line, tx, ly); line = wd; ly += lh; } else line = line ? line + " " + wd : wd; } g.fillText(line, tx, ly); }
-    g.globalAlpha = 1; g.textAlign = "left";
+    g.globalAlpha = 1; g.textAlign = "left"; g.direction = "ltr";
   }
 }
-function recFrame() { if (!rec.active) return; try { compositeFrame(); } catch (e) { rec.failed = true; stopTake(); X.tip("Video frame failed: " + e.message); return; } if (S.t >= rec.take.t1 - 1e-3 || (!S.playing && S.t > rec.take.t0 + .05)) stopTake(); }
+function recFrame() { if (!rec.active || rec.warming) return; try { compositeFrame(); } catch (e) { rec.failed = true; rec.error = e.message; stopTake(); X.tip("Video frame failed: " + e.message); return; } if (S.t >= rec.take.t1 - 1e-3 || (!S.playing && S.t > rec.take.t0 + .05)) stopTake(); }
+
+// Offline export uses the same renderer/compositor as Studio, with exactly one frame per requested story timestamp.
+// No RAF or encoder wall clock may advance the story while the CLI is waiting for the GPU or writing a frame.
+async function prepareExport(take) {
+  if (rec.active || window.MF7_EXPORT) throw new Error('A take is already active');
+  const fi = doc.flows.findIndex(f => f.id === take.flow);
+  if (fi < 0 || !Number.isFinite(take.t0) || !Number.isFinite(take.t1) || take.t0 < 0 || take.t1 <= take.t0 || take.t1 > D.flows[fi].total + .001 || !(take.speed > 0 && take.speed <= 8) || !Number.isInteger(take.fps) || take.fps < 1 || take.fps > 120 || !['guided', 'follow', 'chase', 'director'].includes(take.cam)) throw new Error('Invalid take range, flow, speed, fps or camera');
+  rec.saved = { cam: S.cam, speed: S.speed, playing: S.playing, flow: S.flow, t: S.t, stepStop: S.stepStop };
+  window.MF7_EXPORT = true; MF.pause(); S.stepStop = false; MF.setFlow(fi); MF.setCam(take.cam); X.setSpeed(take.speed); S.speed = take.speed; rec.take = { ...take };
+  const w = Math.floor(innerWidth / 2) * 2, h = Math.floor(innerHeight / 2) * 2;
+  rec.comp = document.createElement('canvas'); rec.comp.width = w; rec.comp.height = h; rec.cg = rec.comp.getContext('2d');
+  document.body.classList.add('rec7'); await document.fonts.ready;
+  // Warm representative states without producing video frames. Reset afterwards so warm-up cannot consume the opening.
+  for (const t of [take.t0, Math.min(take.t1, take.t0 + 1), (take.t0 + take.t1) / 2, take.t1]) { MF.seek(t); S.R = t >= X.INTRO ? 1 : 0; MF.frame(1 / 30, t); compositeFrame(); X.renderer.getContext().finish(); }
+  MF.seek(take.t0); S.R = take.t0 >= X.INTRO ? 1 : 0;
+  for (let i = 0; i < 90; i++) MF.frame(1 / 30, take.t0);
+  compositeFrame(); X.renderer.getContext().finish();
+  return { width: w, height: h, fps: take.fps, seconds: (take.t1 - take.t0) / take.speed };
+}
+let exportIndex = 0;
+function exportFrame(index) {
+  if (!window.MF7_EXPORT) throw new Error('No export active');
+  if (!Number.isInteger(index) || index !== exportIndex) throw new Error('Export frames must be requested in sequence');
+  const take = rec.take, dt = 1 / take.fps, t = take.t0 + index * dt * take.speed;
+  // frame() owns the one story increment. Keep playback on for the camera's story-time feed-forward.
+  S.t = index > 0 ? Math.max(0, t - dt * take.speed) : t; S.playing = index > 0; MF.frame(index > 0 ? dt : 0, t); S.playing = false;
+  compositeFrame();
+  const pose = {}; X.lotPos(t, pose);
+  exportIndex++;
+  return { t: S.t, lot: [pose.x, pose.y, pose.lift ?? -1], jpeg: rec.comp.toDataURL('image/jpeg', .96).split(',')[1] };
+}
+function finishExport() { if (!window.MF7_EXPORT) return; window.MF7_EXPORT = false; exportIndex = 0; restoreTakeState(); }
 
 /* ---------- several trolleys on one path (scene: path.trolleys, path.headway seconds): copies of the trolley start one headway
    apart on the same timeline; the closest distance between two moving trolleys is tracked to show congestion ---------- */

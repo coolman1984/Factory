@@ -23,6 +23,7 @@ dist/Material_Flow_Player_v4.html   (owner's approved look; read-only)
 | `scene-schema.mjs` | Node | the field list (docs and `docs-check`) |
 | `preload-scene.js` | player, before the data | picks the scene (browser autosave if made from the same baked scene, else the baked one), converts it, applies layout edits, floor-light repair (`MF7_CLEAN_LIGHT`) |
 | `engine-patches.mjs` | build | patches on the V6 player: rebuildable flows / labels / devices, replica instance tags, per-step speed, 64 RFID gates, camera rescue (never hidden), preparing screen, frame hooks (`MFX.pre` / `MFX.post`), internals `MF.x` |
+| `camera-review-patches.mjs` | build | exact-once camera review corrections applied after the base patches: story-time filtering, landing reveal, lift framing, chase visibility and export ownership of the frame loop |
 | `scene-ui.js` | player | scene file panel: open / save / save as / download / drop, undo, validate |
 | `studio-core.js` | player | Studio document (engine units) <-> scene (`fromScene` / `toScene`), undo / redo, autosave, footprints, solids, router, collision check |
 | `studio-camera.js` | player | camera pad logic: goal pose, damping, lens, presets, trolley lock |
@@ -33,6 +34,7 @@ dist/Material_Flow_Player_v4.html   (owner's approved look; read-only)
 | `mf-ops.mjs`, `../mf.mjs` | Node | the agent CLI ([CLI.md](CLI.md)) |
 | `docs-check.mjs` | Node | generated docs + docs check |
 | `cdp.mjs` | Node | headless Google Chrome driver for tests and browser verbs |
+| `film-export.mjs` | Node + player hooks | explicit-frame CLI export through existing ffmpeg/ffprobe; decoded timing and freeze receipts |
 
 Build: `node tools/build-v7.mjs 7.7.1` (stages in `STAGES`: which add-on groups and CSS go in). The build bakes
 `private/v7/scenes/*.scene.json`, parses every inline script, and runs `mf docs-check` (skip only with `--no-docs-check` for
@@ -54,4 +56,7 @@ world z = unit y - CY (`D.center`), y up. Floors are plates that slide and lift 
 | `node tools/v7/start-test.mjs <player> 10` | no stutter on fresh starts |
 | `node tools/test-camera-v5.mjs <player> <tab> guided 3 <path index>` | the guided camera never hides the trolley |
 | `node tools/v7/take-test.mjs <player>` | a full video take records (MP4) |
+| `node tools/v7/camera-input-test.mjs <player>` | pad capture release, free-camera fly continuity and trolley lock at 1x/3x/8x |
+| `node tools/v7/camera-review-test.mjs` | bounded director interpolation, follow offsets, key units and invalid CLI targets |
+| `node tools/v7/film-review-test.mjs <player baked with docs/examples/director.scene.json> <output directory>` | exact 20 s film, injected freeze rejection, sequential frames and state restoration |
 | `node tools/mf.mjs docs-check` | docs match the code |

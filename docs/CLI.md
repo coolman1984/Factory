@@ -61,10 +61,10 @@ play a path to its end in the real player: steps reached, time, page errors.
 ### `mf take`
 
 ```
-node tools/mf.mjs take <scene.json> --path id [--from s] [--to s] [--speed 1] [--cam director|guided|chase] [--out file]
+node tools/mf.mjs take <scene.json> --path id [--from s] [--to s] [--speed 1] [--fps 30] [--cam director|guided|follow|chase] [--out file]
 ```
 
-record a video take (MP4 when the browser supports it, else WebM).
+export an exact-frame H.264 MP4 with installed ffmpeg/ffprobe; write a timing and freeze-check receipt beside it.
 
 ### `mf numbers`
 

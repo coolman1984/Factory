@@ -4,6 +4,10 @@ Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (ol
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
 ## V7.7.2 (in progress) - layout accuracy round - 2026-11-11
+- Step 0 camera review: story-time guided filtering, held clear shots, eased shaft views, landing reveal, protected wider
+  chase (including device-free scenes), bounded director keys/follow poses, free-camera/pad release fixes and stricter key inputs. CLI films now render
+  explicit frames through existing ffmpeg/ffprobe and check decoded length and moving freezes. Studio recording warms
+  before its clock starts. See [camera/layout review](REVIEW_CAMERA_LAYOUT_772.md); release remains M0.
 - Review fixes: added-layout import/reload/undo transactions, ordered door edits, storage rotation/cell identities, strict
   addition validation, layout diffs/schema arrays and CLI edge cases. Camera rescue now checks opaque device meshes as well
   as the replica, after the ceiling clamp; every candidate, including the final fallback, must pass the checks. Studio

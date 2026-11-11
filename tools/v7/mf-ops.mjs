@@ -109,10 +109,12 @@ export function fixLinks(scene, P) {
 /** cameraKey({ at (story s), lookAt: "trolley" | "stop:<id>" | [x, y], distance m, heading deg (direction the camera looks: 0 north,
     clockwise), tilt deg (90 = straight down), lens mm, ease }) -> a Director key in engine units (what the Studio stores) */
 export function cameraKey(scene, P, o) {
+  for (const [name, fallback] of [["distance",60],["heading",0],["tilt",40],["lens",48],["at",0]]) { if (o[name] == null) o[name] = fallback; if (!Number.isFinite(+o[name])) throw new Error("camera " + name + " must be finite"); o[name] = +o[name]; }
+  if (o.at < 0 || o.distance <= 0 || o.lens <= 0 || o.tilt < 0 || o.tilt > 90) throw new Error("camera needs nonnegative time, positive distance/lens and tilt 0 to 90");
   const d = P[scene.project].data, [CX, CY] = d.center || [480, 290], dist = (o.distance || 60) * M, az = -(o.heading || 0) * Math.PI / 180, pol = (90 - (o.tilt == null ? 40 : o.tilt)) * Math.PI / 180, fov = 2 * Math.atan(12 / (o.lens || 48)) * 180 / Math.PI;
-  const k = { id: "key-" + Math.random().toString(36).slice(2, 8), t: +(+o.at).toFixed(2), dist: r3(dist), az: r3(az), pol: r3(Math.max(.02, Math.min(1.56, pol))), fov: r3(fov), ease: o.ease || "smooth" };
+  const k = { id: "key-" + Math.random().toString(36).slice(2, 8), t: +(+o.at).toFixed(2), dist: r3(dist), az: r3(az), pol: r3(Math.max(.001, Math.min(Math.PI / 2, pol))), fov: r3(fov), ease: o.ease || "smooth" };
   if (!o.lookAt || o.lookAt === "trolley") Object.assign(k, { follow: true, ox: 0, oy: 2, oz: 0, x: 0, y: 0, z: 0 });
-  else { let xy = o.lookAt; if (typeof xy === "string") { const s = scene.stops.find((q) => "stop:" + q.id === xy || q.id === xy); if (!s) throw new Error("unknown stop " + xy); if (P[scene.project].data.plates[s.floor].lift) throw new Error("upper-floor stops: use lookAt trolley (the 2nd floor moves during rides)"); xy = [s.x, s.y]; } Object.assign(k, { follow: false, x: r3(xy[0] * M - CX), y: 0, z: r3(xy[1] * M - CY) }); }
+  else { let xy = o.lookAt; if (typeof xy === "string") { const s = scene.stops.find((q) => "stop:" + q.id === xy || q.id === xy); if (!s) throw new Error("unknown stop " + xy); if (P[scene.project].data.plates[s.floor].lift) throw new Error("upper-floor stops: use lookAt trolley (the 2nd floor moves during rides)"); xy = [s.x, s.y]; } if (!Array.isArray(xy) || xy.length !== 2 || !xy.every(Number.isFinite)) throw new Error("camera lookAt must be trolley, stop:<id> or a finite [x, y] pair"); Object.assign(k, { follow: false, x: r3(xy[0] * M - CX), y: 0, z: r3(xy[1] * M - CY) }); }
   return k;
 }
 export function addKey(scene, pathId, key) { findPath(scene, pathId); const d = (scene.director ||= {})[pathId] ||= { keys: [], caps: [] }; d.keys = (d.keys || []).filter((q) => Math.abs(q.t - key.t) > .05); d.keys.push(key); d.keys.sort((a, b) => a.t - b.t); return key; }

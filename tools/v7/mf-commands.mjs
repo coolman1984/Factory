@@ -7,7 +7,7 @@ export const COMMANDS = {
   shots: ["<scene.json> [--out dir] [--only overview|stops|steps] [--path id --at s [--look x,y] [--distance m]]", "render named screenshots for self-review: overview, every stop, every step of every path; --at: one picture at that story second (looking at x,y metres, else the trolley)"],
   congestion: ["<scene.json> --path id [--picture]", "several trolleys (trolleys / headway): closest distance between them, when (story s), where (metres) and in which steps; --picture saves a shot of that moment"],
   play: ["<scene.json> [--path id] [--speed 3]", "play a path to its end in the real player: steps reached, time, page errors"],
-  take: ["<scene.json> --path id [--from s] [--to s] [--speed 1] [--cam director|guided|chase] [--out file]", "record a video take (MP4 when the browser supports it, else WebM)"],
+  take: ["<scene.json> --path id [--from s] [--to s] [--speed 1] [--fps 30] [--cam director|guided|follow|chase] [--out file]", "export an exact-frame H.264 MP4 with installed ffmpeg/ffprobe; write a timing and freeze-check receipt beside it"],
   numbers: ["<scene.json> [--shift 8]", "distance, time and trips per shift of every path and step (the player's motion model)"],
   diff: ["<a.json> <b.json>", "what changed between two scenes, with distance / time deltas per path"],
   straighten: ["<scene.json> --path id [--step id]", "remove small jogs and square the legs (like the S key); keeps a step that would then collide"],

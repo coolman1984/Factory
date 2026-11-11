@@ -101,8 +101,14 @@ caption and a take: [examples/director.scene.json](examples/director.scene.json)
 ```
 node tools/mf.mjs take docs/examples/director.scene.json --path sample-1 --from 0 --to 20 --speed 1 --cam director --out dist/test/film.mp4
 ```
-Expected: `dist/test/film.mp4: video/mp4;codecs=avc1..., N MB, about 20.0 s, camera director`. For a 20 s film of a longer path,
-use `--speed 2` or `--from` / `--to`.
+Expected: an H.264 MP4 and `dist/test/film.mp4.json`, with 600 decoded frames and exactly 20.0 s at the default 30 fps.
+Installed ffmpeg and ffprobe are required by this CLI implementation; it does not install them. For another 20 s range,
+set `speed = (to - from) / 20` (supported speed range 0 < speed <= 8). Both endpoints are story seconds. Choose a range
+and fps that yield a whole frame count. Freeze checks must pass; file existence alone is not acceptance.
+
+For simultaneous English and Arabic, use two caption entries with the same interval and different `pos` values (for example,
+upper and lower); each entry needs the desired literal text in the selected `studio.lang`. A language dictionary selects
+one translation, so it does not itself display two languages. Check the resulting film visually, especially Arabic shaping.
 
 ## 10. Compare two layouts (before / after)
 ```

@@ -497,6 +497,7 @@
     var cameraPose = function (v, w) {
       ["x", "y", "z", "dist", "az", "pol"].forEach(function (k) { if (!finite(v[k])) E(w + "." + k, "must be a finite camera value (engine units)"); });
       if (!(v.dist > 0)) E(w + ".dist", "must be positive");
+      if (finite(v.pol) && (v.pol < 0 || v.pol > Math.PI / 2)) E(w + ".pol", "0 to pi/2 radians from vertical");
       if (v.fov != null && (!finite(v.fov) || v.fov <= 0 || v.fov >= 180)) E(w + ".fov", "between 0 and 180 degrees");
     };
     var dir = scene.director || {}; Object.keys(dir).forEach(function (pid) {
@@ -506,6 +507,8 @@
       (d.keys || []).forEach(function (k, i) {
         var wk = w + ".keys[" + i + "]"; cameraPose(k, wk);
         if (!finite(k.t) || k.t < 0) E(wk + ".t", "nonnegative story seconds");
+        if (i && k.t <= d.keys[i - 1].t) E(wk + ".t", "keys must have strictly increasing story times");
+        if (k.follow != null && typeof k.follow !== 'boolean') E(wk + '.follow', 'must be boolean');
         if (k.follow && ![k.ox, k.oy, k.oz].every(finite)) E(wk, "follow keys need finite ox, oy, oz offsets");
         if (k.ease != null && ["smooth", "linear", "in", "out", "cut"].indexOf(k.ease) < 0) E(wk + ".ease", "unknown easing");
       });

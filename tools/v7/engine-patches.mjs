@@ -2,6 +2,7 @@
 // functions (flows, route ribbons, labels, cards, destination gates, devices), tag every replica instance with the plan object it
 // came from, add the Studio frame hooks (pre: before the camera, post: after the overlay) and expose the internals to the Studio
 // as MF.x. Nothing here changes how V6 looks or plays when the Studio is closed.
+import { cameraReviewPatches } from './camera-review-patches.mjs';
 export const playerPatches = [
   // ---- V7.7.1: a new path (tab button) computes its guided-camera angles at once instead of during playback
   ["  function setFlow(i) { S.flow = i; E = D.flows[i].E || E; shown = -1; seek(0); pause(); renderFlow(); }", "  function setFlow(i) { S.flow = i; E = D.flows[i].E || E; shown = -1; seek(0); pause(); renderFlow(); try { prefetchAisles(i); } catch (e) { console.warn(\"aisle prefetch\", e); } }", "prefetch camera angles on a path change"],
@@ -191,6 +192,8 @@ export const playerPatches = [
   ["Math.abs(wrapPi(az-base))*.001", "Math.abs(wrapPi(az-base))*.06", "calm camera: prefer the base angle"],
   ["const a=cur.sched.pts[lp.seg],b=cur.sched.pts[lp.seg+1]||a,p=[(a[0]+b[0])/2,(a[1]+b[1])/2];", "const a=cur.sched.pts[sg],b=cur.sched.pts[sg+1]||a,p=[(a[0]+b[0])/2,(a[1]+b[1])/2];", "calm camera: angle held over short legs (scored leg)"],
 ];
+
+playerPatches.push(...cameraReviewPatches);
 
 // Replica builder (window.MFReplica.build): tag every instance with the plan object it came from ("racks:12"), so the Studio can
 // select, move, turn and delete real replica objects. _oid (stamped by the V7 preload) keeps the tags stable after deletions.

@@ -14,7 +14,7 @@ function goFree(silent) {
   if (S.cam !== "free") { MF.setCam("free"); if (!silent) X.tip("Studio camera: use the pad or the mouse; G = guided camera"); }
   if (!cam.inited || cam.lastMode !== "free") syncGoal();
 }
-function syncGoal() { const c = S.c; Object.assign(cam.goal, { x: c.x, y: c.y, z: c.z, dist: c.dist, az: c.az, pol: c.pol, fov: camera.fov }); cam.inited = true; cam.lastMode = S.cam; if (cam.lock) cam.lockOff.set(c.x, c.y, c.z).sub(trolleyWorld(S.t)); }
+function syncGoal() { const c = S.c; Object.assign(cam.goal, { x: c.x, y: c.y, z: c.z, dist: c.dist, az: c.az, pol: c.pol, fov: camera.fov }); cam.fly = null; cam.inited = true; cam.lastMode = S.cam; if (cam.lock) { const p = trolleyWorld(S.t); cam.lockOff.set(c.x, c.y, c.z).sub(p); cam.lockAt = p.clone(); } }
 const rateOf = () => lerp(36, 1.8, cam.smooth);    // damping: 0 = snappy, 1 = silky
 function setLens(fov) { cam.goal.fov = clamp(fov, 8, 90); }
 const lensMM = (fov) => 12 / Math.tan(fov * Math.PI / 360);    // 24 mm-high film gate: 28 deg vertical ~ 48 mm
@@ -43,7 +43,7 @@ function freeCam(dt, c) {
     cam.fly = null;
   }
   if (v.zoom) { g.dist = clamp(g.dist * Math.exp(v.zoom * 1.3 * sp * k0), 6, 5000); cam.fly = null; }
-  if (cam.lock && !cam.fly) { const p = trolleyWorld(S.t); g.x = p.x + cam.lockOff.x; g.y = p.y + cam.lockOff.y; g.z = p.z + cam.lockOff.z; }
+  if (cam.lock && !cam.fly) { const p = trolleyWorld(S.t); if (cam.lockAt) { c.x += p.x - cam.lockAt.x; c.y += p.y - cam.lockAt.y; c.z += p.z - cam.lockAt.z; } cam.lockAt = p.clone(); g.x = p.x + cam.lockOff.x; g.y = p.y + cam.lockOff.y; g.z = p.z + cam.lockOff.z; }
   const k = 1 - Math.exp(-rateOf() * k0), kl = cam.lock ? 1 - Math.exp(-Math.max(rateOf(), 10) * k0) : k;
   c.x += (g.x - c.x) * kl; c.y += (g.y - c.y) * kl; c.z += (g.z - c.z) * kl;
   c.dist = Math.exp(lerp(Math.log(Math.max(.01, c.dist)), Math.log(g.dist), k)); c.az += wrapPi(g.az - c.az) * k; c.pol += (g.pol - c.pol) * k;
@@ -54,7 +54,7 @@ function zoomBy(f, at) {   // f < 1 zooms in; at = world point to zoom toward
   if (at && !cam.lock) { g.x += (at.x - g.x) * (1 - real); g.y += (at.y - g.y) * (1 - real); g.z += (at.z - g.z) * (1 - real); }
   g.dist = nd;
 }
-function flyTo(b, dur = 1.1) { goFree(true); const g = cam.goal; cam.fly = { a: { ...g }, b: Object.assign({ ...g }, b), t: 0, dur }; }
+function flyTo(b, dur = 1.1) { goFree(true); const g = cam.goal; cam.fly = { a: currentPose(), b: Object.assign({ ...g }, b), t: 0, dur: Math.max(.001, dur) }; }
 function viewPreset(kind) {
   const g = cam.goal, at = cam.lock ? trolleyWorld(S.t) : new T.Vector3(g.x, g.y, g.z);
   const fit = X.fit(), d = kind === "top" ? fit * .95 : g.dist;
@@ -69,6 +69,7 @@ function viewPreset(kind) {
 function focusPlan(x, y, plate, dist) { const w = MF.W(x, y, S.stack, 2); flyTo({ x: w.x, y: w.y, z: w.z, dist: dist || Math.min(cam.goal.dist, 260) }, .8); }
 function setLock(on) {
   goFree(true); cam.lock = on;
-  if (on) { const p = trolleyWorld(S.t); cam.lockOff.set(0, 2, 0); const g = cam.goal; cam.fly = null; g.dist = Math.min(g.dist, 220); g.x = p.x; g.y = p.y + 2; g.z = p.z; }
+  cam.lockAt = null;
+  if (on) { const p = trolleyWorld(S.t); cam.lockAt = p.clone(); cam.lockOff.set(0, 2, 0); const g = cam.goal; cam.fly = null; g.dist = Math.min(g.dist, 220); g.x = p.x; g.y = p.y + 2; g.z = p.z; }
 }
 function currentPose() { const c = S.c; return { x: c.x, y: c.y, z: c.z, dist: c.dist, az: c.az, pol: c.pol, fov: camera.fov }; }

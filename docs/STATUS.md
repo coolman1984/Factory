@@ -1,4 +1,9 @@
-# Current workstreams — 2026-11-09
+# Current workstreams — 2026-11-12
+
+The owner has resumed the V8 sequence one step per request. Step 0 recovers the camera/director/recording review;
+see [its receipt](plans/V8_PROGRESS.md) and [review](REVIEW_CAMERA_LAYOUT_772.md) for verification and unresolved limits.
+Part B now supplies private findings against replacement references; the lead owns all scene edits. No V7.7.2 release
+is authorized in this step; M0 comes next. Older dated checkpoints below are historical.
 
 - **CAD readable package:** completed data extraction and independent validation; local output at `dist/SEEG_Y26_AI_Package/`. All source/DB counts and exported labels checked; original hashes unchanged. Native Excel opened the workbook. Its preview PDFs are NASCA protected, so native visual QA remains unavailable. Source PDF text/reconciliation is not extracted; its Foxit window was closed at the owner's request. See [case/evidence](history/2026-11-09-cad-extraction.md).
 - **Documentation/skills:** project entry point, map, runbooks, decisions, detailed case history and reusable skills added. Read [START_HERE.md](START_HERE.md); maintain them using [MAINTENANCE.md](MAINTENANCE.md).

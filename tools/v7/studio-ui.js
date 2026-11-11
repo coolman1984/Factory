@@ -32,7 +32,7 @@ const pad = h(`<div id="pad7" class="ui glass" role="group" aria-label="Camera p
   <div class="row shots" title="Shots: click to fly there; Shift+click or right-click to save the current view"><span>Shots</span>${[1, 2, 3, 4, 5, 6].map((i) => `<button data-b="${i - 1}">${i}</button>`).join("")}<button id="padKey" class="key" title="Add a director camera key here (K)">+ Key</button><button id="padPhoto" title="Save a picture of this view (PNG)">Photo</button></div>
   <div class="read" id="padRead"></div></div>`);
 document.body.appendChild(pad);
-function setPad(open) { pad.style.display = open ? "flex" : "none"; padBtn.classList.toggle("on", open); padBtn.setAttribute("aria-pressed", String(open)); document.body.classList.toggle("pad7", open); try { localStorage.setItem("mf7:pad", open ? "1" : "0"); } catch (e) {} }
+function setPad(open) { if (!open) releasePad(); pad.style.display = open ? "flex" : "none"; padBtn.classList.toggle("on", open); padBtn.setAttribute("aria-pressed", String(open)); document.body.classList.toggle("pad7", open); try { localStorage.setItem("mf7:pad", open ? "1" : "0"); } catch (e) {} }
 padBtn.onclick = () => setPad(pad.style.display !== "flex"); $("padClose").onclick = () => setPad(false);
 const stickVel = { orbit: ["ox", "oy"], pan: ["px", "py"], zoom: [null, "zoom"], crane: [null, "crane"] };
 for (const el of pad.querySelectorAll(".stick,.rocker")) {
@@ -47,6 +47,8 @@ for (const el of pad.querySelectorAll(".stick,.rocker")) {
   area.onpointerdown = (e) => { e.preventDefault(); id = e.pointerId; area.setPointerCapture(id); goFree(true); set(e); };
   area.onpointermove = (e) => { if (id === e.pointerId) set(e); };
   area.onpointerup = area.onpointercancel = (e) => { if (id !== e.pointerId) return; id = null; knob.style.transition = ""; knob.style.transform = ""; const [vx, vy] = stickVel[k]; if (vx) cam.vel[vx] = 0; cam.vel[vy] = 0; };
+  area.addEventListener("lostpointercapture", () => { id = null; });
+  pad.addEventListener("padrelease", () => { const held = id; id = null; if (held != null && area.hasPointerCapture(held)) area.releasePointerCapture(held); });
 }
 pad.querySelector('.stick[data-k="orbit"]').ondblclick = () => viewPreset("iso");
 pad.querySelectorAll(".row [data-p]").forEach((b) => (b.onclick = () => { if (b.dataset.p === "reset") setLock(false); viewPreset(b.dataset.p); syncPad(); }));
@@ -59,6 +61,10 @@ pad.querySelectorAll("#padMode button").forEach((b) => (b.onclick = () => {
 }));
 const lensEl = $("padLens"), speedEl = $("padSpeed"), smoothEl = $("padSmooth");
 lensEl.oninput = () => { goFree(true); setLens(fovOfMM(+lensEl.value)); syncPad(); };
+// A lost capture, tab switch or hidden pad must not leave the camera flying with a stuck joystick.
+function releasePad() { for (const k of Object.keys(cam.vel)) cam.vel[k] = 0; pad.dispatchEvent(new Event("padrelease")); for (const k of pad.querySelectorAll('.knob')) { k.style.transform = ''; k.style.transition = ''; } }
+window.addEventListener('blur', releasePad); document.addEventListener('visibilitychange', () => { if (document.hidden) releasePad(); });
+pad.addEventListener('lostpointercapture', releasePad);
 speedEl.oninput = () => { cam.speed = +speedEl.value; syncPad(); }; smoothEl.oninput = () => { cam.smooth = +smoothEl.value; syncPad(); };
 const shotBtns = [...pad.querySelectorAll(".shots [data-b]")];
 function saveShot(i) { const c = currentPose(); commit("save shot " + (i + 1), () => { doc.bookmarks[i] = { x: c.x, y: c.y, z: c.z, dist: c.dist, az: c.az, pol: c.pol, fov: c.fov }; }, "director"); X.tip("Shot " + (i + 1) + " saved"); syncPad(); }
@@ -301,7 +307,7 @@ function renderDirector() {
   bindFields(body, (path, v) => {
     const [k, id] = path.split(":"), key = keyOf(id), cap = capOf(id), take = takeOf(id);
     commit("edit " + k, () => {
-      if (key) { if (k === "t") key.t = clamp(v, 0, total); else if (k === "follow") { key.follow = v; const p = trolleyWorld(key.t); key.ox = key.x - p.x; key.oy = key.y - p.y; key.oz = key.z - p.z; if (!v) { key.x = p.x + (key.ox || 0); } } else key[k] = v; sortKeys(d); }
+      if (key) { if (k === "t") key.t = clamp(v, 0, total); else if (k === "follow") { const pose = { ...keyPose(key, key.t, {}) }, p = trolleyWorld(key.t); Object.assign(key, { x: pose.x, y: pose.y, z: pose.z, ox: pose.x - p.x, oy: pose.y - p.y, oz: pose.z - p.z, follow: !!v }); } else key[k] = v; sortKeys(d); }
       else if (cap) { if (k === "t0" || k === "t1") cap[k] = clamp(v, 0, total); else if (k === "title" || k === "text") setTr(cap, k, v); else cap[k] = v; if (cap.t1 < cap.t0 + .2) cap.t1 = cap.t0 + .2; }
       else if (take) { if (k === "speed") take.speed = +v; else take[k] = v; }
     }, "director");
@@ -583,7 +589,7 @@ applyHooks.after = (what) => { if (what !== "director") { runChecks(); } renderL
 
 /* ---------- frame hooks ---------- */
 window.MFX = {
-  freeCam, zoom: (k) => zoomBy(k),
+  freeCam, prepareExport, exportFrame, finishExport, zoom: (k) => zoomBy(k),
   pre(dt) {
     const R = S.R, show = R > .02, k = Math.max(.002, R * R * (3 - 2 * R));
     for (const g of Object.values(propGroups)) { if (g.visible !== show) g.visible = show; if (show && g.scale.y !== k) g.scale.y = k; }
