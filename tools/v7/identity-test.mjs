@@ -12,10 +12,22 @@ const PROBE = `(() => { const out = { flows: [] };
       chips: Object.values(MF.D.nodes).map(n => [n.text, +n.x.toFixed(6), +n.y.toFixed(6), n.kind]) }); }
   out.devices = MF.D.devices.map(d => [d.type, +d.x.toFixed(6), +d.y.toFixed(6), d.face || "", d.label]); return out; })()`;
 let fail = 0;
-for (const tab of ["inj1", "inj2", "eps", "press"]) {
-  const res = [];
-  for (const file of [a, b]) { const pg = await openPage(file, tab); try { res.push(await pg.ev(PROBE)); if (pg.errors.length) { fail++; console.log(file, tab, "page errors:", pg.errors.slice(0, 3)); } } finally { await pg.close(); } }
-  const [A, B] = res, diffs = [];
+const tabs = ["inj1", "inj2", "eps", "press"], captures = new Map(tabs.map(tab => [tab, []]));
+// Isolate the two input files in fresh profiles, and reload a fresh document for every project.
+for (const file of [a, b]) {
+  const pg = await openPage(file, tabs[0]); let seenErrors = 0;
+  try {
+    for (const [i, tab] of tabs.entries()) {
+      if (i) await pg.navigate(file, tab);
+      if (await pg.ev("window.MF_PROJECT") !== tab) throw new Error("Wrong identity project: " + tab);
+      captures.get(tab).push(await pg.ev(PROBE));
+      const errors = pg.errors.slice(seenErrors); seenErrors = pg.errors.length;
+      if (errors.length) { fail++; console.log(file, tab, "page errors:", errors.slice(0, 3)); }
+    }
+  } finally { await pg.close(); }
+}
+for (const tab of tabs) {
+  const [A, B] = captures.get(tab), diffs = [];
   if (A.flows.length !== B.flows.length) diffs.push(`path count ${A.flows.length} vs ${B.flows.length}`);
   A.flows.forEach((fa, i) => {
     const fb = B.flows[i]; if (!fb) return;

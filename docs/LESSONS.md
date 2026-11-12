@@ -6,23 +6,23 @@
 - Git snapshots exclude ignored private/dist. Preserve exports, traces, images and the built HTML in an explicit local archive when pausing.
 - Direct PowerPoint Shape.Export avoids using and clearing the owner's clipboard. Open source decks read-only without a window; preserve existing PowerPoint sessions.
 
-# 2026-11-09 — CAD extraction and agent continuity
+# 2026-11-09 â€” CAD extraction and agent continuity
 
-- **L-CAD-01 — Check bytes before parsers.** NASCA-wrapped PDF bytes caused plain-library `no objects found`; native viewing was possible but text export was not established. New native Excel preview PDFs were wrapped too. See [native runbook](runbooks/NASCA_AND_NATIVE_OFFICE.md).
-- **L-CAD-02 — Use actual completion evidence.** A 2-GB ASCII DXF ended mid-record after a native write error. ODA's documented DXB mode produced complete binary DXF; the exact ASCII failure cause remains unknown. Size/exit status alone is insufficient.
-- **L-CAD-03 — Stream, do not materialize millions of objects.** mmap-compatible tag streaming and small SQLite batches worked after full CAD loading exhausted available memory. The mmap subclass preserves both `.index()` and the struct buffer interface. See [working procedure](runbooks/CAD_EXTRACTION.md).
-- **L-CAD-04 — Preserve semantic boundaries.** Block definition text is local reusable geometry; INSERTs/vertices/dimensions are not machine counts. Source CAD units are separate from the player's estimated slide scale. See [contract](architecture/CAD_DATA_CONTRACT.md).
-- **L-CAD-05 — Verify the verifier.** Fixture and full-data comparison exposed SQL placeholder arity, header grouping, numeric-type serialization and empty display-text cases. Correct the code/checker on evidence; never change raw values to make a check pass.
-- **L-CAD-06 — Guard views without corrupting raw text.** Write XLSX strings literally, guard formula-like CSV text, retain raw JSONL/SQLite and a separate plain-text display aid. Formatting-only text can produce an empty display value.
-- **L-CAD-07 — Execution context is a capability variable.** Excel failed to start in the restricted doctor but connected in a separate approved hidden COM context. Orca/hidden CopyPicture did not work. Do not claim native visual acceptance from exported protected files.
-- **L-CAD-08 — Recover work, not hopeful narration.** Read bridge results and real artifacts before continuing. Both bounded bridge jobs timed out without the reporting script; the coordinator completed locally. Do not loop accounts/models or call a submitted worker a delivered result.
-- **L-CAD-09 — Cleanup is narrowly scoped.** The owner requested PDF closure; only the verified task-owned unresponsive reader was stopped after ordinary close failed. Do not generalize that into permission to terminate other user apps.
-- **L-MEM-01 — Separate live state from history.** The dated Nov 8 application checkpoint supersedes older "Press/EPS not built" records, while camera/registration/performance acceptance remains open. A CAD/documentation request does not resume paused app implementation.
+- **L-CAD-01 â€” Check bytes before parsers.** NASCA-wrapped PDF bytes caused plain-library `no objects found`; native viewing was possible but text export was not established. New native Excel preview PDFs were wrapped too. See [native runbook](runbooks/NASCA_AND_NATIVE_OFFICE.md).
+- **L-CAD-02 â€” Use actual completion evidence.** A 2-GB ASCII DXF ended mid-record after a native write error. ODA's documented DXB mode produced complete binary DXF; the exact ASCII failure cause remains unknown. Size/exit status alone is insufficient.
+- **L-CAD-03 â€” Stream, do not materialize millions of objects.** mmap-compatible tag streaming and small SQLite batches worked after full CAD loading exhausted available memory. The mmap subclass preserves both `.index()` and the struct buffer interface. See [working procedure](runbooks/CAD_EXTRACTION.md).
+- **L-CAD-04 â€” Preserve semantic boundaries.** Block definition text is local reusable geometry; INSERTs/vertices/dimensions are not machine counts. Source CAD units are separate from the player's estimated slide scale. See [contract](architecture/CAD_DATA_CONTRACT.md).
+- **L-CAD-05 â€” Verify the verifier.** Fixture and full-data comparison exposed SQL placeholder arity, header grouping, numeric-type serialization and empty display-text cases. Correct the code/checker on evidence; never change raw values to make a check pass.
+- **L-CAD-06 â€” Guard views without corrupting raw text.** Write XLSX strings literally, guard formula-like CSV text, retain raw JSONL/SQLite and a separate plain-text display aid. Formatting-only text can produce an empty display value.
+- **L-CAD-07 â€” Execution context is a capability variable.** Excel failed to start in the restricted doctor but connected in a separate approved hidden COM context. Orca/hidden CopyPicture did not work. Do not claim native visual acceptance from exported protected files.
+- **L-CAD-08 â€” Recover work, not hopeful narration.** Read bridge results and real artifacts before continuing. Both bounded bridge jobs timed out without the reporting script; the coordinator completed locally. Do not loop accounts/models or call a submitted worker a delivered result.
+- **L-CAD-09 â€” Cleanup is narrowly scoped.** The owner requested PDF closure; only the verified task-owned unresponsive reader was stopped after ordinary close failed. Do not generalize that into permission to terminate other user apps.
+- **L-MEM-01 â€” Separate live state from history.** The dated Nov 8 application checkpoint supersedes older "Press/EPS not built" records, while camera/registration/performance acceptance remains open. A CAD/documentation request does not resume paused app implementation.
 
 Full provenance, failed attempts and demonstrated limits: [2026-11-09 case](history/2026-11-09-cad-extraction.md). Future lessons should follow [MAINTENANCE.md](MAINTENANCE.md).
-- **L-V7-01 — Identify a visual artefact before "fixing" it.** For V6 the owner's "pale light cones" were assumed to be the DFAtmos light shafts and the "dark boxes" the rooms' walls; both came back (image 24) because the cones were the floor reflection and the boxes were shadows baked into the floor light. Countermeasure: `tools/v7/shot-probe.mjs` renders the same view with candidate groups hidden (devices, replica, route, transparent, reflection); fix only what makes the artefact disappear, and show the before/after shot.
-- **L-V7-02 — A validator must report the worst point, not the first.** The collision sweep logged each object once at its first close pass (a warning) and so missed a later overlap (an error) on the same object. Planted faults (`tools/v7/validator-test.mjs`) found it; keep fault-planting tests next to every validator.
-- **L-V7-03 — Baked data outlives edits.** Removing geometry does not remove what was baked from it (floor light, shadows). Any layout edit (V6 room removal, scene layoutEdits) now also cleans the baked light under it.
+- **L-V7-01 â€” Identify a visual artefact before "fixing" it.** For V6 the owner's "pale light cones" were assumed to be the DFAtmos light shafts and the "dark boxes" the rooms' walls; both came back (image 24) because the cones were the floor reflection and the boxes were shadows baked into the floor light. Countermeasure: `tools/v7/shot-probe.mjs` renders the same view with candidate groups hidden (devices, replica, route, transparent, reflection); fix only what makes the artefact disappear, and show the before/after shot.
+- **L-V7-02 â€” A validator must report the worst point, not the first.** The collision sweep logged each object once at its first close pass (a warning) and so missed a later overlap (an error) on the same object. Planted faults (`tools/v7/validator-test.mjs`) found it; keep fault-planting tests next to every validator.
+- **L-V7-03 â€” Baked data outlives edits.** Removing geometry does not remove what was baked from it (floor light, shadows). Any layout edit (V6 room removal, scene layoutEdits) now also cleans the baked light under it.
 
 ## Player / scene engine lessons (V5 - V7.7.1)
 
@@ -59,3 +59,18 @@ Each: what happened, the cause, the rule.
 - **L-REV-01 Recover scope as well as files.** Replacement references and lead ownership can supersede an interrupted task. Compare backups before attributing earlier edits, keep business-specific findings private, and do not make scene fixes after ownership has moved.
 - **L-FILM-02 A UI speed setter is not an export clock.** The player snaps speed to its menu presets. An offline recipe can request a fractional speed to fit an exact duration; preserve that value for frame advancement and test a non-preset speed against actual timestamps, then restore the prior player state.
 - **L-TEST-01 Verify the setting, not the argument.** A camera test requested 8x but the player menu setter selected 3x. Record and assert the actual story speed; distinguish an explicit stress state from a supported UI preset. Preserve and label the invalid measurement instead of reporting it as 8x.
+
+- **L-PL-18 Guard every release path.** A version pointer that lagged the tools let browser verbs rebuild an older owner file.
+  Guard resolved release paths by the selected stage, refuse archives/backups, back up own-stage replacements and publish
+  atomically. Test old-file hashes and failure paths rather than maintaining an incomplete list of protected versions.
+- **L-M0-01 Keep fixture authority explicit.** Guard tests derive an isolated lighting snapshot from the V6 input so they
+  need no owner scenes. This proves publication plumbing, not lighting accuracy. The legacy synchronous scene-import test
+  requires matching layout fixtures; actual-player layout changes have their own reload/undo regressions.
+- **L-M0-02 Bound the operation that actually runs.** The shared CDP driver had a two-minute evaluation limit, shorter
+  than a valid 1x whole-path check. Keep the normal default and allow an explicit bounded override for long operations.
+  Preserve assertions while removing test-process/compiler overhead; the shared publisher lets guard cases run directly
+  without weakening the three integrated build cases.
+  Measure timing budgets end to end: the gate-internal clock omits process startup/exit. Keep failed budget attempts
+  and all assertions when reducing repeated process overhead.
+  Identity can keep a fresh profile per input and load a fresh document per project; verify the project and unload boundary,
+  and preserve every snapshot/comparison when removing redundant browser launches.

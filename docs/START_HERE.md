@@ -15,6 +15,7 @@
 | `private/v7/scenes/` | the owner's scenes (company data, never committed) |
 | `docs/examples/` | small sample scenes used by the recipes |
 | `dist/Material_Flow_Player_v<version>.html` | built players (older versions are read-only) |
+| `docs/plans/V8_MASTER_PLAN.md` | the build plan for V8 |
 | `docs/` | this documentation; `.agents/skills/` the agent skills |
 
 **First 10 minutes.**

@@ -4,3 +4,5 @@ dist/
 *.pptx
 *.dwg
 
+
+.mf-history/

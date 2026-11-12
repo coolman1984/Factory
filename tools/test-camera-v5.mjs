@@ -3,29 +3,16 @@
 //   (2) nothing solid (walls, racks, machines, columns, devices) lies between the camera and the trolley (three.js raycast
 //       against the replica's instanced meshes, ignoring hits within 4 units of the trolley itself).
 // Usage: node tools/test-camera-v5.mjs <player.html> [hash=inj1] [cams=guided,chase] [speeds=1,3] [flow=0]   Exit 1 on any failure.
-import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { openPage } from "./v7/cdp.mjs";
 
 const [file, hash = "inj1", camList = "guided,chase", speedList = "1,3", flow = "0"] = process.argv.slice(2);
 if (!Number.isInteger(+flow) || +flow < 0) throw new Error('flow must be a non-negative integer');
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 let failed = false;
 async function run(cam, speed) {
-  const port = 9300 + Math.floor(Math.random() * 400), profile = mkdtempSync(join(tmpdir(), "mf_cam_"));
-  const url = pathToFileURL(resolve(file)).href + "?q=high#" + hash;
-  const ch = spawn("C:/Program Files/Google/Chrome/Application/chrome.exe", ["--headless=new", "--use-angle=d3d11", "--enable-gpu", "--ignore-gpu-blocklist", "--no-first-run", "--no-default-browser-check", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, "--window-size=1920,1080", url], { stdio: "ignore", windowsHide: true });
+  const pg = await openPage(file, hash, { query: "q=high", size: "1920,1080" });
   try {
-    let tabs = null; for (let i = 0; i < 60 && !tabs; i++) { await wait(500); try { tabs = await (await fetch(`http://127.0.0.1:${port}/json`)).json(); } catch { /* starting */ } }
-    const ws = new WebSocket(tabs.find((t) => t.type === "page").webSocketDebuggerUrl); await new Promise((r) => (ws.onopen = r));
-    let id = 0; const call = (m, p = {}) => new Promise((r) => { const i = ++id; const f = (e) => { const d = JSON.parse(e.data); if (d.id === i) { ws.removeEventListener("message", f); r(d.result); } }; ws.addEventListener("message", f); ws.send(JSON.stringify({ id: i, method: m, params: p })); });
-    const ev = async (e) => { const r = await call("Runtime.evaluate", { expression: e, awaitPromise: true, returnByValue: true }); if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text); return r.result.value; };
-    await call("Runtime.enable");
-    for (let i = 0; i < 120; i++) { await wait(500); if (await ev(`typeof MF==='object'&&!!MF.ready`)) break; }
-    await ev(`Promise.resolve(MF.ready).then(()=>MF.prepared).then(()=>1)`); await wait(800);
-    const res = await ev(`(async()=>{
+    await pg.wait(400); // openPage already waits 400 ms after readiness; retain the original settling interval.
+    const res = await pg.ev(`(async()=>{
       const T=window.THREE, cam=MF.lot.parent && MF.camera, ray=new T.Raycaster(), lot=new T.Vector3(), eye=new T.Vector3(), dir=new T.Vector3();
       const solids=[...MF.floors.flatMap(f=>[f.art,f.slab]), ...MF.REP.meshes.map(m=>m.im), ...Object.values(MF.devices.groups||{}).flatMap(g=>g.children.filter(o=>o.isInstancedMesh))];
       if (!MF.D.flows[${+flow}]) throw new Error('flow index out of range');
@@ -46,14 +33,13 @@ async function run(cam, speed) {
           if(bad){s.bad++; if(out.worst.length<12) out.worst.push({t:+MF.S.t.toFixed(1),step:st,bad,x:Math.round(p[0]),y:Math.round(p[1])});}
         }
         requestAnimationFrame(loop); })(); });
-      return out; })()`);
+      return out; })()`, { timeoutMs: 600000 });
     const pct = (n) => (100 * n / Math.max(1, res.checked)).toFixed(1) + "%";
     const ok = res.offscreen === 0 && res.occluded === 0 && res.edge / Math.max(1, res.checked) < .05;
     if (!ok) failed = true;
     console.log(`${ok ? "PASS" : "FAIL"} flow=${flow} cam=${cam} speed=${speed}x: ${res.checked} checks over ${res.frames} frames; offscreen ${res.offscreen}, near edge ${pct(res.edge)}, occluded ${pct(res.occluded)}`);
     for (const w of res.worst) console.log("   ", JSON.stringify(w));
-    ws.close();
-  } finally { ch.kill(); await wait(800); try { rmSync(profile, { recursive: true, force: true }); } catch { /* held */ } }
+  } finally { await pg.close(); }
 }
 for (const cam of camList.split(",")) for (const sp of speedList.split(",")) await run(cam, +sp);
 process.exit(failed ? 1 : 0);

@@ -36,17 +36,35 @@ dist/Material_Flow_Player_v4.html   (owner's approved look; read-only)
 | `cdp.mjs` | Node | headless Google Chrome driver for tests and browser verbs |
 | `film-export.mjs` | Node + player hooks | explicit-frame CLI export through existing ffmpeg/ffprobe; decoded timing and freeze receipts |
 
-Build: `node tools/build-v7.mjs 7.7.1` (stages in `STAGES`: which add-on groups and CSS go in). The build bakes
+Build: `node tools/build-v7.mjs 7.7.2` (stages in `STAGES`: which add-on groups and CSS go in). The build bakes
 `private/v7/scenes/*.scene.json`, parses every inline script, and runs `mf docs-check` (skip only with `--no-docs-check` for
 temporary test players).
+
+## Release files are protected
+
+The V7 builder uses `tools/v8/build-output.mjs` and refuses any other `dist/Material_Flow_Player*.html`, all `dist/versions/` outputs and all `dist/backup/`
+outputs after resolving paths without case sensitivity. Rebuilding the selected stage's own release first backs it up in
+`dist/backup/` and keeps its five newest backups. Publication writes an exclusive `.tmp` file, then renames it atomically;
+a stale/in-use temporary file causes a refusal. Test outputs belong under `dist/test/`.
 
 ## Coordinates and units
 Scene files: metres, plan frame (x right, y down), 1 frame unit = 0.3 m. The engine works in frame units; world x = unit x - CX,
 world z = unit y - CY (`D.center`), y up. Floors are plates that slide and lift (stack 0 = side by side, 1 = stacked).
 
 ## Tests (minimum set, run after engine changes)
+
+Run the gate: `node tools/v8/gate.mjs <player.html>`; use `--quick` during work or `--only name,name` for selected rows.
+Logs and machine-readable results go to `dist/test/gate-<player>/` (`--out dist/test/<name>` overrides it). GPU rows run
+sequentially with a 20-minute row limit. Missing private fixtures produce explicit skips; public examples still validate.
+`--only camera` selects all ten guided 3x camera rows. The legacy stage1 row uses matching pre-addition fixtures; the
+actual player is checked by the separate layout/review transaction rows. M0 also verifies all ten paths at 1x outside
+the standard gate, as required by master-plan section 1.6. Camera evaluations use a ten-minute timeout; other CDP
+commands keep their two-minute default. Identity uses a separate fresh profile per input file and a fresh document per
+project; its eight snapshots and comparison assertions are unchanged.
+
 | test | proves |
 |---|---|
+| `node tools/v8/build-guard-test.mjs` | release path refusal, own-stage backups/retention and atomic publication |
 | `node tools/v7/identity-test.mjs dist/Material_Flow_Player_v6.html <v7 player baked with private/v7/scenes-v6>` | the 10 V6 paths play identically |
 | `node tools/v7/validator-test.mjs <player>` | 18 planted cases, including layout additions and single-error bad kinds |
 | `node tools/v7/layout-adds-test.mjs <player>` | strict additions, storage/door identities, folded transforms and reload undo |

@@ -1,5 +1,5 @@
 // The agent CLI's command table and the current player stage. Read by tools/mf.mjs (help) and tools/v7/docs-check.mjs (docs/CLI.md).
-export const STAGE = "7.7.1";   // the current player version (a stage of tools/build-v7.mjs; docs/CHANGELOG.md must have it)
+export const STAGE = "7.7.2";   // the current player version (a stage of tools/build-v7.mjs; docs/CHANGELOG.md must have it)
 export const COMMANDS = {
   help: ["", "this list"],
   validate: ["<scene.json> [...]", "check scene files against the layout: ids, joins, collisions, devices; prints every error with its place"],

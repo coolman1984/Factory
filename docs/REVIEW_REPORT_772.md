@@ -166,3 +166,22 @@ Earlier failures remain evidence, not current results: pre-restart camera failur
 The first resumed sandboxed Chrome launch exited before debugger startup; approved isolated execution succeeded. The
 complete resumed diagnostic suite passed before the final ordered-edit/bounds/fallback tightening; its receipts and player
 were preserved in `dist/test/review772-resume-diagnostic/`. The full final suite above was rerun after every source fix.
+
+
+## M0 release verification — 2026-11-12
+
+The lead committed Step 0 as `4623fd0`. M0 releases the current lead-owned scenes with the reviewed player code unchanged.
+The candidate passes all 24 rows; the release passes 23 with startup FAIL (1/8, worst 183 ms), documented as the
+existing issue 2 / M9 exception. The raw gate still exits 1. All ten paths additionally pass at 1x, with zero
+sampled visibility failures at both speeds. Five consecutive shared-driver launches pass. A checked CLI film has 600
+decoded frames and exactly 20.000 s; the current-stage CLI also produces a checked short film after the pointer update.
+The legacy stage1 row uses the matching geometry fixture, with actual-player reload/undo tested separately.
+
+Final quick release gate: PASS, 141.936 s end to end. Build: PASS, 95 patches and 12 parsed inline scripts.
+Release/archive/candidate SHA-256: `bfbaf85330cd434d589514244ea778a42ebd5cbe3002a4a1e6db08a6a03babe0`.
+
+Individual commands/results: `dist/test/rc-772-results.json`, `dist/test/m0/release-gate/results.json` and the supplemental
+result files in `dist/test/m0/`. Historical files, scene files and reviewed source hashes remain unchanged. Exact file
+changes, deviations, one-line tests and open items are in [the M0 receipt](plans/V8_PROGRESS.md). Studio MediaRecorder timing/
+download and caption fidelity remain M2 work; reactive cinematic quality remains M3 work. Layout business acceptance is
+separate from this release verification. No older release/archive was rewritten.

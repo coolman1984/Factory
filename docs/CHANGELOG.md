@@ -3,11 +3,15 @@
 Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (older ones kept). Newest first.
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
-## V7.7.2 (in progress) - layout accuracy round - 2026-11-11
+## V7.7.2 - guarded release and layout review - 2026-11-12
+- M0: dynamic release-path protection, five retained own-stage backups and atomic publication; camera acceptance now
+  uses the shared isolated Chrome driver. Identity retains all eight snapshots with fresh documents per project and
+  separate input profiles. Added the sequential V8 gate and build-guard regressions. Release verification
+  uses the lead-owned current scenes; detailed receipts are in [V8 progress](plans/V8_PROGRESS.md).
 - Step 0 camera review: story-time guided filtering, held clear shots, eased shaft views, landing reveal, protected wider
   chase (including device-free scenes), bounded director keys/follow poses, free-camera/pad release fixes and stricter key inputs. CLI films now render
   explicit frames through existing ffmpeg/ffprobe and check decoded length and moving freezes. Studio recording warms
-  before its clock starts. See [camera/layout review](REVIEW_CAMERA_LAYOUT_772.md); release remains M0.
+  before its clock starts. See [camera/layout review](REVIEW_CAMERA_LAYOUT_772.md); released by M0.
 - Review fixes: added-layout import/reload/undo transactions, ordered door edits, storage rotation/cell identities, strict
   addition validation, layout diffs/schema arrays and CLI edge cases. Camera rescue now checks opaque device meshes as well
   as the replica, after the ceiling clamp; every candidate, including the final fallback, must pass the checks. Studio
@@ -45,7 +49,7 @@ A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are 
 - Added: scene files (`mf-scene` v1) drive the player; validator; agent manual; scene file panel (open / save / drop / undo /
   autosave); per-step speed; 64 RFID gates.
 - Fixed: dark boxes (baked shadows of removed rooms) and pale cones (floor reflection) beside Kitting; INJ 2 2F black bands;
-  INJ 2 short route through the doorway (304 → 37 m, Umbrella 337 → 68 m).
+  INJ 2 short route through the doorway (304 â†’ 37 m, Umbrella 337 â†’ 68 m).
 
 ## V6 - 2026-11-10
 - Added: the owner's 10 paths on all four tabs, big PC / scanner icons, manual scan stops. Fixed: flicker sources, camera.

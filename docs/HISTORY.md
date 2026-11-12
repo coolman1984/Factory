@@ -53,3 +53,13 @@ No git, delegation, upload, company-scene edit or historical player replacement 
 Completed the authorized restart recovery without git, delegation or scene edits. The replacement owner images move
 Part B to private findings only; the lead owns scene data. Review, measured limits and tests are recorded in
 [the camera/layout report](REVIEW_CAMERA_LAYOUT_772.md) and [V8 progress](plans/V8_PROGRESS.md). Release remains M0.
+
+
+## 2026-11-12 — M0 guarded V7.7.2 release
+
+Released the lead's current scene data with the verified Step 0 player, protected release paths/atomic publication and
+retained own-stage backups. Camera tests use the shared Chrome driver; the new sequential gate records every result.
+The candidate gate passes; the release gate retains its startup failure as the existing issue 2 / M9 exception.
+The gates, ten-path 1x supplement, checked films and preservation checks are in [the M0 receipt](plans/V8_PROGRESS.md).
+The quick gate meets its three-minute budget. M2/M3/M9 quality work and lead-owned layout questions remain open; no M1 work,
+git operations or delegation occurred.

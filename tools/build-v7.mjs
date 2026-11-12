@@ -5,10 +5,11 @@
 // any scene given with --bake). Each engine patch must match exactly once, so a different V6 fails loudly.
 // Usage: node tools/build-v7.mjs [stage=7.1] [--in dist/Material_Flow_Player_v6.html] [--out dist/Material_Flow_Player_v<stage>.html]
 //        [--bake a.scene.json b.scene.json ...]   (default: every file in private/v7/scenes)
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { resolve, dirname, relative, isAbsolute } from "node:path";
+import { dirname } from "node:path";
 import vm from "node:vm";
+import { planBuildOutput, publishBuild } from "./v8/build-output.mjs";
 import { playerPatches, replicaPatches } from "./v7/engine-patches.mjs";
 
 const args = process.argv.slice(2);
@@ -36,10 +37,7 @@ const STAGES = {
 if (!STAGES[stage]) throw new Error(`unknown stage ${stage} (built so far: ${Object.keys(STAGES).join(", ")})`);
 const inFile = opt("--in", "dist/Material_Flow_Player_v6.html"), outFile = opt("--out", `dist/Material_Flow_Player_v${stage}.html`);
 const bakeFiles = options["--bake"] ? bakeArgs : existsSync("private/v7/scenes") ? readdirSync("private/v7/scenes").filter((f) => f.endsWith(".scene.json")).map((f) => "private/v7/scenes/" + f) : [];
-const outPath = resolve(outFile).toLowerCase();
-const archiveRelative = relative(resolve("dist/versions"), resolve(outFile));
-if (outPath === resolve(inFile).toLowerCase() || (!archiveRelative.startsWith("..") && !isAbsolute(archiveRelative))) throw new Error("input and archived versions are read-only");
-for (const f of ["v4", "v5", "v6", "v7.1", "v7.6", "v7.7"]) if (outPath === resolve(`dist/Material_Flow_Player_${f}.html`).toLowerCase()) throw new Error("earlier versions are read-only; use --out dist/test/<name>.html");
+const output = planBuildOutput(stage, inFile, outFile);
 let html = readFileSync(inFile, "utf8");
 const once = (src, find, repl, what) => { const n = src.split(find).length - 1; if (n !== 1) throw new Error(`patch "${what}": expected exactly one match, found ${n}`); return src.replace(find, () => repl); };
 // some embedded scripts use CRLF line ends: a multi-line patch that does not match with LF is tried with CRLF
@@ -102,11 +100,11 @@ html = once(html, "<tr><td>2 / 3 / A</td>", "<tr><td>Ctrl+O / Ctrl+S</td><td>Ope
 }
 mkdirSync(dirname(outFile), { recursive: true });
 // docs must match the code before a real player is written (test builds under dist/test/ and --no-docs-check skip it)
-if (!options["--no-docs-check"] && !resolve(outFile).toLowerCase().startsWith(resolve("dist/test").toLowerCase())) {
+if (!options["--no-docs-check"] && !output.testOutput) {
   const { docsCheck } = await import("./v7/docs-check.mjs"), problems = await docsCheck();
   if (problems.length) { for (const p of problems) console.log("DOCS " + p); throw new Error(`docs-check failed (${problems.length} problem(s)): fix the docs, the changelog or the examples (node tools/mf.mjs docs-gen for generated parts)`); }
   console.log("docs-check OK");
 }
-writeFileSync(outFile, html);
+publishBuild(output, html);
 console.log(`baked-light clean-up: ${JSON.stringify(lightErase)}`);
 console.log(`${outFile}: ${(html.length / 1048576).toFixed(2)} MB, sha256 ${createHash("sha256").update(html).digest("hex").slice(0, 16)}; ${playerPatches.length + replicaPatches.length} engine patches; scenes: ${Object.keys(bundle.projects).join(", ") || "none"}`);

@@ -2,8 +2,8 @@
 
 | # | issue | since | state / next step |
 |---|---|---|---|
-| 1 | Reactive camera still has abrupt rescue turns | V7.7 | Step 0 visibility passes ten paths at 3x and three at 1x; mean per-path P95 26.24 -> 11.20 deg/s, worst 1348.4 -> 406.2. No-snap goal remains open for M3; see [review](REVIEW_CAMERA_LAYOUT_772.md) |
-| 2 | Intermittent cold-start GPU stalls: cause remains unproven | V6 | Final Step 0: 0 of 8 starts with visible stutter; preparing screen retained. Historical V7.7.1 had 1/20 starts with one 117 ms frame. Keep measuring in M9 |
+| 1 | Reactive camera still has abrupt rescue turns | V7.7 | M0: all ten paths pass sampled visibility at 1x and 3x. Current 3x mean per-path P95 10.97, maximum 405.6 deg/story s; 39 turn episodes. No reactive tuning in M0; M3 uses this baseline. Per-path evidence: `dist/test/m0/calm-current-3.json` |
+| 2 | Intermittent cold-start GPU stalls: cause remains unproven | V6 | M0 candidate 0/8; release 1 of 8 starts with visible stutter, worst 183 ms and ten frames over 50 ms in the failing start. Raw failing row retained as the accepted M0 exception; root-cause work is M9 |
 | 3 | The floor name tag ("1st Floor E1-E2") can sit under the Studio panel's corner | V7.6 | cosmetic |
 | 4 | `auto` routes avoid narrow doorways (router margins wider than the validator's) | V6 | use `points` for the owner's exact lines; see [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
 | 5 | Doors cannot be cut in the Studio (only as `door` layout edits) | V7.6 | add a Studio button when needed |

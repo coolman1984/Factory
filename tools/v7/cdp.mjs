@@ -54,14 +54,14 @@ export async function openPage(file, hash = "inj1", { query = "q=high", size = "
       if (d.method === "Runtime.exceptionThrown") errors.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
       if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error") errors.push("console.error: " + d.params.args.map((a) => a.value ?? a.description).join(" "));
     });
-    const call = (method, params = {}) => new Promise((resolveCall, reject) => {
-      const i = ++id, timer = setTimeout(() => { pending.delete(i); reject(new Error(`Chrome command timed out: ${method}`)); }, 120000);
+    const call = (method, params = {}, { timeoutMs = 120000 } = {}) => new Promise((resolveCall, reject) => {
+      const i = ++id, timer = setTimeout(() => { pending.delete(i); reject(new Error(`Chrome command timed out: ${method}`)); }, timeoutMs);
       pending.set(i, { resolve: resolveCall, reject, timer });
       try { ws.send(JSON.stringify({ id: i, method, params })); }
       catch (e) { clearTimeout(timer); pending.delete(i); reject(e); }
     });
-    const ev = async (expression) => {
-      const r = await call("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+    const ev = async (expression, options) => {
+      const r = await call("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true }, options);
       if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
       return r.result.value;
     };
@@ -76,6 +76,18 @@ export async function openPage(file, hash = "inj1", { query = "q=high", size = "
       throw new Error("Material Flow did not become ready within 60 seconds");
     };
     await call("Runtime.enable"); await ready();
-    return { ev, call, errors, close, wait, reload: async () => { await call("Page.reload"); await wait(800); await ready(); } };
+    const navigate = async (nextFile, nextHash) => {
+      // Commit a blank document first: a hash-only navigation must never reuse the previous project's JS globals.
+      await call("Page.navigate", { url: "about:blank" });
+      let blank = false;
+      for (let i = 0; i < 100 && !blank; i++) {
+        try { blank = await ev('location.href === "about:blank" && typeof MF === "undefined"'); } catch (e) { if (exited) throw e; }
+        if (!blank) await wait(50);
+      }
+      if (!blank) throw new Error("The previous document did not unload");
+      const next = pathToFileURL(resolve(nextFile)).href + (query ? "?" + query : "") + "#" + nextHash;
+      await call("Page.navigate", { url: next }); await wait(800); await ready();
+    };
+    return { ev, call, errors, close, wait, navigate, reload: async () => { await call("Page.reload"); await wait(800); await ready(); } };
   } catch (e) { await close(); throw e; }
 }
