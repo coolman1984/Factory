@@ -32,5 +32,5 @@
 | R26 | بيانات حقيقية مع مصدر وتوقيت | [التكامل](08_DATA_INTEGRATION.md) | V05، V19 |
 | R27 | إنتاجية واختناقات وتكلفة | [الإنتاج](04_PRODUCTION_AND_QUALITY.md)، [الأداء](10_VALIDATION_AND_PERFORMANCE.md) | مقارنة بحدود وتعريفات معلنة |
 | R28 | جودة صورة وإضاءة وحركة | [الجرافيك](07_VISUALS_AND_ASSETS.md) | مشهد معايرة ومراجعة الحجم |
-| R29 | تنظيم تنفيذ واضح | [الخريطة](12_REPOSITORY_MAP.md)، [التسليم](13_IMPLEMENTATION_HANDOFF.md) | تحديث مرتبط بكل مرحلة |
+| R29 | تنظيم تنفيذ واضح | [الخريطة](12_REPOSITORY_MAP.md)، [التسليم](13_IMPLEMENTATION_HANDOFF.md)، [حزم العمل](16_EXECUTION_PLAN.md) | تحديث مرتبط بكل مرحلة وحزمة |
 | R30 | تشغيل محلي يناسب بيئة المصنع | [التكامل](08_DATA_INTEGRATION.md)، [المراحل](09_ROADMAP.md) | تجربة توزيع على الجهاز المستهدف |

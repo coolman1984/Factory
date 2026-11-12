@@ -23,6 +23,7 @@
 | [docs/13_IMPLEMENTATION_HANDOFF.md](13_IMPLEMENTATION_HANDOFF.md) | تعليمات بدء التنفيذ وتسليمه |
 | [docs/14_REQUIREMENTS_TRACEABILITY.md](14_REQUIREMENTS_TRACEABILITY.md) | تغطية المتطلبات |
 | [docs/15_SOURCES_AND_GLOSSARY.md](15_SOURCES_AND_GLOSSARY.md) | المصادر والمصطلحات |
+| [docs/16_EXECUTION_PLAN.md](16_EXECUTION_PLAN.md) | حزم العمل المرتبة واختبارات قبولها |
 | [examples/README.md](../examples/README.md) | حدود العينة وطريقة قراءتها |
 | [examples/factory-blueprint.example.json](../examples/factory-blueprint.example.json) | تعريف مصنع افتراضي مترابط |
 | [schemas/factory-blueprint.schema.json](../schemas/factory-blueprint.schema.json) | عقد بنيوي أولي للعينة |
