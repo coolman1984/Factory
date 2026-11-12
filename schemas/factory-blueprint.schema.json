@@ -1,0 +1,775 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Planning-only TV factory blueprint example",
+  "description": "Draft structural contract for the synthetic documentation sample. Cross-reference, geometry and runtime rules require separate validation.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schema_version": {
+      "const": "0.1.0"
+    },
+    "sample_only": {
+      "const": true
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "factory": {
+      "type": "object",
+      "properties": {
+        "factory_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "length_unit": {
+          "const": "m"
+        },
+        "time_unit": {
+          "const": "s"
+        },
+        "mass_unit": {
+          "const": "kg"
+        },
+        "axes": {
+          "const": "right_handed_xy_ground_z_up"
+        },
+        "origin": {
+          "const": "center_of_site_floor"
+        },
+        "site_dimensions_m": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "snap_step_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "required": [
+        "factory_id",
+        "name",
+        "length_unit",
+        "time_unit",
+        "mass_unit",
+        "axes",
+        "origin",
+        "site_dimensions_m",
+        "snap_step_m"
+      ],
+      "additionalProperties": false
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    },
+    "prefabs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prefab"
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/port"
+      }
+    },
+    "processes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/process"
+      }
+    },
+    "material_flows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flow"
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
+      },
+      "required": [
+        "nodes",
+        "edges"
+      ],
+      "additionalProperties": false
+    },
+    "handling_policies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/handling_policy"
+      }
+    },
+    "replenishment_policies": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/replenishment_policy"
+      }
+    },
+    "initial_conditions": {
+      "type": "object",
+      "properties": {
+        "random_seed": {
+          "type": "integer"
+        },
+        "handling_units": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/handling_unit"
+          }
+        },
+        "active_missions": {
+          "type": "array",
+          "maxItems": 0
+        }
+      },
+      "required": [
+        "random_seed",
+        "handling_units",
+        "active_missions"
+      ],
+      "additionalProperties": false
+    },
+    "shipping": {
+      "type": "object",
+      "properties": {
+        "container_entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "internal_dimensions_m": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "max_payload_kg": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "packing_plan_status": {
+          "const": "not_calculated"
+        }
+      },
+      "required": [
+        "container_entity_id",
+        "internal_dimensions_m",
+        "max_payload_kg",
+        "packing_plan_status"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "$schema",
+    "schema_version",
+    "sample_only",
+    "notes",
+    "factory",
+    "items",
+    "prefabs",
+    "entities",
+    "ports",
+    "processes",
+    "material_flows",
+    "navigation",
+    "handling_policies",
+    "replenishment_policies",
+    "initial_conditions",
+    "shipping"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "quantity": {
+      "type": "object",
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quantity": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "unit": {
+          "enum": [
+            "ea",
+            "kg"
+          ]
+        }
+      },
+      "required": [
+        "item_id",
+        "quantity",
+        "unit"
+      ],
+      "additionalProperties": false
+    },
+    "item": {
+      "type": "object",
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "unit": {
+          "enum": [
+            "ea",
+            "kg"
+          ]
+        },
+        "tracking": {
+          "enum": [
+            "serial",
+            "lot",
+            "quantity"
+          ]
+        }
+      },
+      "required": [
+        "item_id",
+        "name",
+        "unit",
+        "tracking"
+      ],
+      "additionalProperties": false
+    },
+    "prefab": {
+      "type": "object",
+      "properties": {
+        "prefab_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "minLength": 1
+        },
+        "dimensions_m": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "visual_asset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "prefab_id",
+        "version",
+        "category",
+        "dimensions_m",
+        "capabilities",
+        "visual_asset"
+      ],
+      "additionalProperties": false
+    },
+    "entity": {
+      "type": "object",
+      "properties": {
+        "entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "site",
+            "zone",
+            "line",
+            "station",
+            "storage",
+            "transporter",
+            "worker",
+            "container"
+          ]
+        },
+        "org_parent_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "spatial_parent_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prefab_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prefab_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "transform": {
+          "type": "object",
+          "properties": {
+            "position_m": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "yaw_deg": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "position_m",
+            "yaw_deg"
+          ],
+          "additionalProperties": false
+        },
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "storage_capacity": {
+          "type": "object",
+          "properties": {
+            "handling_unit_slots": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "handling_unit_slots"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "entity_id",
+        "name",
+        "category",
+        "org_parent_id",
+        "spatial_parent_id",
+        "prefab_id",
+        "prefab_version",
+        "transform",
+        "capabilities"
+      ],
+      "additionalProperties": false
+    },
+    "port": {
+      "type": "object",
+      "properties": {
+        "port_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner_entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "enum": [
+            "material_in",
+            "material_out"
+          ]
+        },
+        "local_position_m": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "navigation_node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accepted_item_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "capacity": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "port_id",
+        "owner_entity_id",
+        "role",
+        "local_position_m",
+        "navigation_node_id",
+        "accepted_item_ids",
+        "capacity"
+      ],
+      "additionalProperties": false
+    },
+    "process": {
+      "type": "object",
+      "properties": {
+        "process_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "station_entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input_location_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "output_location_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/quantity"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/quantity"
+          }
+        },
+        "duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "parallel_slots": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quality_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "failure_policy": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "process_id",
+        "station_entity_id",
+        "input_location_id",
+        "output_location_id",
+        "inputs",
+        "outputs",
+        "duration_s",
+        "parallel_slots",
+        "quality_policy",
+        "failure_policy"
+      ],
+      "additionalProperties": false
+    },
+    "flow": {
+      "type": "object",
+      "properties": {
+        "flow_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from_port_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to_port_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "handling_policy_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "flow_id",
+        "item_id",
+        "from_port_id",
+        "to_port_id",
+        "handling_policy_id"
+      ],
+      "additionalProperties": false
+    },
+    "node": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "position_m": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "required": [
+        "node_id",
+        "position_m"
+      ],
+      "additionalProperties": false
+    },
+    "edge": {
+      "type": "object",
+      "properties": {
+        "edge_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "from_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "to_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bidirectional": {
+          "type": "boolean"
+        },
+        "width_m": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "speed_limit_mps": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "allowed_modes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "pedestrian",
+              "manual_trolley"
+            ]
+          }
+        }
+      },
+      "required": [
+        "edge_id",
+        "from_node",
+        "to_node",
+        "bidirectional",
+        "width_m",
+        "speed_limit_mps",
+        "allowed_modes"
+      ],
+      "additionalProperties": false
+    },
+    "handling_policy": {
+      "type": "object",
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "transporter_entity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "worker_entity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "max_handling_units_per_trip": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "policy_id",
+        "transporter_entity_ids",
+        "worker_entity_ids",
+        "required_capabilities",
+        "max_handling_units_per_trip"
+      ],
+      "additionalProperties": false
+    },
+    "replenishment_policy": {
+      "type": "object",
+      "properties": {
+        "policy_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "item_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "destination_entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_port_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "destination_port_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reorder_point": {
+          "type": "number",
+          "minimum": 0
+        },
+        "target_level": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "unit": {
+          "enum": [
+            "ea",
+            "kg"
+          ]
+        },
+        "count_confirmed_inbound": {
+          "const": true
+        }
+      },
+      "required": [
+        "policy_id",
+        "item_id",
+        "destination_entity_id",
+        "source_port_id",
+        "destination_port_id",
+        "reorder_point",
+        "target_level",
+        "unit",
+        "count_confirmed_inbound"
+      ],
+      "additionalProperties": false
+    },
+    "handling_unit": {
+      "type": "object",
+      "properties": {
+        "handling_unit_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location_entity_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/quantity"
+          }
+        }
+      },
+      "required": [
+        "handling_unit_id",
+        "location_entity_id",
+        "lot_id",
+        "contents"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,2710 @@
+{
+  "$schema": "../schemas/factory-blueprint.schema.json",
+  "schema_version": "0.1.0",
+  "sample_only": true,
+  "notes": [
+    "All values are synthetic planning examples, not measured plant data.",
+    "Navigation demonstrates referential topology only; collision-free geometry is not certified.",
+    "Processes are simplified and assume all-pass quality; rework and failures are specified in docs, not implemented.",
+    "Storage uses handling-unit slots; no claim is made about physical packing or payload feasibility.",
+    "This is a blueprint and initial seed, not a running engine or runtime snapshot."
+  ],
+  "factory": {
+    "factory_id": "TV_FACTORY_DEMO",
+    "name": "مصنع تليفزيونات افتراضي",
+    "length_unit": "m",
+    "time_unit": "s",
+    "mass_unit": "kg",
+    "axes": "right_handed_xy_ground_z_up",
+    "origin": "center_of_site_floor",
+    "site_dimensions_m": [
+      300,
+      200,
+      12
+    ],
+    "snap_step_m": 0.25
+  },
+  "items": [
+    {
+      "item_id": "RESIN",
+      "name": "حبيبات بلاستيك",
+      "unit": "kg",
+      "tracking": "quantity"
+    },
+    {
+      "item_id": "STEEL_BLANK",
+      "name": "خام معدني مجهز للتشكيل",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "BARE_PCB",
+      "name": "بوردة خام",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "ELECTRONIC_KIT",
+      "name": "طقم مكونات إلكترونية افتراضي",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "OPEN_CELL",
+      "name": "زجاج شاشة",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "BACKLIGHT_KIT",
+      "name": "طقم إضاءة خلفية",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "OPTICAL_KIT",
+      "name": "طقم طبقات بصرية",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "EPS_BEADS",
+      "name": "حبيبات فوم",
+      "unit": "kg",
+      "tracking": "quantity"
+    },
+    {
+      "item_id": "CARTON",
+      "name": "كرتونة",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "ACCESSORY_KIT",
+      "name": "طقم ملحقات وملصقات افتراضي",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "PLASTIC_SET",
+      "name": "طقم أجزاء بلاستيكية خارج الموديول",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "METAL_BACK",
+      "name": "ظهر معدني",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "PCB_ASSEMBLED",
+      "name": "بوردة مجمعة",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "PCB_PROGRAMMED",
+      "name": "بوردة مبرمجة ومقبولة",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "DISPLAY_MODULE",
+      "name": "موديول شاشة",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "FOAM_SET",
+      "name": "طقم فوم",
+      "unit": "ea",
+      "tracking": "lot"
+    },
+    {
+      "item_id": "TV_ASSEMBLED",
+      "name": "جهاز مجمع قبل الاختبار",
+      "unit": "ea",
+      "tracking": "serial"
+    },
+    {
+      "item_id": "TV_PASSED",
+      "name": "جهاز اجتاز الاختبار",
+      "unit": "ea",
+      "tracking": "serial"
+    },
+    {
+      "item_id": "TV_PACKED",
+      "name": "جهاز معبأ",
+      "unit": "ea",
+      "tracking": "serial"
+    }
+  ],
+  "prefabs": [
+    {
+      "prefab_id": "ZONE",
+      "version": "0.1.0",
+      "category": "zone",
+      "dimensions_m": [
+        50,
+        40,
+        0.02
+      ],
+      "capabilities": [],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "LINE",
+      "version": "0.1.0",
+      "category": "line",
+      "dimensions_m": [
+        30,
+        12,
+        0.02
+      ],
+      "capabilities": [],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "STATION",
+      "version": "0.1.0",
+      "category": "station",
+      "dimensions_m": [
+        6,
+        4,
+        2.5
+      ],
+      "capabilities": [
+        "process"
+      ],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "BUFFER",
+      "version": "0.1.0",
+      "category": "storage",
+      "dimensions_m": [
+        3,
+        3,
+        1.5
+      ],
+      "capabilities": [
+        "store"
+      ],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "WAREHOUSE",
+      "version": "0.1.0",
+      "category": "storage",
+      "dimensions_m": [
+        40,
+        30,
+        8
+      ],
+      "capabilities": [
+        "store"
+      ],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "TROLLEY_ESD",
+      "version": "0.1.0",
+      "category": "transporter",
+      "dimensions_m": [
+        1.2,
+        0.8,
+        1.3
+      ],
+      "capabilities": [
+        "manual_push",
+        "esd"
+      ],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "TROLLEY_HEAVY",
+      "version": "0.1.0",
+      "category": "transporter",
+      "dimensions_m": [
+        1.8,
+        1.0,
+        1.5
+      ],
+      "capabilities": [
+        "manual_push",
+        "heavy"
+      ],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "WORKER",
+      "version": "0.1.0",
+      "category": "worker",
+      "dimensions_m": [
+        0.6,
+        0.6,
+        1.75
+      ],
+      "capabilities": [
+        "trolley_handling",
+        "esd_handling"
+      ],
+      "visual_asset": null
+    },
+    {
+      "prefab_id": "CONTAINER",
+      "version": "0.1.0",
+      "category": "container",
+      "dimensions_m": [
+        12,
+        2.4,
+        2.7
+      ],
+      "capabilities": [
+        "shipping"
+      ],
+      "visual_asset": null
+    }
+  ],
+  "entities": [
+    {
+      "entity_id": "PLANT",
+      "name": "مصنع افتراضي للتخطيط",
+      "category": "site",
+      "org_parent_id": null,
+      "spatial_parent_id": null,
+      "prefab_id": null,
+      "prefab_version": null,
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_RAW",
+      "name": "الخامات والاستلام",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -110,
+          -60,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_PLASTIC",
+      "name": "حقن البلاستيك",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -40,
+          -60,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_METAL",
+      "name": "تشكيل المعادن",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          30,
+          -60,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_FOAM",
+      "name": "إنتاج الفوم",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          100,
+          -60,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_ELECTRONICS",
+      "name": "تجميع البوردات وبرمجتها",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -110,
+          20,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_DISPLAY",
+      "name": "تجميع موديول الشاشة",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -40,
+          20,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_ASSEMBLY",
+      "name": "التجميع النهائي والتعبئة",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          40,
+          20,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_FINISHED",
+      "name": "مخزن المنتج التام",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          115,
+          20,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ZONE_SHIPPING",
+      "name": "الشحن",
+      "category": "zone",
+      "org_parent_id": "PLANT",
+      "spatial_parent_id": "PLANT",
+      "prefab_id": "ZONE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          115,
+          75,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "WH_RAW",
+      "name": "مخزن الخامات",
+      "category": "storage",
+      "org_parent_id": "ZONE_RAW",
+      "spatial_parent_id": "ZONE_RAW",
+      "prefab_id": "WAREHOUSE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 500
+      }
+    },
+    {
+      "entity_id": "WH_FG",
+      "name": "مخزن المنتج التام",
+      "category": "storage",
+      "org_parent_id": "ZONE_FINISHED",
+      "spatial_parent_id": "ZONE_FINISHED",
+      "prefab_id": "WAREHOUSE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 500
+      }
+    },
+    {
+      "entity_id": "SHIP_CONTAINER",
+      "name": "حاوية افتراضية",
+      "category": "container",
+      "org_parent_id": "ZONE_SHIPPING",
+      "spatial_parent_id": "ZONE_SHIPPING",
+      "prefab_id": "CONTAINER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 24
+      }
+    },
+    {
+      "entity_id": "TROLLEY_ESD_01",
+      "name": "تروللي بوردات",
+      "category": "transporter",
+      "org_parent_id": "ZONE_RAW",
+      "spatial_parent_id": null,
+      "prefab_id": "TROLLEY_ESD",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -100,
+          -20,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "manual_push",
+        "esd"
+      ]
+    },
+    {
+      "entity_id": "TROLLEY_HEAVY_01",
+      "name": "تروللي أجزاء",
+      "category": "transporter",
+      "org_parent_id": "ZONE_RAW",
+      "spatial_parent_id": null,
+      "prefab_id": "TROLLEY_HEAVY",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -106,
+          -20,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "manual_push",
+        "heavy"
+      ]
+    },
+    {
+      "entity_id": "WORKER_01",
+      "name": "عامل مناولة افتراضي",
+      "category": "worker",
+      "org_parent_id": "ZONE_RAW",
+      "spatial_parent_id": null,
+      "prefab_id": "WORKER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -110,
+          -20,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "trolley_handling",
+        "esd_handling"
+      ]
+    },
+    {
+      "entity_id": "LINE_PLASTIC",
+      "name": "خط PLASTIC",
+      "category": "line",
+      "org_parent_id": "ZONE_PLASTIC",
+      "spatial_parent_id": "ZONE_PLASTIC",
+      "prefab_id": "LINE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "LINE_METAL",
+      "name": "خط METAL",
+      "category": "line",
+      "org_parent_id": "ZONE_METAL",
+      "spatial_parent_id": "ZONE_METAL",
+      "prefab_id": "LINE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "LINE_FOAM",
+      "name": "خط FOAM",
+      "category": "line",
+      "org_parent_id": "ZONE_FOAM",
+      "spatial_parent_id": "ZONE_FOAM",
+      "prefab_id": "LINE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "LINE_ELECTRONICS",
+      "name": "خط ELECTRONICS",
+      "category": "line",
+      "org_parent_id": "ZONE_ELECTRONICS",
+      "spatial_parent_id": "ZONE_ELECTRONICS",
+      "prefab_id": "LINE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "LINE_DISPLAY",
+      "name": "خط DISPLAY",
+      "category": "line",
+      "org_parent_id": "ZONE_DISPLAY",
+      "spatial_parent_id": "ZONE_DISPLAY",
+      "prefab_id": "LINE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "LINE_ASSEMBLY",
+      "name": "خط ASSEMBLY",
+      "category": "line",
+      "org_parent_id": "ZONE_ASSEMBLY",
+      "spatial_parent_id": "ZONE_ASSEMBLY",
+      "prefab_id": "LINE",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": []
+    },
+    {
+      "entity_id": "ST_PLASTIC",
+      "name": "محطة PLASTIC",
+      "category": "station",
+      "org_parent_id": "LINE_PLASTIC",
+      "spatial_parent_id": "LINE_PLASTIC",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_PLASTIC_IN",
+      "name": "استلام PLASTIC",
+      "category": "storage",
+      "org_parent_id": "LINE_PLASTIC",
+      "spatial_parent_id": "LINE_PLASTIC",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -3,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_PLASTIC_OUT",
+      "name": "تسليم PLASTIC",
+      "category": "storage",
+      "org_parent_id": "LINE_PLASTIC",
+      "spatial_parent_id": "LINE_PLASTIC",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          3,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_METAL",
+      "name": "محطة METAL",
+      "category": "station",
+      "org_parent_id": "LINE_METAL",
+      "spatial_parent_id": "LINE_METAL",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_METAL_IN",
+      "name": "استلام METAL",
+      "category": "storage",
+      "org_parent_id": "LINE_METAL",
+      "spatial_parent_id": "LINE_METAL",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -3,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_METAL_OUT",
+      "name": "تسليم METAL",
+      "category": "storage",
+      "org_parent_id": "LINE_METAL",
+      "spatial_parent_id": "LINE_METAL",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          3,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_FOAM",
+      "name": "محطة FOAM",
+      "category": "station",
+      "org_parent_id": "LINE_FOAM",
+      "spatial_parent_id": "LINE_FOAM",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_FOAM_IN",
+      "name": "استلام FOAM",
+      "category": "storage",
+      "org_parent_id": "LINE_FOAM",
+      "spatial_parent_id": "LINE_FOAM",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -3,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_FOAM_OUT",
+      "name": "تسليم FOAM",
+      "category": "storage",
+      "org_parent_id": "LINE_FOAM",
+      "spatial_parent_id": "LINE_FOAM",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          3,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_SMT",
+      "name": "محطة SMT",
+      "category": "station",
+      "org_parent_id": "LINE_ELECTRONICS",
+      "spatial_parent_id": "LINE_ELECTRONICS",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -9,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_SMT_IN",
+      "name": "استلام SMT",
+      "category": "storage",
+      "org_parent_id": "LINE_ELECTRONICS",
+      "spatial_parent_id": "LINE_ELECTRONICS",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -12,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_SMT_OUT",
+      "name": "تسليم SMT",
+      "category": "storage",
+      "org_parent_id": "LINE_ELECTRONICS",
+      "spatial_parent_id": "LINE_ELECTRONICS",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -6,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_FLASH",
+      "name": "محطة FLASH",
+      "category": "station",
+      "org_parent_id": "LINE_ELECTRONICS",
+      "spatial_parent_id": "LINE_ELECTRONICS",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          9,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_FLASH_IN",
+      "name": "استلام FLASH",
+      "category": "storage",
+      "org_parent_id": "LINE_ELECTRONICS",
+      "spatial_parent_id": "LINE_ELECTRONICS",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          6,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_FLASH_OUT",
+      "name": "تسليم FLASH",
+      "category": "storage",
+      "org_parent_id": "LINE_ELECTRONICS",
+      "spatial_parent_id": "LINE_ELECTRONICS",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          12,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_DISPLAY",
+      "name": "محطة DISPLAY",
+      "category": "station",
+      "org_parent_id": "LINE_DISPLAY",
+      "spatial_parent_id": "LINE_DISPLAY",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_DISPLAY_IN",
+      "name": "استلام DISPLAY",
+      "category": "storage",
+      "org_parent_id": "LINE_DISPLAY",
+      "spatial_parent_id": "LINE_DISPLAY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -3,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_DISPLAY_OUT",
+      "name": "تسليم DISPLAY",
+      "category": "storage",
+      "org_parent_id": "LINE_DISPLAY",
+      "spatial_parent_id": "LINE_DISPLAY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          3,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_ASSEMBLE",
+      "name": "محطة ASSEMBLE",
+      "category": "station",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -12,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_ASSEMBLE_IN",
+      "name": "استلام ASSEMBLE",
+      "category": "storage",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -15,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_ASSEMBLE_OUT",
+      "name": "تسليم ASSEMBLE",
+      "category": "storage",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -9,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_TEST",
+      "name": "محطة TEST",
+      "category": "station",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          0,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_TEST_IN",
+      "name": "استلام TEST",
+      "category": "storage",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          -3,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_TEST_OUT",
+      "name": "تسليم TEST",
+      "category": "storage",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          3,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "ST_PACK",
+      "name": "محطة PACK",
+      "category": "station",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "STATION",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          12,
+          0,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [
+        "process"
+      ]
+    },
+    {
+      "entity_id": "BUF_PACK_IN",
+      "name": "استلام PACK",
+      "category": "storage",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          9,
+          -7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    },
+    {
+      "entity_id": "BUF_PACK_OUT",
+      "name": "تسليم PACK",
+      "category": "storage",
+      "org_parent_id": "LINE_ASSEMBLY",
+      "spatial_parent_id": "LINE_ASSEMBLY",
+      "prefab_id": "BUFFER",
+      "prefab_version": "0.1.0",
+      "transform": {
+        "position_m": [
+          15,
+          7,
+          0
+        ],
+        "yaw_deg": 0
+      },
+      "capabilities": [],
+      "storage_capacity": {
+        "handling_unit_slots": 12
+      }
+    }
+  ],
+  "ports": [
+    {
+      "port_id": "P_RAW_OUT",
+      "owner_entity_id": "WH_RAW",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        16,
+        0
+      ],
+      "navigation_node_id": "N_P_RAW_OUT",
+      "accepted_item_ids": [
+        "RESIN",
+        "STEEL_BLANK",
+        "BARE_PCB",
+        "ELECTRONIC_KIT",
+        "OPEN_CELL",
+        "BACKLIGHT_KIT",
+        "OPTICAL_KIT",
+        "EPS_BEADS",
+        "CARTON",
+        "ACCESSORY_KIT"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_FG_IN",
+      "owner_entity_id": "WH_FG",
+      "role": "material_in",
+      "local_position_m": [
+        -21,
+        0,
+        0
+      ],
+      "navigation_node_id": "N_P_FG_IN",
+      "accepted_item_ids": [
+        "TV_PACKED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_FG_OUT",
+      "owner_entity_id": "WH_FG",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        16,
+        0
+      ],
+      "navigation_node_id": "N_P_FG_OUT",
+      "accepted_item_ids": [
+        "TV_PACKED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_SHIP_IN",
+      "owner_entity_id": "SHIP_CONTAINER",
+      "role": "material_in",
+      "local_position_m": [
+        -6.5,
+        0,
+        0
+      ],
+      "navigation_node_id": "N_P_SHIP_IN",
+      "accepted_item_ids": [
+        "TV_PACKED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_PLASTIC_IN",
+      "owner_entity_id": "BUF_PLASTIC_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_PLASTIC_IN",
+      "accepted_item_ids": [
+        "RESIN"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_PLASTIC_OUT",
+      "owner_entity_id": "BUF_PLASTIC_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_PLASTIC_OUT",
+      "accepted_item_ids": [
+        "PLASTIC_SET"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_METAL_IN",
+      "owner_entity_id": "BUF_METAL_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_METAL_IN",
+      "accepted_item_ids": [
+        "STEEL_BLANK"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_METAL_OUT",
+      "owner_entity_id": "BUF_METAL_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_METAL_OUT",
+      "accepted_item_ids": [
+        "METAL_BACK"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_FOAM_IN",
+      "owner_entity_id": "BUF_FOAM_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_FOAM_IN",
+      "accepted_item_ids": [
+        "EPS_BEADS"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_FOAM_OUT",
+      "owner_entity_id": "BUF_FOAM_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_FOAM_OUT",
+      "accepted_item_ids": [
+        "FOAM_SET"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_SMT_IN",
+      "owner_entity_id": "BUF_SMT_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_SMT_IN",
+      "accepted_item_ids": [
+        "BARE_PCB",
+        "ELECTRONIC_KIT"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_SMT_OUT",
+      "owner_entity_id": "BUF_SMT_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_SMT_OUT",
+      "accepted_item_ids": [
+        "PCB_ASSEMBLED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_FLASH_IN",
+      "owner_entity_id": "BUF_FLASH_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_FLASH_IN",
+      "accepted_item_ids": [
+        "PCB_ASSEMBLED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_FLASH_OUT",
+      "owner_entity_id": "BUF_FLASH_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_FLASH_OUT",
+      "accepted_item_ids": [
+        "PCB_PROGRAMMED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_DISPLAY_IN",
+      "owner_entity_id": "BUF_DISPLAY_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_DISPLAY_IN",
+      "accepted_item_ids": [
+        "OPEN_CELL",
+        "BACKLIGHT_KIT",
+        "OPTICAL_KIT"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_DISPLAY_OUT",
+      "owner_entity_id": "BUF_DISPLAY_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_DISPLAY_OUT",
+      "accepted_item_ids": [
+        "DISPLAY_MODULE"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_ASSEMBLE_IN",
+      "owner_entity_id": "BUF_ASSEMBLE_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_ASSEMBLE_IN",
+      "accepted_item_ids": [
+        "DISPLAY_MODULE",
+        "METAL_BACK",
+        "PLASTIC_SET",
+        "PCB_PROGRAMMED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_ASSEMBLE_OUT",
+      "owner_entity_id": "BUF_ASSEMBLE_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_ASSEMBLE_OUT",
+      "accepted_item_ids": [
+        "TV_ASSEMBLED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_TEST_IN",
+      "owner_entity_id": "BUF_TEST_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_TEST_IN",
+      "accepted_item_ids": [
+        "TV_ASSEMBLED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_TEST_OUT",
+      "owner_entity_id": "BUF_TEST_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_TEST_OUT",
+      "accepted_item_ids": [
+        "TV_PASSED"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_PACK_IN",
+      "owner_entity_id": "BUF_PACK_IN",
+      "role": "material_in",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_PACK_IN",
+      "accepted_item_ids": [
+        "TV_PASSED",
+        "FOAM_SET",
+        "CARTON",
+        "ACCESSORY_KIT"
+      ],
+      "capacity": 1
+    },
+    {
+      "port_id": "P_PACK_OUT",
+      "owner_entity_id": "BUF_PACK_OUT",
+      "role": "material_out",
+      "local_position_m": [
+        0,
+        -2,
+        0
+      ],
+      "navigation_node_id": "N_P_PACK_OUT",
+      "accepted_item_ids": [
+        "TV_PACKED"
+      ],
+      "capacity": 1
+    }
+  ],
+  "processes": [
+    {
+      "process_id": "PROC_PLASTIC",
+      "station_entity_id": "ST_PLASTIC",
+      "input_location_id": "BUF_PLASTIC_IN",
+      "output_location_id": "BUF_PLASTIC_OUT",
+      "inputs": [
+        {
+          "item_id": "RESIN",
+          "quantity": 2.4,
+          "unit": "kg"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "PLASTIC_SET",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 35,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_METAL",
+      "station_entity_id": "ST_METAL",
+      "input_location_id": "BUF_METAL_IN",
+      "output_location_id": "BUF_METAL_OUT",
+      "inputs": [
+        {
+          "item_id": "STEEL_BLANK",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "METAL_BACK",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 12,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_FOAM",
+      "station_entity_id": "ST_FOAM",
+      "input_location_id": "BUF_FOAM_IN",
+      "output_location_id": "BUF_FOAM_OUT",
+      "inputs": [
+        {
+          "item_id": "EPS_BEADS",
+          "quantity": 0.35,
+          "unit": "kg"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "FOAM_SET",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 55,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_SMT",
+      "station_entity_id": "ST_SMT",
+      "input_location_id": "BUF_SMT_IN",
+      "output_location_id": "BUF_SMT_OUT",
+      "inputs": [
+        {
+          "item_id": "BARE_PCB",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "ELECTRONIC_KIT",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "PCB_ASSEMBLED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 20,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_FLASH",
+      "station_entity_id": "ST_FLASH",
+      "input_location_id": "BUF_FLASH_IN",
+      "output_location_id": "BUF_FLASH_OUT",
+      "inputs": [
+        {
+          "item_id": "PCB_ASSEMBLED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "PCB_PROGRAMMED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 14,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_DISPLAY",
+      "station_entity_id": "ST_DISPLAY",
+      "input_location_id": "BUF_DISPLAY_IN",
+      "output_location_id": "BUF_DISPLAY_OUT",
+      "inputs": [
+        {
+          "item_id": "OPEN_CELL",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "BACKLIGHT_KIT",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "OPTICAL_KIT",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "DISPLAY_MODULE",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 30,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_ASSEMBLE",
+      "station_entity_id": "ST_ASSEMBLE",
+      "input_location_id": "BUF_ASSEMBLE_IN",
+      "output_location_id": "BUF_ASSEMBLE_OUT",
+      "inputs": [
+        {
+          "item_id": "DISPLAY_MODULE",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "METAL_BACK",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "PLASTIC_SET",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "PCB_PROGRAMMED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "TV_ASSEMBLED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 25,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_TEST",
+      "station_entity_id": "ST_TEST",
+      "input_location_id": "BUF_TEST_IN",
+      "output_location_id": "BUF_TEST_OUT",
+      "inputs": [
+        {
+          "item_id": "TV_ASSEMBLED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "TV_PASSED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 18,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    },
+    {
+      "process_id": "PROC_PACK",
+      "station_entity_id": "ST_PACK",
+      "input_location_id": "BUF_PACK_IN",
+      "output_location_id": "BUF_PACK_OUT",
+      "inputs": [
+        {
+          "item_id": "TV_PASSED",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "FOAM_SET",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "CARTON",
+          "quantity": 1,
+          "unit": "ea"
+        },
+        {
+          "item_id": "ACCESSORY_KIT",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "outputs": [
+        {
+          "item_id": "TV_PACKED",
+          "quantity": 1,
+          "unit": "ea"
+        }
+      ],
+      "duration_s": 22,
+      "parallel_slots": 1,
+      "quality_policy": "illustrative_all_pass",
+      "failure_policy": "not_modeled_in_this_sample"
+    }
+  ],
+  "material_flows": [
+    {
+      "flow_id": "FLOW_RESIN_PLASTIC",
+      "item_id": "RESIN",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_PLASTIC_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_STEEL_BLANK_METAL",
+      "item_id": "STEEL_BLANK",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_METAL_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_EPS_BEADS_FOAM",
+      "item_id": "EPS_BEADS",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_FOAM_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_BARE_PCB_SMT",
+      "item_id": "BARE_PCB",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_SMT_IN",
+      "handling_policy_id": "HANDLE_ESD"
+    },
+    {
+      "flow_id": "FLOW_ELECTRONIC_KIT_SMT",
+      "item_id": "ELECTRONIC_KIT",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_SMT_IN",
+      "handling_policy_id": "HANDLE_ESD"
+    },
+    {
+      "flow_id": "FLOW_PCB_ASSEMBLED_FLASH",
+      "item_id": "PCB_ASSEMBLED",
+      "from_port_id": "P_SMT_OUT",
+      "to_port_id": "P_FLASH_IN",
+      "handling_policy_id": "HANDLE_ESD"
+    },
+    {
+      "flow_id": "FLOW_OPEN_CELL_DISPLAY",
+      "item_id": "OPEN_CELL",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_DISPLAY_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_BACKLIGHT_KIT_DISPLAY",
+      "item_id": "BACKLIGHT_KIT",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_DISPLAY_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_OPTICAL_KIT_DISPLAY",
+      "item_id": "OPTICAL_KIT",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_DISPLAY_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_DISPLAY_MODULE_ASSEMBLE",
+      "item_id": "DISPLAY_MODULE",
+      "from_port_id": "P_DISPLAY_OUT",
+      "to_port_id": "P_ASSEMBLE_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_METAL_BACK_ASSEMBLE",
+      "item_id": "METAL_BACK",
+      "from_port_id": "P_METAL_OUT",
+      "to_port_id": "P_ASSEMBLE_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_PLASTIC_SET_ASSEMBLE",
+      "item_id": "PLASTIC_SET",
+      "from_port_id": "P_PLASTIC_OUT",
+      "to_port_id": "P_ASSEMBLE_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_PCB_PROGRAMMED_ASSEMBLE",
+      "item_id": "PCB_PROGRAMMED",
+      "from_port_id": "P_FLASH_OUT",
+      "to_port_id": "P_ASSEMBLE_IN",
+      "handling_policy_id": "HANDLE_ESD"
+    },
+    {
+      "flow_id": "FLOW_TV_ASSEMBLED_TEST",
+      "item_id": "TV_ASSEMBLED",
+      "from_port_id": "P_ASSEMBLE_OUT",
+      "to_port_id": "P_TEST_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_TV_PASSED_PACK",
+      "item_id": "TV_PASSED",
+      "from_port_id": "P_TEST_OUT",
+      "to_port_id": "P_PACK_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_FOAM_SET_PACK",
+      "item_id": "FOAM_SET",
+      "from_port_id": "P_FOAM_OUT",
+      "to_port_id": "P_PACK_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_CARTON_PACK",
+      "item_id": "CARTON",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_PACK_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_ACCESSORY_KIT_PACK",
+      "item_id": "ACCESSORY_KIT",
+      "from_port_id": "P_RAW_OUT",
+      "to_port_id": "P_PACK_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_PACK_FG",
+      "item_id": "TV_PACKED",
+      "from_port_id": "P_PACK_OUT",
+      "to_port_id": "P_FG_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    },
+    {
+      "flow_id": "FLOW_FG_SHIP",
+      "item_id": "TV_PACKED",
+      "from_port_id": "P_FG_OUT",
+      "to_port_id": "P_SHIP_IN",
+      "handling_policy_id": "HANDLE_GENERAL"
+    }
+  ],
+  "navigation": {
+    "nodes": [
+      {
+        "node_id": "N_SPINE_0",
+        "position_m": [
+          -110,
+          -20,
+          0
+        ]
+      },
+      {
+        "node_id": "N_SPINE_1",
+        "position_m": [
+          -40,
+          -20,
+          0
+        ]
+      },
+      {
+        "node_id": "N_SPINE_2",
+        "position_m": [
+          30,
+          -20,
+          0
+        ]
+      },
+      {
+        "node_id": "N_SPINE_3",
+        "position_m": [
+          100,
+          -20,
+          0
+        ]
+      },
+      {
+        "node_id": "N_SPINE_4",
+        "position_m": [
+          115,
+          -20,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_RAW_OUT",
+        "position_m": [
+          -110,
+          -44,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_FG_IN",
+        "position_m": [
+          94,
+          20,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_FG_OUT",
+        "position_m": [
+          115,
+          36,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_SHIP_IN",
+        "position_m": [
+          108.5,
+          75,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_PLASTIC_IN",
+        "position_m": [
+          -43,
+          -69,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_PLASTIC_OUT",
+        "position_m": [
+          -37,
+          -55,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_METAL_IN",
+        "position_m": [
+          27,
+          -69,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_METAL_OUT",
+        "position_m": [
+          33,
+          -55,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_FOAM_IN",
+        "position_m": [
+          97,
+          -69,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_FOAM_OUT",
+        "position_m": [
+          103,
+          -55,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_SMT_IN",
+        "position_m": [
+          -122,
+          11,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_SMT_OUT",
+        "position_m": [
+          -116,
+          25,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_FLASH_IN",
+        "position_m": [
+          -104,
+          11,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_FLASH_OUT",
+        "position_m": [
+          -98,
+          25,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_DISPLAY_IN",
+        "position_m": [
+          -43,
+          11,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_DISPLAY_OUT",
+        "position_m": [
+          -37,
+          25,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_ASSEMBLE_IN",
+        "position_m": [
+          25,
+          11,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_ASSEMBLE_OUT",
+        "position_m": [
+          31,
+          25,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_TEST_IN",
+        "position_m": [
+          37,
+          11,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_TEST_OUT",
+        "position_m": [
+          43,
+          25,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_PACK_IN",
+        "position_m": [
+          49,
+          11,
+          0
+        ]
+      },
+      {
+        "node_id": "N_P_PACK_OUT",
+        "position_m": [
+          55,
+          25,
+          0
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "edge_id": "E_SPINE_1",
+        "from_node": "N_SPINE_0",
+        "to_node": "N_SPINE_1",
+        "bidirectional": true,
+        "width_m": 3,
+        "speed_limit_mps": 1.2,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_SPINE_2",
+        "from_node": "N_SPINE_1",
+        "to_node": "N_SPINE_2",
+        "bidirectional": true,
+        "width_m": 3,
+        "speed_limit_mps": 1.2,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_SPINE_3",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_SPINE_3",
+        "bidirectional": true,
+        "width_m": 3,
+        "speed_limit_mps": 1.2,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_SPINE_4",
+        "from_node": "N_SPINE_3",
+        "to_node": "N_SPINE_4",
+        "bidirectional": true,
+        "width_m": 3,
+        "speed_limit_mps": 1.2,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_RAW_OUT",
+        "from_node": "N_SPINE_0",
+        "to_node": "N_P_RAW_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_FG_IN",
+        "from_node": "N_SPINE_3",
+        "to_node": "N_P_FG_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_FG_OUT",
+        "from_node": "N_SPINE_4",
+        "to_node": "N_P_FG_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_SHIP_IN",
+        "from_node": "N_SPINE_4",
+        "to_node": "N_P_SHIP_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_PLASTIC_IN",
+        "from_node": "N_SPINE_1",
+        "to_node": "N_P_PLASTIC_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_PLASTIC_OUT",
+        "from_node": "N_SPINE_1",
+        "to_node": "N_P_PLASTIC_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_METAL_IN",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_METAL_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_METAL_OUT",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_METAL_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_FOAM_IN",
+        "from_node": "N_SPINE_3",
+        "to_node": "N_P_FOAM_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_FOAM_OUT",
+        "from_node": "N_SPINE_3",
+        "to_node": "N_P_FOAM_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_SMT_IN",
+        "from_node": "N_SPINE_0",
+        "to_node": "N_P_SMT_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_SMT_OUT",
+        "from_node": "N_SPINE_0",
+        "to_node": "N_P_SMT_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_FLASH_IN",
+        "from_node": "N_SPINE_0",
+        "to_node": "N_P_FLASH_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_FLASH_OUT",
+        "from_node": "N_SPINE_0",
+        "to_node": "N_P_FLASH_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_DISPLAY_IN",
+        "from_node": "N_SPINE_1",
+        "to_node": "N_P_DISPLAY_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_DISPLAY_OUT",
+        "from_node": "N_SPINE_1",
+        "to_node": "N_P_DISPLAY_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_ASSEMBLE_IN",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_ASSEMBLE_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_ASSEMBLE_OUT",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_ASSEMBLE_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_TEST_IN",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_TEST_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_TEST_OUT",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_TEST_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_PACK_IN",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_PACK_IN",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      },
+      {
+        "edge_id": "E_P_PACK_OUT",
+        "from_node": "N_SPINE_2",
+        "to_node": "N_P_PACK_OUT",
+        "bidirectional": true,
+        "width_m": 2.5,
+        "speed_limit_mps": 1.0,
+        "allowed_modes": [
+          "pedestrian",
+          "manual_trolley"
+        ]
+      }
+    ]
+  },
+  "handling_policies": [
+    {
+      "policy_id": "HANDLE_ESD",
+      "transporter_entity_ids": [
+        "TROLLEY_ESD_01"
+      ],
+      "worker_entity_ids": [
+        "WORKER_01"
+      ],
+      "required_capabilities": [
+        "esd"
+      ],
+      "max_handling_units_per_trip": 1
+    },
+    {
+      "policy_id": "HANDLE_GENERAL",
+      "transporter_entity_ids": [
+        "TROLLEY_HEAVY_01"
+      ],
+      "worker_entity_ids": [
+        "WORKER_01"
+      ],
+      "required_capabilities": [
+        "heavy"
+      ],
+      "max_handling_units_per_trip": 1
+    }
+  ],
+  "replenishment_policies": [
+    {
+      "policy_id": "REPLENISH_ASSEMBLY_PCB",
+      "item_id": "PCB_PROGRAMMED",
+      "destination_entity_id": "BUF_ASSEMBLE_IN",
+      "source_port_id": "P_FLASH_OUT",
+      "destination_port_id": "P_ASSEMBLE_IN",
+      "reorder_point": 5,
+      "target_level": 15,
+      "unit": "ea",
+      "count_confirmed_inbound": true
+    }
+  ],
+  "initial_conditions": {
+    "random_seed": 20261112,
+    "handling_units": [
+      {
+        "handling_unit_id": "HU_RAW_01",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_01",
+        "contents": [
+          {
+            "item_id": "RESIN",
+            "quantity": 240,
+            "unit": "kg"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_02",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_02",
+        "contents": [
+          {
+            "item_id": "STEEL_BLANK",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_03",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_03",
+        "contents": [
+          {
+            "item_id": "BARE_PCB",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_04",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_04",
+        "contents": [
+          {
+            "item_id": "ELECTRONIC_KIT",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_05",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_05",
+        "contents": [
+          {
+            "item_id": "OPEN_CELL",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_06",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_06",
+        "contents": [
+          {
+            "item_id": "BACKLIGHT_KIT",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_07",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_07",
+        "contents": [
+          {
+            "item_id": "OPTICAL_KIT",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_08",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_08",
+        "contents": [
+          {
+            "item_id": "EPS_BEADS",
+            "quantity": 35,
+            "unit": "kg"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_09",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_09",
+        "contents": [
+          {
+            "item_id": "CARTON",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      },
+      {
+        "handling_unit_id": "HU_RAW_10",
+        "location_entity_id": "WH_RAW",
+        "lot_id": "LOT_DEMO_10",
+        "contents": [
+          {
+            "item_id": "ACCESSORY_KIT",
+            "quantity": 100,
+            "unit": "ea"
+          }
+        ]
+      }
+    ],
+    "active_missions": []
+  },
+  "shipping": {
+    "container_entity_id": "SHIP_CONTAINER",
+    "internal_dimensions_m": [
+      11.8,
+      2.2,
+      2.5
+    ],
+    "max_payload_kg": 10000,
+    "packing_plan_status": "not_calculated"
+  }
+}
