@@ -1,0 +1,130 @@
+{
+ "format": "mf-scene",
+ "version": 1,
+ "project": "inj2",
+ "layout": "inj2",
+ "title": "Sample - INJ 2 elevator",
+ "stops": [
+  {
+   "id": "start",
+   "name": "Start",
+   "floor": "1F",
+   "x": 175.35,
+   "y": 142.05,
+   "symbol": "result",
+   "color": "#7030A0"
+  },
+  {
+   "id": "elev-5",
+   "name": "Elev 5",
+   "floor": "1F",
+   "x": 156.6,
+   "y": 160.5,
+   "symbol": "lift",
+   "color": "#ffc000"
+  },
+  {
+   "id": "elev-5-2f",
+   "name": "Elev 5 (2F)",
+   "floor": "2F",
+   "x": 361.8,
+   "y": 160.5,
+   "symbol": "lift",
+   "color": "#ffc000"
+  },
+  {
+   "id": "wh-2f",
+   "name": "W/H 2F",
+   "floor": "2F",
+   "x": 357.75,
+   "y": 179.25,
+   "symbol": "area",
+   "color": "#156082"
+  }
+ ],
+ "devices": [],
+ "objects": [],
+ "layoutEdits": [
+  {
+   "target": "wall:77",
+   "move": [
+    0,
+    -0.6
+   ],
+   "note": "the doorway the owner uses (V7.1)"
+  }
+ ],
+ "paths": [
+  {
+   "id": "up",
+   "name": "1 · Start to Elev 5 to the 2nd floor",
+   "color": "#ffc000",
+   "steps": [
+    {
+     "id": "s1",
+     "stop": "start",
+     "title": "Start",
+     "route": {
+      "type": "stay"
+     }
+    },
+    {
+     "id": "s2",
+     "stop": "elev-5",
+     "title": "To Elev 5",
+     "text": "Through the doorway (auto would take a 300 m detour: the router keeps wider margins at corners).",
+     "route": {
+      "type": "points",
+      "points": [
+       [
+        175.35,
+        142.05
+       ],
+       [
+        172.5,
+        142.05
+       ],
+       [
+        172.5,
+        148.1
+       ],
+       [
+        158.55,
+        148.1
+       ],
+       [
+        158.55,
+        160.5
+       ],
+       [
+        156.6,
+        160.5
+       ]
+      ]
+     }
+    },
+    {
+     "id": "s3",
+     "stop": "elev-5-2f",
+     "title": "Elev 5 up",
+     "text": "Elevator 5 carries the trolley up.",
+     "route": {
+      "type": "elevator",
+      "elevator": "Elev 5"
+     }
+    },
+    {
+     "id": "s4",
+     "stop": "wh-2f",
+     "title": "To W/H 2F",
+     "route": {
+      "type": "auto"
+     }
+    }
+   ]
+  }
+ ],
+ "director": {},
+ "viewpoints": [],
+ "notes": "Example for docs/RECIPES.md"
+}

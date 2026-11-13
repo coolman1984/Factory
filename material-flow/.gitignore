@@ -1,0 +1,13 @@
+private/
+dist/
+# company drawings and decks stay local (owner rule: no company data in git)
+*.pptx
+*.dwg
+
+
+.mf-history/
+
+# platform: generated results of the demo site
+docs/examples/site-demo/results/
+docs/examples/site-demo/experiments/results/
+docs/examples/site-demo/CHANGES.jsonl

@@ -1,0 +1,16 @@
+{
+ "format": "mf-model", "version": 1, "site": "site-demo", "area": "parts",
+ "scenes": ["../sample.scene.json"],
+ "flows": [
+  { "id": "parts-to-line", "material": "front-cover", "carrier": "trolley-std", "mover": "op-push",
+    "route": "sample-1", "lot": { "units": 40 }, "trigger": "demand" },
+  { "id": "parts-kanban", "material": "back-cover", "carrier": "trolley-std", "mover": "agv-tow",
+    "route": "sample-1", "lot": { "units": 40 }, "trigger": { "kanban": { "bins": 4 } } }
+ ],
+ "resources": [
+  { "id": "parts-ops", "kind": "op-push", "count": 2, "shift": "A+B" },
+  { "id": "parts-agv", "kind": "agv-tow", "count": 1, "breakdown": { "mtbf": 28800, "mttr": { "triangular": [300, 600, 1800] } } }
+ ],
+ "stores": [ { "id": "buffer-c", "stop": "stop-c", "capacity": { "carriers": 6 }, "start": 2 } ],
+ "rules": { "dispatch": "fifo", "elevator": "fifo" }
+}

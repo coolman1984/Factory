@@ -1,0 +1,5 @@
+{
+ "format": "mf-scenario", "version": 1, "base": "models/parts.model.json", "plan": "plans/week-1.plan.json",
+ "ops": [],
+ "run": { "days": 5, "warmup": 3600, "replications": 10, "seed": 1 }
+}

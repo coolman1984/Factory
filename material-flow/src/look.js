@@ -1,0 +1,218 @@
+/* Offline, seeded surface library. Small shared maps; materials may be cloned per plate.
+   Finish values and the reflection studio follow Digital Factory's DFMaterials / lightformers. */
+"use strict";
+(function () {
+  const libraries = new WeakMap();
+  // The one floor program key. Bump the suffix whenever the floor GLSL changes: v2 = floor-light multiply after colour space,
+  // refl-v1 = planar reflection blended after it (Round 5). Quality, look and floor height never change this key.
+  const FLOOR_KEY = "mf-floor-light-v2+mf-refl-v1";
+  function library(T) {
+    if (libraries.has(T)) return libraries.get(T);
+    let seed = 20261106;
+    const random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+    const textures = [], presets = {};
+    function maps(kind, size) {
+      const albedo = new Uint8Array(size * size * 4), rough = albedo.slice(), normal = albedo.slice(), heights = new Float32Array(size * size);
+      const tau = Math.PI * 2;
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        const i = y * size + x, n = random(), u = x / size, v = y / size;
+        const cloud = Math.sin(u * tau + Math.cos(v * tau)) * Math.sin(v * tau * 2 + .7);
+        let a = 245, r = 180, h = n * .06;
+        if (kind === "concrete") {
+          // Sealed slab: broad stains, fine aggregate, and narrow recessed 6 m joints.
+          const joint = x % (size / 2) < 1 || y % (size / 2) < 1;
+          const stain = Math.max(0, cloud - .25);
+          // Round 4: a bright, clean, sealed grey slab: lighter albedo, tighter and lower roughness so the
+          // environment lights sit in it as soft, broad reflections (never a mirror: roughness stays well above .3).
+          a = 238 + cloud * 5 + n * 6 - stain * 12 - (joint ? 26 : 0);
+          r = 118 + n * 10 + stain * 22 + (joint ? 35 : 0); h = n * .06 - (joint ? .55 : 0);
+        } else if (kind === "paint") { a = 248 + n * 5; r = 143 + n * 12; h = n * .035; }
+        else if (kind === "galvanised") {
+          const spangle = Math.sin(Math.floor(u * 22) * 9 + Math.floor(v * 22) * 17);
+          a = 222 + spangle * 15 + n * 7; r = 100 + spangle * 16 + n * 12; h = n * .02;
+        } else if (kind === "cardboard") { a = 238 + n * 12; r = 229 + n * 12; h = n * .12 + Math.sin(x * tau / 8) * .02; }
+        else if (kind === "plastic") { a = 248 + n * 5; r = 166 + n * 12; h = n * .025; }
+        else if (kind === "wall") { const seam = x % (size / 4) === 0; a = seam ? 210 : 248 + n * 4; r = 177 + n * 8; h = seam ? -.2 : n * .02; }
+        heights[i] = h;
+        for (let c = 0; c < 3; c++) { albedo[i * 4 + c] = a; rough[i * 4 + c] = r; }
+        albedo[i * 4 + 3] = rough[i * 4 + 3] = 255;
+      }
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        const i = (y * size + x) * 4, dx = heights[y * size + (x + 1) % size] - heights[y * size + (x + size - 1) % size];
+        const dy = heights[((y + 1) % size) * size + x] - heights[((y + size - 1) % size) * size + x], len = Math.hypot(dx, dy, 1);
+        normal[i] = 128 - dx / len * 127; normal[i + 1] = 128 - dy / len * 127; normal[i + 2] = 128 + 127 / len; normal[i + 3] = 255;
+      }
+      function texture(bytes, color) {
+        const t = new T.DataTexture(bytes, size, size, T.RGBAFormat);
+        t.colorSpace = color ? T.SRGBColorSpace : T.NoColorSpace;
+        t.wrapS = t.wrapT = T.RepeatWrapping; t.magFilter = T.LinearFilter; t.minFilter = T.LinearMipmapLinearFilter; t.generateMipmaps = true;
+        t.anisotropy = 4; t.needsUpdate = true; textures.push(t); return t;
+      }
+      return { map: texture(albedo, true), roughnessMap: texture(rough, false), normalMap: texture(normal, false) };
+    }
+    // effective roughness = factor x map: concrete ~ .72 x (.46-.59) = .33-.42 (soft sheen), steel and walls stay satin
+    const finish = { concrete: [.72, 0, 256], paint: [.95, .08, 128], galvanised: [.85, .95, 128], cardboard: [1, 0, 128], plastic: [.94, 0, 128], wall: [.95, .02, 128] };
+    for (const [name, [roughness, metalness, size]] of Object.entries(finish)) {
+      presets[name] = new T.MeshStandardMaterial({ ...maps(name, size), roughness, metalness, normalScale: new T.Vector2(name === "concrete" ? .3 : .12, name === "concrete" ? .3 : .12) });
+      presets[name].name = "MF " + name;
+    }
+    const white = new T.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, T.RGBAFormat); white.needsUpdate = true; textures.push(white);
+    const black = new T.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1, T.RGBAFormat); black.needsUpdate = true; textures.push(black);
+    // Floor reflection: ONE set of uniform objects shared by every floor material (and by player.js, which fills them).
+    // map = reflection render target texture (black until the High-quality target exists), matrix = world position -> texture
+    // coordinates of the reflected camera, params = (strength, Fresnel F0, normal-map distortion, blur radius in texels), texel = 1 / target size.
+    // plane = world Y of the plane the map/matrix were last rendered for (player.js publishes it together with them after a successful
+    // render). The floor shader masks every fragment whose world Y is not on that plane, so a receiver at another height never samples
+    // a reflection captured for a different plane. -1e9 = nothing published (or invalidated): every floor is masked out.
+    const reflect = { map: { value: black }, matrix: { value: new T.Matrix4() }, params: { value: new T.Vector4(1, .16, .6, 1.4) }, texel: { value: new T.Vector2(1 / 480, 1 / 272) }, plane: { value: -1e9 } };
+    const result = { presets, textures, white, black, reflect, contacts: new WeakMap() }; libraries.set(T, result); return result;
+  }
+  function material(T, name, options = {}) {
+    const preset = library(T).presets[name];
+    if (!preset) throw new Error("Unknown Material Flow finish: " + name);
+    return Object.assign(preset.clone(), options);
+  }
+  function replicaMaterials(T) {
+    return {
+      paint: material(T, "paint"), metal: material(T, "galvanised"), matte: material(T, "cardboard"),
+      glass: new T.MeshStandardMaterial({ transparent: true, opacity: .2, roughness: .08, metalness: 0, depthWrite: false }),
+      glow: new T.MeshBasicMaterial({ toneMapped: false })
+    };
+  }
+  function floor(T, width, height) {
+    const m = material(T, "concrete"); m.color.setHex(0xd0d4d2);   // player.js focus dimming uses the same base colour
+    for (const key of ["map", "roughnessMap", "normalMap"]) { m[key] = m[key].clone(); m[key].repeat.set(width / 40, height / 40); }
+    // The bake uses the full plate UV rectangle, independently of the repeating concrete.
+    // Always bind white until a bake arrives: replacing the uniform never recompiles a shader.
+    m.userData.floorLight = { value: library(T).white };
+    // Per-material reflection weight (0 = no reflection on this floor: Low/Medium, other height, plan art). The program is ALWAYS the
+    // same (quality, look and floor height only change uniform values), so no quality toggle ever recompiles it.
+    m.userData.floorReflect = { value: 0 };
+    m.userData.floorShader = { version: FLOOR_KEY, compiles: 0, uvPatched: false, multiplyPatched: false, reflectionPatched: false, reflectionError: null, reflectionMissing: [] };
+    const R = library(T).reflect;
+    m.onBeforeCompile = (shader) => {
+      const state = m.userData.floorShader;
+      state.uvPatched = shader.vertexShader.includes("#include <uv_vertex>");
+      state.multiplyPatched = shader.fragmentShader.includes("#include <colorspace_fragment>");
+      if (!state.uvPatched || !state.multiplyPatched) throw new Error("Floor-light shader markers do not match the bundled Three.js shader");
+      // onBeforeCompile runs on the RAW program text: #include <chunk> lines are not expanded yet. On the bundled Three r170 the raw
+      // MeshStandard fragment therefore has `#include <normal_pars_fragment>` (which declares vNormal), `#include <normal_fragment_begin>`
+      // (declares `normal`) and `#include <roughnessmap_fragment>` (declares roughnessFactor), and only `varying vec3 vViewPosition;`
+      // literally. So the contract is checked on the include lines AND on the chunk text in T.ShaderChunk (the text that will be expanded).
+      // A missing marker does not break the floor (uv + bake still compile) but the reflection stays OFF with an actionable error:
+      // state.reflectionError is read by player.js, which then never starts the costly scene render.
+      const missing = reflectionMarkers(T, shader);
+      state.reflectionMissing = missing; state.reflectionError = missing.length ? "Floor reflection disabled: the bundled Three.js shaders no longer match (" + missing.join("; ") + "). Update REFLECTION markers in src/look.js for this Three.js version." : null;
+      state.reflectionPatched = !missing.length;
+      if (state.reflectionError) console.error("Material Flow: " + state.reflectionError);
+      state.compiles++;
+      shader.uniforms.mfFloorLight = m.userData.floorLight;
+      shader.vertexShader = "varying vec2 vMfFloorUv;\n" + shader.vertexShader.replace("#include <uv_vertex>", "#include <uv_vertex>\nvMfFloorUv = uv;");
+      // after tone mapping: the lit floor sits above white, so a shadow applied before it is squeezed away. The reflection is blended
+      // AFTER the bake multiply so Blender's contact shade darkens the diffuse floor only, not the mirrored machines at their feet.
+      let tail = "#include <colorspace_fragment>\ngl_FragColor.rgb *= texture2D(mfFloorLight, vMfFloorUv).rgb;";
+      let head = "uniform sampler2D mfFloorLight; varying vec2 vMfFloorUv;\n";
+      if (state.reflectionPatched) {
+        shader.uniforms.mfReflPlane = R.plane; shader.uniforms.mfReflMap = R.map; shader.uniforms.mfReflMatrix = R.matrix; shader.uniforms.mfReflParams = R.params; shader.uniforms.mfReflTexel = R.texel; shader.uniforms.mfReflOn = m.userData.floorReflect;
+        shader.vertexShader = "varying vec3 vMfWorld;\n" + shader.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\nvMfWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+        head += "uniform sampler2D mfReflMap; uniform mat4 mfReflMatrix; uniform vec4 mfReflParams; uniform vec2 mfReflTexel; uniform float mfReflOn; uniform float mfReflPlane; varying vec3 vMfWorld;\n";
+        tail += REFLECT_GLSL;
+      }
+      shader.fragmentShader = head + shader.fragmentShader.replace("#include <colorspace_fragment>", tail);
+    };
+    m.customProgramCacheKey = () => FLOOR_KEY;
+    return m;
+  }
+  // Sealed-slab planar reflection. mfReflMatrix maps the world position through the reflected (virtual) camera, so the texture is
+  // anchored to the floor: a stale texture (refreshed every second frame) stays glued to the ground and only its parallax is old.
+  // Weight = strength x Fresnel (Schlick-like, F0 ~ .16, so the sheen grows toward grazing angles) x roughness fade (a rough
+  // slab fades out, never a mirror) x border fade (hides the edge of the texture). 9 soft taps whose radius grows with roughness
+  // (the target is a quarter of the framebuffer per axis, so it is already soft). Tone mapping and output encoding are applied to the
+  // linear reflection exactly like the floor colour (both are no-ops when rendering into a render target, as in the Night composer).
+  // Wrong-plane mask: the texture and matrix describe ONE plane (mfReflPlane, published with them). A fragment whose world Y is not on
+  // it (another stacked floor, a floor that just started moving, a plane that changed) gets weight 0 at once: full inside 0.15 units,
+  // gone at 0.45 (a narrow smooth edge, below player.js's 0.6 same-plane tolerance). No per-floor target, no extra pass.
+  const REFLECT_GLSL = `
+#ifndef FLAT_SHADED
+float mfPlaneMask = 1.0 - smoothstep(0.15, 0.45, abs(vMfWorld.y - mfReflPlane));
+if (mfReflOn > 0.001 && mfPlaneMask > 0.001) {
+  vec4 mfC = mfReflMatrix * vec4(vMfWorld, 1.0);
+  if (mfC.w > 0.0) {
+    vec3 mfN = normalize(vNormal);
+    float mfCos = clamp(abs(dot(mfN, normalize(vViewPosition))), 0.0, 1.0);
+    float mfF = mfReflParams.y + (1.0 - mfReflParams.y) * pow(1.0 - mfCos, 4.0);
+    float mfRough = 1.0 - smoothstep(0.22, 0.78, roughnessFactor);
+    vec2 mfUv = mfC.xy / mfC.w + (normal.xy - mfN.xy) * mfReflParams.z;
+    vec2 mfEdge = min(mfUv, 1.0 - mfUv);
+    float mfW = mfPlaneMask * mfReflOn * mfReflParams.x * mfF * mfRough * smoothstep(0.0, 0.06, min(mfEdge.x, mfEdge.y));
+    if (mfW > 0.002) {
+      vec2 mfR = mfReflTexel * mfReflParams.w * (0.6 + 1.4 * roughnessFactor), mfD = mfR * 0.7;
+      vec3 mfS = texture2D(mfReflMap, mfUv).rgb * 0.22;
+      mfS += (texture2D(mfReflMap, mfUv + vec2(mfR.x, 0.0)).rgb + texture2D(mfReflMap, mfUv - vec2(mfR.x, 0.0)).rgb + texture2D(mfReflMap, mfUv + vec2(0.0, mfR.y)).rgb + texture2D(mfReflMap, mfUv - vec2(0.0, mfR.y)).rgb) * 0.12;
+      mfS += (texture2D(mfReflMap, mfUv + mfD).rgb + texture2D(mfReflMap, mfUv - mfD).rgb + texture2D(mfReflMap, mfUv + vec2(mfD.x, -mfD.y)).rgb + texture2D(mfReflMap, mfUv + vec2(-mfD.x, mfD.y)).rgb) * 0.075;
+      mfS = min(mfS, vec3(6.0));
+      #ifdef TONE_MAPPING
+      mfS = toneMapping(mfS);
+      #endif
+      mfS = linearToOutputTexel(vec4(mfS, 1.0)).rgb;
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, mfS, clamp(mfW, 0.0, 1.0));
+    }
+  }
+}
+#endif`;
+  // The marker contract for the reflection patch (see onBeforeCompile). Returns the list of missing markers (empty = patch is valid).
+  function reflectionMarkers(T, shader) {
+    const missing = [], chunks = T.ShaderChunk || {}, vs = shader.vertexShader, fs = shader.fragmentShader;
+    const chunkHas = (name, re) => typeof chunks[name] === "string" && re.test(chunks[name]);
+    if (!vs.includes("#include <begin_vertex>")) missing.push("vertex: #include <begin_vertex>");
+    if (!chunkHas("begin_vertex", /vec3\s+transformed\b/)) missing.push("chunk begin_vertex: vec3 transformed");
+    if (!fs.includes("#include <normal_pars_fragment>") && !/varying\s+vec3\s+vNormal\s*;/.test(fs)) missing.push("fragment: #include <normal_pars_fragment> (vNormal)");
+    if (!chunkHas("normal_pars_fragment", /varying\s+vec3\s+vNormal\s*;/)) missing.push("chunk normal_pars_fragment: varying vec3 vNormal");
+    if (!/varying\s+vec3\s+vViewPosition\s*;/.test(fs)) missing.push("fragment: varying vec3 vViewPosition");
+    if (!fs.includes("#include <normal_fragment_begin>")) missing.push("fragment: #include <normal_fragment_begin> (normal)");
+    if (!chunkHas("normal_fragment_begin", /vec3\s+normal\b/)) missing.push("chunk normal_fragment_begin: vec3 normal");
+    if (!fs.includes("#include <roughnessmap_fragment>") && !/float\s+roughnessFactor\b/.test(fs)) missing.push("fragment: #include <roughnessmap_fragment> (roughnessFactor)");
+    if (!chunkHas("roughnessmap_fragment", /float\s+roughnessFactor\b/)) missing.push("chunk roughnessmap_fragment: float roughnessFactor");
+    return missing;
+  }
+  // Digital Factory's analytic contact shade, rasterised once per plate. A Blender bake
+  // replaces it through the same uniform; there is never an extra scene/depth pass.
+  function contactLight(T, key, box, replica) {
+    const lib = library(T); let cache = lib.contacts.get(replica);
+    if (!cache) { cache = new Map(); lib.contacts.set(replica, cache); }
+    if (cache.has(key)) return cache.get(key);
+    const stamp = document.createElement("canvas"); stamp.width = stamp.height = 64;
+    const sg = stamp.getContext("2d"), pixels = sg.createImageData(64, 64);
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+      const dx = Math.max(0, Math.abs(x - 31.5) - 20), dy = Math.max(0, Math.abs(y - 31.5) - 20), i = (y * 64 + x) * 4;
+      pixels.data[i + 3] = Math.round(65 * Math.exp(-(dx * dx + dy * dy) / 35));
+    }
+    sg.putImageData(pixels, 0, 0);
+    const [x0, y0, width, height] = box, scale = 512 / Math.max(width, height), cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(width * scale)); cv.height = Math.max(1, Math.round(height * scale));
+    const g = cv.getContext("2d"); g.fillStyle = "white"; g.fillRect(0, 0, cv.width, cv.height);
+    for (const obj of [...replica.racks, ...replica.machines]) {
+      if (obj.plate !== key) continue;
+      const margin = 3;
+      g.drawImage(stamp, (obj.x - x0 - margin) * scale, (obj.y - y0 - margin) * scale, (obj.w + margin * 2) * scale, (obj.h + margin * 2) * scale);
+    }
+    const tex = new T.CanvasTexture(cv); tex.colorSpace = T.SRGBColorSpace; tex.name = "MF contact " + key;
+    cache.set(key, tex); return tex;
+  }
+  function environment(T) {
+    const s = new T.Scene(), PI = Math.PI;
+    // Bright clean factory: pale grey-white shell (white walls and steel), a slightly darker floor so downward
+    // reflections keep contrast, and warm-white strip lights. Radiance stays moderate so nothing washes to white.
+    const room = new T.Mesh(new T.BoxGeometry(64, 32, 64), new T.MeshBasicMaterial({ color: 0x9aa3af, side: T.BackSide })); room.position.y = 11; s.add(room);
+    const slab = new T.Mesh(new T.PlaneGeometry(64, 64), new T.MeshBasicMaterial({ color: 0x6c737d, side: T.DoubleSide })); slab.rotation.x = -Math.PI / 2; slab.position.y = -4.8; s.add(slab);
+    function panel(w, h, x, y, z, rx, ry, k, color = 0xffffff) {
+      const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ color: new T.Color(color).multiplyScalar(k), side: T.DoubleSide }));
+      m.position.set(x, y, z); m.rotation.set(rx, ry, 0); s.add(m);
+    }
+    for (const x of [-14, -4.5, 4.5, 14]) panel(2.4, 46, x, 26.5, 0, PI / 2, 0, 4.6, 0xfff1dc);   // warm-white strips
+    panel(18, 11, -31, 11, -6, 0, PI / 2, 2.8, 0xffffff); panel(14, 9, 31, 9, 9, 0, -PI / 2, 2.2, 0xfff3e2);
+    panel(34, 8, 0, 6, -31, 0, 0, 1.9, 0xf4f8ff); panel(24, 6, 0, 3.5, 31, 0, PI, 1.5, 0xffffff);
+    return s;
+  }
+  window.MFLook = { material, replicaMaterials, floor, contactLight, environment, textures: T => library(T).textures, reflectionUniforms: T => library(T).reflect, floorKey: FLOOR_KEY };
+})();

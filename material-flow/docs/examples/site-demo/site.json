@@ -1,0 +1,15 @@
+{
+ "format": "mf-site", "version": 1, "id": "site-demo", "name": "Demo site (synthetic, for tests)",
+ "country": "Nowhere", "timezone": "UTC", "currency": "USD",
+ "productLines": ["tv", "mobile"],
+ "calendar": {
+  "shifts": [ { "id": "A", "start": "06:00", "end": "14:00" }, { "id": "B", "start": "14:00", "end": "22:00" } ],
+  "breaks": [ { "shift": "A", "start": "10:00", "minutes": 30 }, { "shift": "B", "start": "18:00", "minutes": 30 } ]
+ },
+ "buildings": [ { "id": "b1", "name": "Building 1", "floors": [ { "id": "1f", "name": "1F", "level": 0 } ] } ],
+ "areas": [
+  { "id": "parts", "name": "Parts area", "kind": "injection", "productLine": "tv", "building": "b1",
+    "lines": [ { "id": "assy-l1", "name": "Assembly line 1" } ] }
+ ],
+ "rates": { "labourPerHour": 10, "agvPerHour": 4 }
+}

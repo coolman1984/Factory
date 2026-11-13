@@ -1,0 +1,4 @@
+{
+ "format": "mf-experiment", "version": 1, "scenario": "scenarios/base.json", "replications": 5, "days": 2,
+ "find": { "param": "resource.parts-agv.count", "from": 1, "to": 6, "until": { "starved_min": 0, "wait_mover": 30 } }
+}

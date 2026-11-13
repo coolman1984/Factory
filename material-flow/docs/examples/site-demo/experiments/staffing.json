@@ -1,0 +1,4 @@
+{
+ "format": "mf-experiment", "version": 1, "scenario": "scenarios/base.json", "replications": 5, "days": 2,
+ "grid": { "resource.parts-ops.count": [1, 2, 3], "flow.parts-to-line.mover": ["op-push", "agv-tow"] }
+}
