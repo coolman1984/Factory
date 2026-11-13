@@ -1,6 +1,6 @@
 // M0 gate: every selected row runs sequentially, with bounded child processes and local evidence.
 import {execFileSync} from 'node:child_process';
-import {existsSync,mkdirSync,readdirSync,writeFileSync} from 'node:fs';
+import {existsSync,mkdirSync,readdirSync,writeFileSync,readFileSync} from 'node:fs';
 import {resolve,relative,isAbsolute,basename,join} from 'node:path';
 const argv=process.argv.slice(2),player=argv.shift();
 if(!player||player.startsWith('--')||!existsSync(player))throw new Error('gate <player.html> [--quick] [--only name,name] [--out dist/test/gate-name]');
@@ -16,7 +16,8 @@ if([fixture,proof].some(p=>resolve(p).toLowerCase()===resolve(player).toLowerCas
 const tabs=[['inj1',2],['inj2',2],['eps',4],['press',2]],scenes=tabs.map(([t])=>'private/v7/scenes/'+t+'.scene.json'), originals=tabs.map(([t])=>'private/v7/scenes-v6/'+t+'.scene.json');
 const hasPrivate=existsSync('private/v7/scenes'),rows=[];
 const add=(name,q,needs,commands)=>rows.push({name,q,needs,commands});
-const build=(output,bake)=>['tools/build-v7.mjs','7.7.2','--out',output,'--no-docs-check','--bake',...bake];
+const sourceStage=/<title>Material Flow Player V(8[^<]*)<\/title>/.exec(readFileSync(player,'utf8'))?.[1];
+const build=(output,bake)=>[sourceStage?'tools/build-v8.mjs':'tools/build-v7.mjs',sourceStage||'7.7.2','--out',output,'--no-docs-check','--bake',...bake];
 add('docs',true,[],()=>[['tools/mf.mjs','docs-check']]);
 add('validate',true,[],()=>[['tools/mf.mjs','validate',...readdirSync('docs/examples').filter(f=>f.endsWith('.scene.json')).map(f=>'docs/examples/'+f),...(hasPrivate?scenes:[]),'--player',player]]);
 add('validator',true,[],()=>[['tools/v7/validator-test.mjs',player]]);
@@ -29,6 +30,7 @@ for(const [tab,n]of tabs)for(let i=0;i<n;i++)add(`camera-${tab}-${i}`,false,scen
 add('start',false,[],()=>[['tools/v7/start-test.mjs',player,'8']]);
 add('take',false,[],()=>[['tools/v7/take-test.mjs',player,'inj1','0','3',join(out,'takes')]]);
 add('guard',true,[],()=>[['tools/v8/build-guard-test.mjs']]);
+if(sourceStage){add('motion',true,[],()=>[['tools/v8/motion-test.mjs']]);add('numbers',false,scenes,()=>[['tools/v8/numbers-test.mjs',player]]);}
 const names=new Set([...rows.map(r=>r.name),'camera']);
 if(only?.some(n=>!names.has(n)))throw new Error('unknown gate row: '+only.filter(n=>!names.has(n)).join(','));
 const selected=rows.filter(r=>(!quick||r.q)&&(!only||only.includes(r.name)||(r.name.startsWith('camera-')&&only.includes('camera'))));

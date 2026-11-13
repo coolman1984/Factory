@@ -1,47 +1,28 @@
 // Scene operations for the agent CLI (tools/mf.mjs): pure data in, data out (metres, seconds). They mirror the Studio's buttons:
 // straighten, auto-route, fix links, camera keys from a plain description, captions, numbers (same motion model as the player),
 // and a structural diff of two scenes.
-import { loadSceneCore, layoutFor } from "./scene-node.mjs";
+import { loadSceneCore, loadMotionCore, layoutFor } from "./scene-node.mjs";
 
 export const SC = loadSceneCore();
 const U = 0.3, M = 1 / U;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
-/* ---------- motion model (the player's: tools/v7/engine-patches.mjs segment speed; V6 buildSchedule) ---------- */
-const RAMP_T = 0.25, TURN_T = 0.3, DWELL = 0.7, STATION_T = 0.01, LIFT_T = 6, SCAN_T = 1.8, INTRO = 7;
-function legTime(Lm, V) { const full = V * RAMP_T; if (Lm >= full) return 2 * RAMP_T + (Lm - full) / V; return 2 * RAMP_T * Math.sqrt(Lm / full); }
-const wrapPi = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-/** numbers(scene, P) -> [{ id, name, metres, seconds, trolleys, steps: [{ id, title, metres, seconds }] }] (one trip, no intro) */
+/* ---------- one shared deterministic motion model ---------- */
+const Motion = loadMotionCore();
+/** Exact one-trip values, excluding the intro; keeps the CLI's established result shape. */
 export function numbers(scene, P) {
-  const L = layoutFor(P, scene.project), conv = SC.toInternal(clone(scene), L).data;
-  const scanners = conv.devices.filter((d) => d.type === "rfid-manual" && d.routeBound && d.node == null);
-  return conv.flows.map((f, fi) => {
-    let h, metres = 0, seconds = 0; const steps = [];
-    f.steps.forEach((s, si) => {
-      const sid = scene.paths[fi].steps[si].id; let m = 0, t = 0;
-      if (s.lift) t = LIFT_T + (s.dwell != null ? s.dwell : DWELL);
-      else if (Array.isArray(s.path)) {
-        const pts = SC.simplify(s.path); let moved = false;
-        for (let k = 1; k < pts.length; k++) {
-          const a = pts[k - 1], b = pts[k], lp = Math.hypot(b[0] - a[0], b[1] - a[1]); if (lp < 1e-4) continue;
-          const hh = Math.atan2(b[0] - a[0], b[1] - a[1]); if (h !== undefined) t += TURN_T * Math.abs(wrapPi(hh - h)) / (Math.PI / 2); h = hh;
-          const plate = conv.nodes[s.node].plate, cuts = scanners.filter((d) => d.plate === plate).map((d) => { const dx = b[0] - a[0], dy = b[1] - a[1], u = ((d.lane[0] - a[0]) * dx + (d.lane[1] - a[1]) * dy) / (lp * lp); return u > 1e-5 && u <= 1 + 1e-5 && Math.hypot(a[0] + u * dx - d.lane[0], a[1] + u * dy - d.lane[1]) <= .02 ? Math.min(1, u) : null; }).filter((u) => u != null).sort((x, y) => x - y);
-          let before = 0; for (const u of [...cuts, 1]) { if (u - before > 1e-6) t += legTime(lp * (u - before) * U, s.speed || 4); if (u < 1) t += SCAN_T; before = u; }
-          m += lp * U; moved = true;
-        }
-        t += moved ? (s.dwell != null ? s.dwell : DWELL) : STATION_T + (s.dwell != null ? s.dwell : DWELL - STATION_T);
-      } else t = STATION_T + (s.dwell != null ? s.dwell : DWELL - STATION_T);
-      metres += m; seconds += t; steps.push({ id: sid, title: s.title, metres: r3(m), seconds: r3(t) });
-    });
-    return { id: f.id, name: f.name, metres: r3(metres), seconds: r3(seconds), trolleys: f.trolleys || 1, steps };
-  });
+  const L = layoutFor(P, scene.project), data = SC.toInternal(clone(scene), L).data;
+  return Motion.numbers(data, data.flows, L.elevators);
 }
 export const tripsPerShift = (n, hours = 8) => Math.floor(hours * 3600 / Math.max(1, n.seconds)) * n.trolleys;
-export const storyStart = (scene, P, pathId, stepId, moment = "arrive") => {   // story seconds of a step moment (intro included)
-  const n = numbers(scene, P).find((p) => p.id === pathId); if (!n) throw new Error("unknown path " + pathId);
-  let t = INTRO; for (const s of n.steps) { if (s.id === stepId) return moment === "start" ? t : moment === "leave" ? t + s.seconds : t + Math.max(0, s.seconds - 0.7); t += s.seconds; }
-  throw new Error("unknown step " + stepId);
+export const storyStart = (scene, P, pathId, stepId, moment = "arrive") => {
+  const L=layoutFor(P,scene.project), data=SC.toInternal(clone(scene),L).data, f=data.flows.find(f=>f.id===pathId);
+  if(!f)throw new Error("unknown path "+pathId);
+  const s=f.steps.find(s=>s.lift), elevator=(s&&L.elevators.find(e=>e.label===s.elevator))||L.elevators[0]||null;
+  const it=Motion.timeline(data,f,elevator).items.find(it=>!it.s.intro&&it.s.sceneId===stepId);
+  if(!it)throw new Error("unknown step "+stepId);
+  return moment==="start"?it.t0:moment==="leave"?it.t1:it.tm;
 };
 
 /* ---------- path tools (same rules as the Studio buttons) ---------- */

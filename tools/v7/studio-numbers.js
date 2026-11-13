@@ -1,5 +1,7 @@
 /* ===== V7 Studio: Numbers tab (distance, time, trips per shift, before / after comparison, live congestion) ===== */
-function flowNumbers(flows) {   // built player flows (items) or scene-converted flows (estimated with the same motion schedule)
+function flowNumbers(data) {
+  if(window.MFMotion) return window.MFMotion.numbers(data, data.flows, ELEVATORS).map(r => ({ ...r, time: r.seconds }));
+  const flows=data.flows; // Archived V7 builds retain their original fallback; V8 always uses the core.
   return flows.map((f) => {
     let metres = 0, time = 0;
     if (f.items) { for (const it of f.items) if (!it.s.intro) { metres += it.metres || 0; time += it.t1 - it.t0; } }
@@ -12,14 +14,14 @@ function flowNumbers(flows) {   // built player flows (items) or scene-converted
     return { id: f.id, name: f.name, metres, time, trolleys: f.trolleys || 1 };
   });
 }
-const sceneFlows = (sc) => SCN.toInternal(clone(sc), { plates: D.plates, elevators: X.ELEVATORS || [], replica: RP }, { applyLayout: false }).data.flows;
+const sceneData = (sc) => SCN.toInternal(clone(sc), { plates: D.plates, elevators: X.ELEVATORS || [], replica: RP }, { applyLayout: false }).data;
 function renderNumbers() {
-  const shift = doc.settings.shift || 8, now = flowNumbers(sceneFlows(toScene())), base = flowNumbers(sceneFlows(MF7.base || toScene()));
+  const shift = doc.settings.shift || 8, now = flowNumbers(sceneData(toScene())), base = flowNumbers(sceneData(MF7.base || toScene()));
   const trips = (r) => Math.floor(shift * 3600 / Math.max(1, r.time)) * r.trolleys;
   const delta = (a, b, unit) => { const x = a - b; if (Math.abs(x) < .05) return ""; return ' <em class="' + (x < 0 ? "ok7" : "bad") + '">' + (x > 0 ? "+" : "") + x.toFixed(unit ? 1 : 0) + (unit || "") + "</em>"; };
   const rows = now.map((r) => {
     const b = base.find((q) => q.id === r.id);
-    return "<tr><td>" + esc(r.name) + (r.trolleys > 1 ? " <small>(" + r.trolleys + " trolleys)</small>" : "") + "</td><td>" + r.metres.toFixed(0) + " m" + (b ? delta(r.metres, b.metres, " m") : "") + "</td><td>" + fmtT(r.time) + (b ? delta(r.time, b.time, " s") : "") + "</td><td>" + trips(r) + (b ? delta(trips(r), trips(b), "") : "") + "</td></tr>";
+    return '<tr data-metres="' + r.metres + '" data-seconds="' + r.time + '"><td>' + esc(r.name) + (r.trolleys > 1 ? " <small>(" + r.trolleys + " trolleys)</small>" : "") + "</td><td>" + r.metres.toFixed(0) + " m" + (b ? delta(r.metres, b.metres, " m") : "") + "</td><td>" + fmtT(r.time) + (b ? delta(r.time, b.time, " s") : "") + "</td><td>" + trips(r) + (b ? delta(trips(r), trips(b), "") : "") + "</td></tr>";
   }).join("");
   body.innerHTML = '<div class="sec card7"><div class="ct"><b>Numbers per path</b><span>one trip</span></div>' +
     '<label>Shift length (hours)<input type="number" min="1" max="24" step="0.5" data-f="shift" value="' + shift + '"></label>' +
@@ -32,7 +34,7 @@ function renderNumbers() {
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json";
     inp.onchange = async () => {
       try {
-        const sc = JSON.parse(await inp.files[0].text()), other = flowNumbers(sceneFlows(sc));
+        const sc = JSON.parse(await inp.files[0].text()), other = flowNumbers(sceneData(sc));
         $("cmpOut").innerHTML = "<b>" + esc(inp.files[0].name) + "</b><br>" + now.map((r) => { const o = other.find((q) => q.id === r.id); return o ? esc(r.name) + ": " + r.metres.toFixed(0) + " m vs " + o.metres.toFixed(0) + " m, " + fmtT(r.time) + " vs " + fmtT(o.time) : esc(r.name) + ": not in that file"; }).join("<br>");
       } catch (e) { X.tip("Could not compare: " + e.message); }
     };

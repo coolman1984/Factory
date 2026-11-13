@@ -11,13 +11,14 @@ import { readProjects, layoutFor } from "./v7/scene-node.mjs";
 import { SC, numbers, tripsPerShift, straighten, route, fixLinks, cameraKey, addKey, addCaption, diff, storyStart } from "./v7/mf-ops.mjs";
 
 import { STAGE, COMMANDS } from "./v7/mf-commands.mjs";
+const BUILDER = STAGE.startsWith("8") ? "tools/build-v8.mjs" : "tools/build-v7.mjs";
 const PLAYER = `dist/Material_Flow_Player_v${STAGE}.html`, SCENES = "private/v7/scenes";
 const argv = process.argv.slice(2), verb = argv[0], pos = [], opt = {};
 for (let i = 1; i < argv.length; i++) { const a = argv[i]; if (a.startsWith("--")) { const k = a.slice(2), v = argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[++i] : true; opt[k] = v; } else pos.push(a); }
 const die = (m) => { console.log("ERROR " + m); process.exit(1); };
 const readScene = (f) => { if (!f || !existsSync(f)) die(`scene file not found: ${f}`); try { const s = JSON.parse(readFileSync(f, "utf8")); if (s.format !== "mf-scene") die(`${f}: not a scene file (format must be "mf-scene")`); return s; } catch (e) { die(`${f}: ${e.message}`); } };
 const writeScene = (f, s) => { writeFileSync(f, JSON.stringify(s, null, 1) + "\n"); console.log(`wrote ${f}`); };
-const projects = () => { const p = opt.player || PLAYER; if (!existsSync(p)) die(`player not found: ${p} (build it: node tools/build-v7.mjs ${STAGE})`); return readProjects(p); };
+const projects = () => { if (!opt.player && STAGE.startsWith("8")) return readProjects(); const p = opt.player || PLAYER; if (!existsSync(p)) die(`player not found: ${p} (build it: node ${BUILDER} ${STAGE})`); return readProjects(p); };
 // path tools: write when the edited path / step itself is clean; errors elsewhere (another path still broken after a stop moved)
 // are listed but do not block, so several paths can be repaired one at a time (or all at once with fix-links)
 const writeIfOwnClean = (f, s, P, pathId, stepId) => {
@@ -36,7 +37,7 @@ const validateOrDie = (s, P, label = "scene") => { const r = SC.validate(s, layo
 // a player file with this scene baked in (other tabs from private/v7/scenes), for screenshots, play checks and takes
 function bakeTemp(sceneFile, s) {
   mkdirSync("dist/test", { recursive: true }); const out = `dist/test/mf-${s.project}.html`, others = existsSync(SCENES) ? readdirSync(SCENES).filter((f) => f.endsWith(".scene.json") && !f.startsWith(s.project + ".")).map((f) => `${SCENES}/${f}`) : [];
-  execFileSync(process.execPath, ["tools/build-v7.mjs", STAGE, "--out", out, "--no-docs-check", "--bake", sceneFile, ...others], { stdio: "pipe" }); return out;
+  execFileSync(process.execPath, [BUILDER, STAGE, "--out", out, "--no-docs-check", "--bake", sceneFile, ...others], { stdio: "pipe" }); return out;
 }
 async function page(file, tab) { const { openPage } = await import("./v7/cdp.mjs"); return openPage(file, tab, { size: opt.size || "1600,900" }); }
 
@@ -45,7 +46,7 @@ async function page(file, tab) { const { openPage } = await import("./v7/cdp.mjs
 const run = {
   help() { console.log("node tools/mf.mjs <verb> ...\n"); for (const [k, [a, d]] of Object.entries(COMMANDS)) console.log(`  ${k} ${a}\n      ${d}`); },
   validate() { if (!pos.length) die("validate <scene.json>"); const P = projects(); let bad = 0; for (const f of pos) { const s = readScene(f); if (!P[s.project]) die(`${f}: project ${s.project} is not a tab of the player`); const r = SC.validate(s, layoutFor(P, s.project)); console.log(`${f}: ${r.errors.length ? "FAIL" : "OK"} ${r.errors.length} error(s), ${r.warnings.length} warning(s)`); for (const e of r.errors) console.log(`  ERROR ${e.where}: ${e.msg}`); for (const w of r.warnings) console.log(`  warning ${w.where}: ${w.msg}`); if (r.errors.length) bad++; } process.exitCode = bad ? 1 : 0; },
-  bake() { const args = ["tools/build-v7.mjs", STAGE]; if (opt.out) args.push("--out", opt.out); if (pos.length) args.push("--bake", ...pos); try { console.log(execFileSync(process.execPath, args, { encoding: "utf8" }).trim().split("\n").pop()); } catch (e) { die((e.stdout || "") + (e.stderr || e.message)); } },
+  bake() { const args = [BUILDER, STAGE]; if (opt.out) args.push("--out", opt.out); if (pos.length) args.push("--bake", ...pos); try { console.log(execFileSync(process.execPath, args, { encoding: "utf8" }).trim().split("\n").pop()); } catch (e) { die((e.stdout || "") + (e.stderr || e.message)); } },
   numbers() { const s = readScene(pos[0]), P = projects(), shift = +(opt.shift || 8); for (const n of numbers(s, P)) { console.log(`${n.id}: ${n.metres.toFixed(1)} m, ${n.seconds.toFixed(1)} s per trip, ${tripsPerShift(n, shift)} trips per ${shift} h shift${n.trolleys > 1 ? ` (${n.trolleys} trolleys)` : ""}`); for (const st of n.steps) console.log(`  ${st.id} ${st.title}: ${st.metres.toFixed(1)} m, ${st.seconds.toFixed(1)} s`); } },
   diff() { if (pos.length < 2) die("diff <a.json> <b.json>"); const a = readScene(pos[0]), b = readScene(pos[1]), lines = diff(a, b, a.project === b.project ? projects() : null); console.log(lines.length ? lines.join("\n") : "no differences"); },
   straighten() { const f = pos[0], s = readScene(f), P = projects(); if (!opt.path) die("--path id"); const r = straighten(s, P, opt.path, opt.step); writeIfOwnClean(f, s, P, opt.path, opt.step); console.log(`straightened: ${r.changed.join(", ") || "none"}${r.kept.length ? `; kept (straight would collide, use route): ${r.kept.join(", ")}` : ""}`); },
@@ -124,6 +125,37 @@ const run = {
     } finally { await pg.close(); }
   },
   async "docs-gen"() { const { docsGen } = await import("./v7/docs-check.mjs"); const f = await docsGen(); console.log(f.length ? "updated " + f.join(", ") : "generated docs already current"); },
+  async site() {
+    const { checkSite, newSite, listSites } = await import("./core/site-node.mjs"), sub = pos[0], dir = pos[1];
+    const print = (r) => {
+      if (opt.json) { console.log(JSON.stringify(r, null, 1)); return; }
+      for (const f of r.files) { console.log(`${f.file} (${f.kind}): ${f.errors.length ? "FAIL" : "OK"} ${f.errors.length} error(s), ${f.warnings.length} warning(s)`); for (const e of f.errors) console.log(`  ERROR ${e.where}: ${e.msg}`); for (const w of f.warnings) console.log(`  warning ${w.where}: ${w.msg}`); }
+      console.log(`site ${r.site ? r.site.id : "?"}: ${r.errors ? "FAIL" : "OK"} ${r.errors} error(s), ${r.warnings} warning(s) in ${r.files.length} file(s)`);
+    };
+    if (sub === "validate") { if (!dir) die("site validate <site dir>"); const r = checkSite(dir); print(r); process.exitCode = r.errors ? 1 : 0; }
+    else if (sub === "new") { if (!dir || !opt.id) die("site new <site dir> --id id [--name t] [--country t] [--timezone t]"); try { newSite(dir, { id: opt.id, name: opt.name, country: opt.country || null, timezone: opt.timezone || null }); } catch (e) { die(e.message); } console.log(`created ${dir}`); const r = checkSite(dir); print(r); process.exitCode = r.errors ? 1 : 0; }
+    else if (sub === "list") { const ds = listSites(dir || "private/sites"); if (opt.json) console.log(JSON.stringify(ds.map((d) => { const r = checkSite(d); return { dir: d, id: r.site && r.site.id, errors: r.errors, warnings: r.warnings }; }))); else { for (const d of ds) { const r = checkSite(d); console.log(`${r.site ? r.site.id : "?"}  ${d}  ${r.errors ? "FAIL" : "OK"} (${r.errors} errors, ${r.warnings} warnings)`); } if (!ds.length) console.log("no sites"); } }
+    else if (sub === "show") {
+      if (!dir) die("site show <site dir>"); const r = checkSite(dir), s = r.site; if (!s) { print(r); process.exitCode = 1; return; }
+      const info = { id: s.id, name: s.name, country: s.country, timezone: s.timezone, productLines: s.productLines, shifts: (s.calendar && s.calendar.shifts || []).map((x) => `${x.id} ${x.start}-${x.end}`), areas: (s.areas || []).map((a) => ({ id: a.id, name: a.name, lines: (a.lines || []).map((l) => l.id) })), files: r.files.map((f) => `${f.kind} ${f.file}`), errors: r.errors, warnings: r.warnings };
+      if (opt.json) console.log(JSON.stringify(info, null, 1)); else { console.log(`${info.id}: ${info.name} (${info.country || "country not set"}, ${info.timezone || "time zone not set"})`); console.log(`  product lines: ${info.productLines.join(", ") || "none"}; shifts: ${info.shifts.join(", ") || "none"}`); for (const a of info.areas) console.log(`  area ${a.id}: ${a.name}${a.lines.length ? "; lines " + a.lines.join(", ") : ""}`); for (const f of info.files) console.log(`  ${f}`); console.log(`  ${info.errors} error(s), ${info.warnings} warning(s) (site validate for the list)`); }
+      process.exitCode = r.errors ? 1 : 0;
+    }
+    else die("site validate|new|list|show");
+  },
+  async model() {
+    const { checkFile } = await import("./core/site-node.mjs"); if (pos[0] !== "validate" || pos.length < 2) die("model validate <file.json> [...]");
+    let bad = 0; const out = [];
+    for (const f of pos.slice(1)) { const r = existsSync(f) ? checkFile(f) : { kind: null, errors: [{ where: "", msg: "file not found" }], warnings: [] }; out.push({ file: f, ...r }); if (r.errors.length) bad++;
+      if (!opt.json) { console.log(`${f} (${r.kind || "?"}): ${r.errors.length ? "FAIL" : "OK"} ${r.errors.length} error(s), ${r.warnings.length} warning(s)`); for (const e of r.errors) console.log(`  ERROR ${e.where}: ${e.msg}`); for (const w of r.warnings) console.log(`  warning ${w.where}: ${w.msg}`); } }
+    if (opt.json) console.log(JSON.stringify(out, null, 1)); process.exitCode = bad ? 1 : 0;
+  },
+  async sim() { await (await import("./core/cli.mjs")).sim(pos, opt, die); },
+  async exp() { await (await import("./core/cli.mjs")).exp(pos, opt, die); },
+  async import() { await (await import("./core/cli.mjs")).importVerb(pos, opt, die); },
+  async cad() { await (await import("./core/cli.mjs")).cad(pos, opt, die); },
+  async portfolio() { await (await import("./core/cli.mjs")).portfolio(pos, opt, die); },
+  async platform() { await (await import("./core/cli.mjs")).platform(pos, opt, die); },
   "install-hooks"() { const { copyFileSync } = require_fs(); copyFileSync("tools/hooks/pre-commit", ".git/hooks/pre-commit"); console.log("installed .git/hooks/pre-commit (runs mf docs-check)"); },
   async "docs-check"() { const { docsCheck } = await import("./v7/docs-check.mjs"); const problems = await docsCheck(); if (problems.length) { for (const p of problems) console.log("DOCS " + p); die(`${problems.length} docs problem(s)`); } console.log("docs-check OK"); },
 };

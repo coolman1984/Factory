@@ -122,6 +122,70 @@ node tools/mf.mjs caption <scene.json> --path id (--from s --to s | --step id [-
 
 add a caption (English, Arabic, Korean).
 
+### `mf site`
+
+```
+node tools/mf.mjs site validate <site dir> | new <site dir> --id id [--name t] [--country t] [--timezone t] | list [root] | show <site dir> [--json]
+```
+
+platform sites (docs/PLATFORM_MANUAL.md): check every file of a site folder and its references, create a skeleton, list sites (default private/sites), summarise one.
+
+### `mf model`
+
+```
+node tools/mf.mjs model validate <file.json> [...] [--json]
+```
+
+check single platform files (mf-site, mf-library, mf-model, mf-plan, mf-scenario) on their own, without cross-references.
+
+### `mf sim`
+
+```
+node tools/mf.mjs sim run <scenario.json> [--days d] [--seed n] [--replications n] [--view] | view <run dir> | state <run dir> --at s | where <run dir> --at s --order n [--json]
+```
+
+platform simulation: run a scenario (orders, movers, elevators, line-side stock, breakdowns) with replications and KPIs; build the run viewer; open orders at a moment.
+
+### `mf exp`
+
+```
+node tools/mf.mjs exp run <experiment.json> [--excel] | compare <run dir A> <run dir B> | report <result dir> --excel [--json]
+```
+
+experiments: parameter grids or the smallest count that meets targets, HTML / Excel (COM) reports; compare two runs with 95% ranges.
+
+### `mf import`
+
+```
+node tools/mf.mjs import plan <workbook.xlsx> --site <dir> --from YYYY-MM-DD [--days n] | events <reads.csv> --run <run dir> [--start ISO] [--json]
+```
+
+production plan from Excel through COM into the site; shop-floor reads (RFID / MES CSV) compared with a run (plan vs actual).
+
+### `mf cad`
+
+```
+node tools/mf.mjs cad layout [layout.sqlite] --out <file.layout.json> [--layers a,b] [--box x0,y0,x1,y1] [--align cx,cy=px,py;cx,cy=px,py]
+```
+
+walls from the CAD package at true scale (metres) with an SVG preview; optional alignment to a scene plan.
+
+### `mf portfolio`
+
+```
+node tools/mf.mjs portfolio init [enterprise.json] [--name t] | build [enterprise.json] [--out dir] [--json]
+```
+
+all sites on one offline page and in portfolio.sqlite: validation, models and review states, latest results against targets.
+
+### `mf platform`
+
+```
+node tools/mf.mjs platform state <site dir> --model id --to draft|reviewed|approved --by name [--note t] | history <site dir> | recheck <site dir> | gate [--quick]
+```
+
+governance: review states (approval needs a recorded run of the exact model), change history, re-check approved baselines, the platform test gate.
+
 ### `mf layout-ref`
 
 ```

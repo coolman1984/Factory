@@ -1,21 +1,22 @@
 # Material Flow knowledge base
 
-## The scene engine (player V7) - start here
+## The scene engine (player V8) - start here
 
 **What this is.** An offline 3D player (one HTML file) that shows how trolleys move through the factory (four tabs: `inj1`, `inj2`,
 `eps`, `press`), with a Studio to edit scenes and direct films. Every scene is **data**: one scene file per tab
-(`private/v7/scenes/<tab>.scene.json`, metres, seconds, degrees). The engine code is frozen: **data first, engine last**
+(`private/v7/scenes/<tab>.scene.json`, metres, seconds, degrees). The V8 engine builds from `src/v8/`: **data first, engine last**
 ([ENGINE.md](ENGINE.md)).
 
 **Folder map.**
 | folder / file | what |
 |---|---|
 | `tools/mf.mjs` | the agent CLI ([CLI.md](CLI.md)) |
-| `tools/build-v7.mjs`, `tools/v7/` | the engine build and its modules ([ENGINE.md](ENGINE.md)) |
+| `tools/build-v8.mjs`, `src/v8/`, `tools/v7/` | the engine build and its modules ([ENGINE.md](ENGINE.md)) |
 | `private/v7/scenes/` | the owner's scenes (company data, never committed) |
 | `docs/examples/` | small sample scenes used by the recipes |
 | `dist/Material_Flow_Player_v<version>.html` | built players (older versions are read-only) |
 | `docs/plans/V8_MASTER_PLAN.md` | the build plan for V8 |
+| `docs/plans/PLATFORM_PLAN.md` | the platform plan above V8: simulation, KPIs, experiments, many sites (not started) |
 | `docs/` | this documentation; `.agents/skills/` the agent skills |
 
 **First 10 minutes.**

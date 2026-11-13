@@ -3,6 +3,40 @@
 Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (older ones kept). Newest first.
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
+## V8.1 - the player runs on the Factory Engine - 2026-11-13
+- New stage `node tools/build-v8.mjs 8.1`: V8.0 plus the Factory Engine (from the 3D Factory repository, vendored as
+  `src/v8/engine/factory-engine.js` by `node tools/engine/sync-engine.mjs`), the bridge `src/v8/engine/engine-bridge.js`
+  and the read-only Engine panel `src/v8/engine/engine-panel.js` (button bottom left, Alt+E; `MF.engine` API).
+- Every path's trip is an engine transport mission (load, one leg per step, shared lift resource, scan marks, unload); the
+  engine's event times are the step times the player plays. Undisturbed trips replay bit-identically to V8.0; a step the
+  engine moves (lift busy, waits) gets the engine time. Studio rebuilds re-run the engine.
+- Tests: `node tools/engine/bridge-test.mjs` (Node, 19 paths bit-identical + lift-wait authority), `node tools/v7/identity-test.mjs
+  dist/Material_Flow_Player_v8.0.html <8.1 player>` (PASS, all 10 paths), `node tools/engine/smoke-81.mjs <8.1 player>`.
+- 8.0 build output is unchanged (rebuild is byte-identical to the 8.0 release).
+
+## Platform P1-P8 - simulation, demand, viewer, experiments, portfolio, CAD, governance, plan vs actual - 2026-11-12 (no player change)
+- Discrete-event simulation core (`src/core/sim-core.js`) with KPIs (`src/core/kpi-core.js`) and demand from production
+  plans (`src/core/demand-core.js`); Node side in `tools/core/`. New verbs `sim`, `exp`, `import`, `cad`, `portfolio`,
+  `platform`. Status table and deviations: [plans/PLATFORM_PLAN.md](plans/PLATFORM_PLAN.md); usage:
+  [PLATFORM_MANUAL.md](PLATFORM_MANUAL.md). Gate: `platform gate` (all platform tests + privacy + docs-check).
+
+## Platform P0 - data contract and site folders - 2026-11-12 (no player change)
+- New platform layer ([plans/PLATFORM_PLAN.md](plans/PLATFORM_PLAN.md), [PLATFORM_MANUAL.md](PLATFORM_MANUAL.md)):
+  `src/core/model-core.js` validates site, library, model, plan and scenario files; `tools/core/site-node.mjs` checks a
+  whole site folder with its references (scenes, paths, stops, models, plans, CSV distributions).
+- CLI verbs `site validate|new|list|show` and `model validate` (`--json`). Synthetic `docs/examples/site-demo/`;
+  test `tools/core/model-validator-test.mjs` (demo clean, 10 planted faults caught).
+- First real site `private/sites/site-01` wraps the four scenes (10 paths as flows); country, time zone, shifts, lines,
+  materials and lot sizes are marked assumed until the owner confirms.
+
+## V8.0 - source engine and shared motion - 2026-11-12
+- Engine now builds from extracted source, with private layouts/models kept separate; byte-identical extraction and split
+  proofs precede motion modularization. V7 patches stay frozen.
+- One deterministic motion core drives player schedules, CLI totals and Studio current/baseline numbers. Carried heading,
+  scanner holds and custom waits agree. CLI step arrival now uses the actual timeline endpoint, correcting non-default waits.
+  Sample step-caption output now rounds to 18.5-22.5 s from full precision.
+- CLI baking and documentation checks select the V8 source build; explicit older-player layout lookup remains supported.
+
 ## V7.7.2 - guarded release and layout review - 2026-11-12
 - M0: dynamic release-path protection, five retained own-stage backups and atomic publication; camera acceptance now
   uses the shared isolated Chrome driver. Identity retains all eight snapshots with fresh documents per project and

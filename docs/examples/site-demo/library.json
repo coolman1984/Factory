@@ -1,0 +1,10 @@
+{
+ "format": "mf-library", "version": 1,
+ "carriers": [ { "id": "trolley-std", "name": "Standard trolley", "capacity": { "units": 40 }, "size": [1.2, 0.8, 1.6],
+                 "load": { "triangular": [15, 20, 30] }, "unload": 20, "source": "assumed" } ],
+ "vehicles": [ { "id": "op-push", "name": "Operator pushing", "kind": "operator", "speed": 1.0, "source": "assumed" },
+               { "id": "agv-tow", "name": "Towing AGV", "kind": "agv", "speed": 1.2, "tows": 3,
+                 "charge": { "every": 14400, "for": 1800 }, "source": "assumed" } ],
+ "lifts": [ { "id": "elev-cargo", "cycle": { "uniform": [40, 50] }, "capacity": { "carriers": 2 }, "door": 8 } ],
+ "devices": [ { "id": "rfid-gate", "time": 0 }, { "id": "scan-manual", "time": { "empirical": "data/scan-times.csv" } } ]
+}

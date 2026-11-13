@@ -57,6 +57,7 @@ export async function docsCheck() {
   // 5. changelog has the current version
   if (!existsSync(R("docs/CHANGELOG.md")) || !new RegExp(`^## V${STAGE.replace(/\./g, "\\.")}\\b`, "m").test(read("docs/CHANGELOG.md"))) problems.push(`docs/CHANGELOG.md has no "## V${STAGE}" entry`);
   // 6. the build knows the stage
-  if (!read("tools/build-v7.mjs").includes(`"${STAGE}":`)) problems.push(`tools/build-v7.mjs has no stage ${STAGE}`);
+  const builder = STAGE.startsWith("8") ? "tools/build-v8.mjs" : "tools/build-v7.mjs";
+  if (!read(builder).includes(`"${STAGE}":`)) problems.push(`${builder} has no stage ${STAGE}`);
   return problems;
 }

@@ -74,3 +74,8 @@ Each: what happened, the cause, the rule.
   and all assertions when reducing repeated process overhead.
   Identity can keep a fresh profile per input and load a fresh document per project; verify the project and unload boundary,
   and preserve every snapshot/comparison when removing redundant browser launches.
+
+- **L-PL-19 Three copies of one calculation drift.** CLI and Studio estimates lost carried heading, scan holds and exact wait
+  endpoints. Move the reviewed arithmetic into one browser/Node core; use it for current and baseline numbers. Verify
+  exact engine steps, displayed summaries and explicit older-player lookup; do not force current scene totals to historical
+  examples. Keep the byte proof before the modularization proof so extraction errors cannot masquerade as motion bugs.

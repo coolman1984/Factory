@@ -1,0 +1,7 @@
+{
+ "format": "mf-plan", "version": 1, "site": "site-demo", "from": "2026-11-16", "days": 5,
+ "source": { "file": "synthetic", "sheet": "none", "hash": "none" },
+ "lines": [ { "line": "assy-l1", "model": "TV-DEMO-55", "rate": { "per_hour": 60 }, "shift": "A+B" } ],
+ "bom": [ { "model": "TV-DEMO-55", "material": "front-cover", "per_unit": 1 },
+          { "model": "TV-DEMO-55", "material": "back-cover", "per_unit": 1 } ]
+}

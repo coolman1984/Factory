@@ -1,6 +1,16 @@
 # Project map and data flow
 
-## Offline player
+## V8 source player
+
+| Location | Responsibility / boundary |
+|---|---|
+| `src/v8/` | Maintained shell, styles, vendor fragments, renderer/replica and engine source; no company payloads. |
+| `src/v8/player/` | Sorted, byte-preserved fragments of the engine function. |
+| `src/v8/motion-core.js` | One motion calculation for the engine, CLI and Studio Numbers. |
+| `private/v8/base/` | Ignored projects/plans, device/audio and model payloads extracted from the approved reference. |
+| `tools/build-v8.mjs`, `tools/v8/` | Source build, extraction/split/hash proof, shared publication/lighting and gate/tests. |
+
+## Historical offline player
 
 ```text
 Local source decks

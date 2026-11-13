@@ -1,5 +1,5 @@
 // The agent CLI's command table and the current player stage. Read by tools/mf.mjs (help) and tools/v7/docs-check.mjs (docs/CLI.md).
-export const STAGE = "7.7.2";   // the current player version (a stage of tools/build-v7.mjs; docs/CHANGELOG.md must have it)
+export const STAGE = "8.0";   // the current player version (a stage of the V7 or V8 builder; docs/CHANGELOG.md must have it)
 export const COMMANDS = {
   help: ["", "this list"],
   validate: ["<scene.json> [...]", "check scene files against the layout: ids, joins, collisions, devices; prints every error with its place"],
@@ -15,6 +15,14 @@ export const COMMANDS = {
   "fix-links": ["<scene.json>", "auto-route every step that no longer joins its neighbours (after moving stops or reordering)"],
   key: ["<scene.json> --path id (--at s | --step id[:start|arrive|leave]) [--look trolley|stop:id] [--distance m] [--heading deg] [--tilt deg] [--lens mm] [--ease smooth|linear|in|out|cut]", "add a director camera key"],
   caption: ["<scene.json> --path id (--from s --to s | --step id [--seconds n]) --title t [--text t] [--ar-title t] [--ar-text t] [--ko-title t] [--ko-text t] [--place lower|upper|center|left|right] [--style glass|cinema|banner|minimal]", "add a caption (English, Arabic, Korean)"],
+  site: ["validate <site dir> | new <site dir> --id id [--name t] [--country t] [--timezone t] | list [root] | show <site dir> [--json]", "platform sites (docs/PLATFORM_MANUAL.md): check every file of a site folder and its references, create a skeleton, list sites (default private/sites), summarise one"],
+  model: ["validate <file.json> [...] [--json]", "check single platform files (mf-site, mf-library, mf-model, mf-plan, mf-scenario) on their own, without cross-references"],
+  sim: ["run <scenario.json> [--days d] [--seed n] [--replications n] [--view] | view <run dir> | state <run dir> --at s | where <run dir> --at s --order n [--json]", "platform simulation: run a scenario (orders, movers, elevators, line-side stock, breakdowns) with replications and KPIs; build the run viewer; open orders at a moment"],
+  exp: ["run <experiment.json> [--excel] | compare <run dir A> <run dir B> | report <result dir> --excel [--json]", "experiments: parameter grids or the smallest count that meets targets, HTML / Excel (COM) reports; compare two runs with 95% ranges"],
+  import: ["plan <workbook.xlsx> --site <dir> --from YYYY-MM-DD [--days n] | events <reads.csv> --run <run dir> [--start ISO] [--json]", "production plan from Excel through COM into the site; shop-floor reads (RFID / MES CSV) compared with a run (plan vs actual)"],
+  cad: ["layout [layout.sqlite] --out <file.layout.json> [--layers a,b] [--box x0,y0,x1,y1] [--align cx,cy=px,py;cx,cy=px,py]", "walls from the CAD package at true scale (metres) with an SVG preview; optional alignment to a scene plan"],
+  portfolio: ["init [enterprise.json] [--name t] | build [enterprise.json] [--out dir] [--json]", "all sites on one offline page and in portfolio.sqlite: validation, models and review states, latest results against targets"],
+  platform: ["state <site dir> --model id --to draft|reviewed|approved --by name [--note t] | history <site dir> | recheck <site dir> | gate [--quick]", "governance: review states (approval needs a recorded run of the exact model), change history, re-check approved baselines, the platform test gate"],
   "layout-ref": ["", "write private/v7/LAYOUT_REFERENCE.md (floors, elevators, stops, devices, every wall/rack id)"],
   "docs-gen": ["", "rewrite the generated parts of the docs (field reference, CLI reference, keyboard map)"],
   "install-hooks": ["", "install the git pre-commit hook that runs docs-check"],

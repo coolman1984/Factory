@@ -7,6 +7,16 @@ const player = process.argv[2] || "dist/Material_Flow_Player_v7.1.html", SC = lo
 const base = JSON.parse(readFileSync("private/v7/scenes/inj1.scene.json", "utf8")), clone = (o) => JSON.parse(JSON.stringify(o));
 const L0 = layoutFor(P, "inj1"), rack = L0.replica.racks.map((o) => ({ cx: (o.x + o.w / 2) * .3, cy: (o.y + o.h / 2) * .3 })).sort((a, b) => Math.hypot(a.cx - 51, a.cy - 202) - Math.hypot(b.cx - 51, b.cy - 202))[0];
 const run = (s) => SC.validate(s, layoutFor(P, s.project));
+// Choose an in-floor point independently outside every routed segment's bounding rectangle.
+function plantOffRoute(s) {
+  const d=s.devices.find(x=>x.type==="scanner"&&x.stops),L=layoutFor(P,s.project),data=SC.toInternal(clone(s),L).data;
+  const z=L.plates[d.floor].zone, paths=data.flows.flatMap(f=>f.steps.filter(st=>Array.isArray(st.path)&&(data.nodes[st.node]||{}).plate===d.floor).flatMap(st=>st.path.slice(1).map((b,i)=>[st.path[i],b])));
+  for(let i=1;i<20;i++)for(let j=1;j<20;j++){
+    const x=z[0]+(z[2]-z[0])*i/20,y=z[1]+(z[3]-z[1])*j/20;
+    if(paths.every(([a,b])=>x<Math.min(a[0],b[0])-.1||x>Math.max(a[0],b[0])+.1||y<Math.min(a[1],b[1])-.1||y>Math.max(a[1],b[1])+.1)){d.at=[x*.3,y*.3];return;}
+  }
+  throw new Error("no in-floor off-route fault point");
+}
 const cases = [
   ["clean scene passes", (s) => s, (r) => r.errors.length === 0],
   ["added block on a path", (s) => { const step = s.paths[0].steps.find(t => t.route?.type === "points"); const [a, b] = step.route.points; const stop = s.stops.find(t => t.id === step.stop); (s.layoutAdds ||= []).push({ id: "planted-block", kind: "machine", floor: stop.floor, x: (a[0] + b[0]) / 2 - 1, y: (a[1] + b[1]) / 2 - 1, w: 2, d: 2 }); }, (r) => r.errors.some(e => /paths\[/.test(e.where) && /hits|passes/.test(e.msg) && /machine:/.test(e.msg))],
@@ -18,7 +28,7 @@ const cases = [
   ["path does not end at its stop", (s) => { const p = s.paths[0].steps[1].route.points; p[p.length - 1] = [43.5, 160]; }, (r) => r.errors.some((e) => /last point must be the stop/.test(e.msg))],
   ["\"stay\" while the trolley is elsewhere", (s) => { s.paths[0].steps[2].route = { type: "stay" }; }, (r) => r.errors.some((e) => /stay/.test(e.msg))],
   ["duplicate id", (s) => { s.stops[1].id = s.stops[0].id; }, (r) => r.errors.some((e) => /duplicate id/.test(e.msg))],
-  ["scanner stop off every path", (s) => { const d = s.devices.find((x) => x.type === "scanner" && x.stops); d.at = [d.at[0] + 3, d.at[1]]; }, (r) => r.errors.some((e) => /off every path/.test(e.msg))],
+  ["scanner stop off every path", plantOffRoute, (r) => r.errors.some((e) => /off every path/.test(e.msg))],
   ["PC overlapping a rack", (s) => { const d = s.devices.find((x) => x.type === "pc"); d.x = rack.cx; d.y = rack.cy; }, (r) => r.errors.some((e) => /overlaps/.test(e.msg))],
   ["unknown floor", (s) => { s.stops[0].floor = "3F"; }, (r) => r.errors.some((e) => /unknown floor/.test(e.msg))],
   ["point outside the floor", (s) => { s.stops[0].x = 900; }, (r) => r.errors.some((e) => /outside floor/.test(e.msg))],

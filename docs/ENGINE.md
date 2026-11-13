@@ -6,20 +6,67 @@ request or when the engine has a bug - and then update the docs, the changelog a
 (`mf docs-check` must pass; the build and the commit hook run it).
 
 ## How the player is made
-The player is ONE self-contained offline HTML file. V4 (built on another PC) is the base; each version is a new file built from the
-previous one by exact-once string patches; older files in `dist/` and `dist/versions/` are never changed.
 
-```
-dist/Material_Flow_Player_v4.html   (owner's approved look; read-only)
-  └ tools/build-v6.mjs  -> v6.html  (all tabs, paths from tools/v6/make.mjs, devices, flicker/camera fixes)
-      └ tools/build-v7.mjs <stage> -> v7.x.html   (scene engine + Studio; scenes baked in)
-```
+V8 builds one offline HTML from maintained source: `node tools/build-v8.mjs 8.0`. It fills `src/v8/shell.html` with
+byte-preserved vendor/rendering code, sorted engine fragments, the scene and motion cores, and the existing Studio modules.
+Company layouts, plans, device/model/audio payloads stay in `private/v8/base/`; the default scene bundle comes from the
+lead-owned `private/v7/scenes/`. Neither is copied into tracked source. V7 builds remain the historical patch pipeline.
 
-## Modules (tools/v7)
+M1 extraction first proved a byte-identical rebuild of a fresh V7.7.2 reference, then proved the same after splitting.
+The `ref-772` stage and hash proof describe stages A/B before motion modularization; subsequent changes use V6 identity.
+All source bytes use `src/v8/** -text`. The minified vendor library is stored in bounded fragments and concatenated without
+separators, keeping every source line below 100,000 characters without changing its bytes. Sources already escaped in the
+reference are inserted once; only the live V7 modules and generated scenes are escaped during a build.
+
+### Engine fragments
+
+| part | responsibility |
+|---|---|
+| `00-camera-envelope.js` | Camera envelope |
+| `01-boot.js` | Boot, coordinates and motion constants |
+| `02-state.js` | Player state and diagnostics |
+| `03-renderer-and-light.js` | Renderer and lighting |
+| `04-plates-slab-clean-replica-plan.js` | Floor plates, replica and trolley |
+| `05-a-persistent-bounded-post-chai.js` | Post processing |
+| `06-looks.js` | Look presets |
+| `07-flows-and-the-timeline.js` | Flow timelines and route ribbons |
+| `08-camera.js` | Camera and floor glide |
+| `09-overlay-flow-lines-labels-meas.js` | Overlays and labels |
+| `10-player-ui.js` | Player controls |
+| `11-sound-restrained-generated-off.js` | Sound and reflection |
+| `12-the-frame.js` | Frame loop, devices, rebuild and public API |
+
+The parts are fragments of one function, joined in filename order without separators. Their actual names follow the
+reference section comments; they are not the approximate fourteen-part list in the original plan.
+
+`src/v8/motion-core.js` defines `window.MFMotion` in Chrome and is loaded through `loadMotionCore()` in Node. It owns
+cleaning, segment profiles, schedules, scan holds, timelines, poses, floor glide, world transforms and exact per-path/per-step
+numbers. Engine wrappers retain intro text and mutations. CLI step moments now use `t0` / `tm` / `t1`; arrival respects
+custom waits. Studio current/base comparisons use this same core; the legacy V7 branch remains for historical rebuilds.
+
+## Factory Engine (V8.1)
+
+`node tools/build-v8.mjs 8.1` adds three scripts after the motion core: the vendored Factory Engine bundle
+(`src/v8/engine/factory-engine.js`, built in the 3D Factory repository by `node engine/build.mjs`, copied here by
+`node tools/engine/sync-engine.mjs`), the bridge (`engine-bridge.js`) and the read-only Engine panel (`engine-panel.js`).
+
+- The bridge wraps `MFMotion.timeline`. For every path it builds one engine model (stops = locations, the trolley = a carrier,
+  each elevator = a lift resource, one lot at the first stop) and one transport mission whose legs are the steps with the motion
+  core's move and wait durations and scan marks. The engine runs it (1 tick = 1 us, invariant checks on) and its
+  `leg.start` / `leg.arrive` / `leg.end` events become each step's `t0` / `tm` / `t1`.
+- When the engine's tick equals the motion core's instant, the exact float is kept (bit-identical replay); a moved step gets
+  the engine time. If the engine refuses or fails, the path falls back to the motion core and the Engine button turns red.
+- `MF.engine`: `summary()`, `info(fi)`, `stateAt(t, fi)` (lot position, trolley activity, step, recent events), `toggle()`.
+- Node: `tools/engine/engine-node.mjs` loads the same two files; `bridge.runFlow(D, f, E, base, { model, commands })` runs
+  what-if trips (another trolley on the lift, blocked time) without a browser.
+- The engine itself (API, events, tests, plan) is documented in the 3D Factory repository: `docs/17_ENGINE_CORE.md`.
+
+## Modules (source and tools/v7)
 | file | runs in | job |
 |---|---|---|
+| `src/v8/motion-core.js` | player + Node | shared schedules, scan holds, timelines, poses, glide/world transforms and exact numbers |
 | `scene-core.js` | player + Node | scene <-> internal data (metres <-> frame units 0.3 m), auto router (grid A*), validator, layout edits (move / turn / delete / door). The one source of format rules. |
-| `scene-node.mjs` | Node | loads scene-core with `vm`; reads a player's built-in layout (`var P = {...}`) |
+| `scene-node.mjs` | Node | loads the motion core, defaults to the private base project JSON (explicit older players still scan HTML); loads scene-core with `vm`; reads a player's built-in layout (`var P = {...}`) |
 | `scene-schema.mjs` | Node | the field list (docs and `docs-check`) |
 | `preload-scene.js` | player, before the data | picks the scene (browser autosave if made from the same baked scene, else the baked one), converts it, applies layout edits, floor-light repair (`MF7_CLEAN_LIGHT`) |
 | `engine-patches.mjs` | build | patches on the V6 player: rebuildable flows / labels / devices, replica instance tags, per-step speed, 64 RFID gates, camera rescue (never hidden), preparing screen, frame hooks (`MFX.pre` / `MFX.post`), internals `MF.x` |
@@ -36,13 +83,13 @@ dist/Material_Flow_Player_v4.html   (owner's approved look; read-only)
 | `cdp.mjs` | Node | headless Google Chrome driver for tests and browser verbs |
 | `film-export.mjs` | Node + player hooks | explicit-frame CLI export through existing ffmpeg/ffprobe; decoded timing and freeze receipts |
 
-Build: `node tools/build-v7.mjs 7.7.2` (stages in `STAGES`: which add-on groups and CSS go in). The build bakes
+Historical V7 build: `node tools/build-v7.mjs 7.7.2` (stages in `STAGES`: which add-on groups and CSS go in). The build bakes
 `private/v7/scenes/*.scene.json`, parses every inline script, and runs `mf docs-check` (skip only with `--no-docs-check` for
 temporary test players).
 
 ## Release files are protected
 
-The V7 builder uses `tools/v8/build-output.mjs` and refuses any other `dist/Material_Flow_Player*.html`, all `dist/versions/` outputs and all `dist/backup/`
+Both builders use `tools/v8/build-output.mjs` and refuses any other `dist/Material_Flow_Player*.html`, all `dist/versions/` outputs and all `dist/backup/`
 outputs after resolving paths without case sensitivity. Rebuilding the selected stage's own release first backs it up in
 `dist/backup/` and keeps its five newest backups. Publication writes an exclusive `.tmp` file, then renames it atomically;
 a stale/in-use temporary file causes a refusal. Test outputs belong under `dist/test/`.
@@ -56,6 +103,7 @@ world z = unit y - CY (`D.center`), y up. Floors are plates that slide and lift 
 Run the gate: `node tools/v8/gate.mjs <player.html>`; use `--quick` during work or `--only name,name` for selected rows.
 Logs and machine-readable results go to `dist/test/gate-<player>/` (`--out dist/test/<name>` overrides it). GPU rows run
 sequentially with a 20-minute row limit. Missing private fixtures produce explicit skips; public examples still validate.
+The V8 gate also includes Node `motion` and four-tab browser `numbers` rows.
 `--only camera` selects all ten guided 3x camera rows. The legacy stage1 row uses matching pre-addition fixtures; the
 actual player is checked by the separate layout/review transaction rows. M0 also verifies all ten paths at 1x outside
 the standard gate, as required by master-plan section 1.6. Camera evaluations use a ten-minute timeout; other CDP
@@ -78,3 +126,5 @@ project; its eight snapshots and comparison assertions are unchanged.
 | `node tools/v7/camera-review-test.mjs` | bounded director interpolation, follow offsets, key units and invalid CLI targets |
 | `node tools/v7/film-review-test.mjs <player baked with docs/examples/director.scene.json> <output directory>` | exact 20 s film, injected freeze rejection, sequential frames and state restoration |
 | `node tools/mf.mjs docs-check` | docs match the code |
+| `node tools/engine/bridge-test.mjs` | V8.1: every path plays from the Factory Engine bit-identically; a busy lift delays the trip (engine authority) |
+| `node tools/engine/smoke-81.mjs <8.1 player>` | V8.1: all tabs on the engine, Engine panel, rebuild re-runs the engine, no page errors |

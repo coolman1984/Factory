@@ -94,7 +94,7 @@ Expected: `camera key at 8 s on sample-1 (rides with the trolley)` and `wrote <s
 ```
 node tools/mf.mjs caption <scene> --path sample-1 --step s3 --seconds 4 --title "Buffer" --ar-title "منطقة الانتظار" --ko-title "버퍼" --text "The trolley waits here." --ar-text "تنتظر العربة هنا."
 ```
-Expected: `caption cap-xxxxxx on sample-1: 18.4-22.4 s`. Show Arabic: `"studio": { "lang": "ar" }`. Example with both keys, the
+Expected: `caption cap-xxxxxx on sample-1: 18.5-22.5 s`. Show Arabic: `"studio": { "lang": "ar" }`. Example with both keys, the
 caption and a take: [examples/director.scene.json](examples/director.scene.json).
 
 ## 9. A video take (a short film)
@@ -132,3 +132,7 @@ Walls use `a`/`b` endpoint pairs. Validate against the intended player with `mf 
 Use the slide for existence, location and paths, and measured CAD dimensions for sizes; record unresolved differences.
 Keep addition list slots in place when deleting with `layoutEdits` (see the manual for target IDs). Compare the original
 picture, plan and 3D with identical framing, then play every affected path. A clear path does not establish layout accuracy.
+
+M1 verification: sample validation, diff, numbers, keys and caption outputs above were re-run with the shared motion core.
+Validation/diff/numbers remain unchanged; the caption interval rounds to 18.5-22.5 s from full-precision timing.
+Arrival-based moments now use the exact motion endpoint; custom wait durations no longer shift arrival.

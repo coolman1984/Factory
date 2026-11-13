@@ -1,4 +1,11 @@
-# Current workstreams — 2026-11-12
+# Current workstreams — 2026-11-13
+
+2026-11-13: **V8.1 built on the Factory Engine** (owner: "build our solid core ... make V8 work on our new organized engine").
+The engine lives in the 3D Factory repository (`engine/`, plain JavaScript, no dependencies, 9 tests PASS); V8.1 =
+V8.0 + vendored engine + bridge + Engine panel (see [ENGINE.md](ENGINE.md) "Factory Engine"). Verified: bridge test PASS
+(19 paths bit-identical, lift-wait authority), identity V8.0 vs V8.1 PASS (all 10 paths), smoke-81 PASS (4 tabs, panel,
+rebuild, no page errors); 8.0 rebuild byte-identical to its release. Not run on 8.1: camera, start-stutter, film, mouse
+and UI gate rows. Open: multi-trolley shift runs (shared lifts across paths) and Studio edits as engine commands.
 
 M0 released [Material Flow V7.7.2](../dist/Material_Flow_Player_v7.7.2.html) with the lead-owned flow-logic scenes,
 reviewed layout/camera/recording fixes, guarded publication and a matching archive. The CLI now targets 7.7.2. Candidate
@@ -7,6 +14,15 @@ All ten paths also pass at 1x, and checked films pass decoded timing/freeze chec
 The quick release gate takes 141.936 s. Camera snap quality, Studio recording/compositor fidelity, cold-start
 root cause and lead-owned layout questions remain open. See [the receipt](plans/V8_PROGRESS.md). M1 has not started;
 Step 0 was committed by the lead as `4623fd0`. Earlier dated checkpoints below are historical.
+
+2026-11-12: owner asked for a system on the level of the leading factory engines for the multinational TV and Mobile
+factory. [PLATFORM_PLAN.md](plans/PLATFORM_PLAN.md) (plan only, nothing implemented): simulation core with an event log
+the player plays, production-plan demand, experiments and KPI store, many sites, CAD layouts, governance; owner
+decisions Q1-Q9 open. **P0 done** (data contract, `mf site` / `mf model`, demo site, `private/sites/site-01` over
+the four scenes; `tools/core/model-validator-test.mjs` PASS). **P1-P8 built** the same day (owner: "all stages non
+stop"); see the build-status table in the plan. Open: 3D player playback of runs (2D viewer meanwhile), the owner's
+production plan, measured times and site facts for site-01 (its runs are assumed, not capacity results), owner
+decisions Q1-Q9.
 
 - **CAD readable package:** completed data extraction and independent validation; local output at `dist/SEEG_Y26_AI_Package/`. All source/DB counts and exported labels checked; original hashes unchanged. Native Excel opened the workbook. Its preview PDFs are NASCA protected, so native visual QA remains unavailable. Source PDF text/reconciliation is not extracted; its Foxit window was closed at the owner's request. See [case/evidence](history/2026-11-09-cad-extraction.md).
 - **Documentation/skills:** project entry point, map, runbooks, decisions, detailed case history and reusable skills added. Read [START_HERE.md](START_HERE.md); maintain them using [MAINTENANCE.md](MAINTENANCE.md).
