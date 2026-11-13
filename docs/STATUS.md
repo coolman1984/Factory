@@ -1,7 +1,9 @@
 # Current workstreams — 2026-11-13
 
+2026-11-13 (gate): full V8 gate on V8.3 after the journal fix: 21 of 26 rows PASS (docs, validate, validator, identity, layout-adds, review, smoke, mouse, ui, gates, stage1, all 10 camera rows); the run was stopped by low memory before start, take, guard, motion, numbers. start passed separately on an idle machine (8/8 smooth); take, guard, motion, numbers passed in the first V8.3 run (before the journal fix, which changed only the Engine panel).
+
 2026-11-13 (latest): **V8.3** = engine 0.3 + Shift run with drawn empty returns, measured times and aisle/crossing traffic +
-Studio edits through the engine layout journal (checked, refused edits rolled back, engine undo/redo). Identity V8.0 vs V8.3 PASS,
+Studio edits through the engine layout journal (an edit that stops a path playing is refused and rolled back; validator findings are warnings; engine undo/redo). Identity V8.0 vs V8.3 PASS,
 smoke PASS, bridge PASS. Finding (assumed times, 4 trolleys/path, +-15% spread, 1 trolley per 2 m of shared aisle): EPS paths
 lose ~4.5 s per trip in the shared Dry Room corridor; other tabs ~1-2 s. No return routes are drawn yet and no times are
 measured: those numbers become real when the owner draws "... return" paths and enters measured times.

@@ -31,16 +31,16 @@ for (const tab of ["inj1", "inj2", "eps", "press"]) {
           X.undo(); const j2 = MF.engine.journal(), afterUndo = X.doc.flows[0].name;
           const node0 = X.doc.flows[0].steps[1].node; let threw = null; try { X.commit("bad stop", () => { X.doc.flows[0].steps[1].node = 987654; }); } catch (e) { threw = e.message; }
           const j3 = MF.engine.journal(), nodeAfter = X.doc.flows[0].steps[1].node;
-          const nFlows = X.doc.flows.length; X.commit("duplicate path", () => { X.doc.flows.push(JSON.parse(JSON.stringify(X.doc.flows[0]))); }); const jDup = MF.engine.journal(), flowsAfter = X.doc.flows.length;
-          const eu = MF.engine.journalUndo(), nameEU = X.doc.flows[0].name, er = MF.engine.journalRedo(), nameER = X.doc.flows[0].name, j4 = MF.engine.journal();
-          setTimeout(() => ok({ j0, j1, j2, j3, j4, jDup, nFlows, flowsAfter, name0, afterUndo, node0, nodeAfter, threw, eu: eu && eu.ok, er: er && er.ok, nameEU, nameER, html: document.getElementById("fe-journal").innerText }), 300); } })`);
+          const nFlows = X.doc.flows.length; X.commit("duplicate path", () => { X.doc.flows.push(JSON.parse(JSON.stringify(X.doc.flows[0]))); }); const flowsAfter = X.doc.flows.length;
+          setTimeout(() => { const warn = MF.engine.journal().warning, eu = MF.engine.journalUndo(), flowsEU = X.doc.flows.length, er = MF.engine.journalRedo(), flowsER = X.doc.flows.length, eu2 = MF.engine.journalUndo(), j4 = MF.engine.journal();
+            ok({ j0, j1, j2, j3, j4, nFlows, flowsAfter, warn, name0, afterUndo, node0, nodeAfter, threw, eu: eu && eu.ok, er: er && er.ok, eu2: eu2 && eu2.ok, flowsEU, flowsER, flowsEnd: X.doc.flows.length, html: document.getElementById("fe-journal").innerText }); }, 2500); } })`);
       assert.ok(!j.none, `${tab}: the layout journal started`);
       assert.equal(j.j1.revision, j.j0.revision + 1, `${tab}: a Studio edit is one journal command`); assert.equal(j.j1.history.at(-1).type, "doc.edit");
       assert.ok(j.j2.history.at(-1).type === "doc.undo" || j.j2.history.at(-1).label === "Studio undo", `${tab}: Studio undo is recorded as an undo (${JSON.stringify(j.j2.history.at(-1))})`); assert.equal(j.afterUndo, j.name0);
       assert.equal(j.nodeAfter, j.node0, `${tab}: an edit to an unknown stop is rolled back`); assert.equal(j.j3.history.filter(h => h.label === "Studio edit").length, j.j2.history.filter(h => h.label === "Studio edit").length, `${tab}: the bad edit is not in the journal`);
-      assert.ok(/^Refused/.test(j.jDup.note) && j.flowsAfter === j.nFlows, `${tab}: the engine refused a duplicate path and rolled the Studio back (${j.jDup.note}; ${j.flowsAfter} vs ${j.nFlows})`);
-      assert.ok(j.eu && j.nameEU === j.name0 + " (j)" && j.er && j.nameER === j.name0, `${tab}: engine undo/redo change the Studio scene (${j.eu} ${j.nameEU} / ${j.er} ${j.nameER})`); assert.ok(j.j4.verified, `${tab}: journal replays to the current scene`);
-      console.log(`  ${tab}: shift with traffic (${t.zones} shared section(s)) + measured time OK; journal r${j.j4.revision}: edit, Studio undo, bad stop (${j.j3.note || j.threw || "rejected by the Studio"}), duplicate path refused by the engine, engine undo + redo OK`);
+      assert.ok(j.flowsAfter === j.nFlows + 1 && /duplicate/i.test(j.warn), `${tab}: a Studio edit the scene validator flags is kept and warned (${j.warn}; ${j.flowsAfter} vs ${j.nFlows})`);
+      assert.ok(j.eu && j.flowsEU === j.nFlows && j.er && j.flowsER === j.nFlows + 1 && j.eu2 && j.flowsEnd === j.nFlows, `${tab}: engine undo/redo change the Studio scene (${j.flowsEU}/${j.flowsER}/${j.flowsEnd} vs ${j.nFlows})`); assert.ok(j.j4.verified, `${tab}: journal replays to the current scene`);
+      console.log(`  ${tab}: shift with traffic (${t.zones} shared section(s)) + measured time OK; journal r${j.j4.revision}: edit, Studio undo, bad stop (${j.j3.note || j.threw || "rejected by the Studio"}), duplicate path kept with a validator warning, engine undo + redo OK`);
     }
     await pg.wait(600);
     const shot = await pg.call("Page.captureScreenshot", { format: "png" }); writeFileSync(`${out}/${tab}-engine-panel.png`, Buffer.from(shot.data, "base64"));

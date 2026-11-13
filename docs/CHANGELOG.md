@@ -12,13 +12,16 @@ A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are 
   browser, Export/Import JSON) or `shift.mjs --times file.json` replace the geometric times; **Aisle cap**: every 2 m cell of a
   crossing or aisle used by two or more different paths is an engine traffic zone (N trolleys at a time), so trolleys queue at
   crossings and keep headway; table adds traffic wait per trip and the source of times/return (M/G, D/E/M).
-- **Layout journal**: every scene the Studio publishes is an engine command, checked by the scene validator and by the engine
-  (every path must still play); an edit that adds a problem is refused and the Studio is rolled back with a tip; engine-level
-  Undo / Redo / Export journal in the Engine panel; Studio undo is recorded as an undo.
+- **Layout journal**: every scene the Studio publishes is an engine command; an edit after which a path can no longer play on
+  the engine is refused and the Studio is rolled back with a tip; new scene-validator findings are shown as warnings (the Studio
+  keeps its own rules: a first version that refused them broke 5 Studio gate rows); engine-level Undo / Redo / Export journal in
+  the Engine panel; Studio undo is recorded as an undo.
 - Node loader runs the player files in the main realm (vm sandbox global lookups made long runs slow); `shift.mjs --check` is
   now opt-in. Defaults reproduce the V8.2 numbers exactly.
 - Tests: identity V8.0 vs V8.3 PASS; smoke PASS on all tabs (adds shift with traffic + measured time, journal edit, Studio undo,
-  engine refusal of a duplicate path, engine undo/redo, journal verify); bridge test PASS; 8.0 rebuild byte-identical.
+  duplicate path kept with a validator warning, engine undo/redo, journal verify); bridge test PASS (adds journal refusal);
+  8.0 rebuild byte-identical; full V8 gate on V8.3 (see STATUS). review-test now flushes the Studio's pending autosave before it
+  plants a malformed one (a timing race that V8.3's journal exposed).
 
 ## V8.2 - Shift run on the Factory Engine 0.2 - 2026-11-13
 - Engine 0.2.0 (3D Factory): `loop` policy (a trolley repeats its trip as soon as the last one is done; trips, mean cycle and

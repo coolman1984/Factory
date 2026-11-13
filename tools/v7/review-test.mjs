@@ -81,7 +81,8 @@ try {
   })()`);
   for (const name of results) console.log("PASS " + name);
   assert.deepEqual(pg.errors, []);
-  await pg.ev(`(() => { const scene = JSON.parse(JSON.stringify(MF7.base)); scene.director = { [scene.paths[0].id]: { keys: {} } }; localStorage.setItem("mf7:scene:eps", JSON.stringify({ scene, baseHash: MF7.baseHash })); return 1; })()`);
+  // flush the Studio's pending autosave first: otherwise it can land after (or on unload overwrite) the malformed scene planted here
+  await pg.ev(`(() => { MFX.flush(); const scene = JSON.parse(JSON.stringify(MF7.base)); scene.director = { [scene.paths[0].id]: { keys: {} } }; localStorage.setItem("mf7:scene:eps", JSON.stringify({ scene, baseHash: MF7.baseHash })); return 1; })()`);
   await pg.reload();
   assert.equal(await pg.ev(`MF7.source === "built-in" && /director/.test(MF7.error) && !!window.MFX`), true);
   assert.deepEqual(pg.errors, []);

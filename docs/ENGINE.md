@@ -69,9 +69,9 @@ journal (below).
   Rows add `trafficWaitPerTrip`, `timeSource` (measured/geometric), `returnSource` (drawn/estimated/measured/none); `zones` lists
   shared sections. CLI: `--aisle N --times file.json [--check]`.
 - V8.3 layout journal (`bridge.makeJournal`, panel "Layout journal", `MF.engine.journal()`, `journalUndo()`, `journalRedo()`):
-  the panel wraps `MFS.setScene`; each published scene becomes a `doc.edit` (or undo/redo) on `FactoryEngine.Journal`, validated
-  by `MFScene.validate` plus "every path plays on the engine"; only problems the edit adds are refused; a refused edit is rolled
-  back through `MFX.replaceScene`. Engine undo/redo publish the journal document back to the Studio.
+  the panel wraps `MFS.setScene`; each published scene becomes a `doc.edit` (or undo/redo) on `FactoryEngine.Journal`, refused
+  only if a path that played no longer plays on the engine (rolled back through `MFX.replaceScene`); new `MFScene.validate`
+  findings are shown as warnings, computed after the edit. Engine undo/redo publish the journal document back to the Studio.
 - Node: `tools/engine/engine-node.mjs` loads the same two files; `bridge.runFlow(D, f, E, base, { model, commands })` runs
   what-if trips (another trolley on the lift, blocked time) without a browser.
 - The engine itself (API, events, tests, plan) is documented in the 3D Factory repository: `docs/17_ENGINE_CORE.md`.

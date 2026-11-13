@@ -70,24 +70,27 @@ ${r.aisleCapacity ? `<div>${r.zones.length} shared section(s), ${r.aisleCapacity
      journal receives each one as a doc.edit command, checks it (scene validator + every path still plays on the engine) and
      refuses an edit that adds a problem: the Studio is then rolled back to the last accepted scene. */
   const clone = o => JSON.parse(JSON.stringify(o));
-  let JR = null, jnote = "", busy = false, live = null, lastEngine = [], firstScene = null;
+  let jwarn = "", JR = null, jnote = "", busy = false, live = null, lastEngine = [], firstScene = null;
   const engineProblems = () => MF.D.flows.flatMap(f => { const d = B.infoFor(f); return d && !d.ok ? [`path ${f.name || f.id}: cannot play on the engine (${d.error})`] : []; });
   const sceneLayout = () => ({ project, plates: MF.D.plates || {}, elevators: MF.D.elevators || (MF.D.elevator ? [MF.D.elevator] : []), replica: window.MF7 && window.MF7.baseReplica ? clone(window.MF7.baseReplica) : null });
-  const validate = (sc, which) => {
-    const out = []; try { const v = window.MFScene.validate(clone(sc), sceneLayout()); for (const e of (v && v.errors) || []) out.push(`${e.where}: ${e.msg}`); } catch (e) { out.push("scene check failed: " + e.message); }
-    if (which === "next" && live) out.push(...live); if (which === "prev") out.push(...lastEngine); return out;
-  };
+  // Refused: only an edit after which a path no longer plays on the engine. The scene validator's findings are recorded as
+  // warnings (computed after the edit, off the interaction path): the Studio keeps its own rules for what it allows.
+  const validate = (sc, which) => which === "next" ? (live || []) : lastEngine;
+  const sceneIssues = sc => { try { const v = window.MFScene.validate(clone(sc), sceneLayout()); return ((v && v.errors) || []).map(e => `${e.where}: ${e.msg}`); } catch (e) { return ["scene check failed: " + e.message]; } };
+  let warnTimer = 0, lastIssues = null;
+  const checkLater = sc => { clearTimeout(warnTimer); warnTimer = setTimeout(() => { const now = sceneIssues(sc), before = new Set(lastIssues || []); const added = lastIssues ? now.filter(x => !before.has(x)) : []; lastIssues = now; jwarn = added.length ? `Scene validator: ${added.length} new finding(s): ${added.slice(0, 3).join("; ")}` : ""; renderJournal(); }, 400); };
   const publish = (sc, how) => { busy = true; try { window.MFX.replaceScene(sc, how); } finally { busy = false; } if (!JR.same(window.MFS.scene)) JR.edit(clone(window.MFS.scene), "studio normalisation"); };
   function record(sc) {
     if (!JR || JR.same(sc)) return;
     live = engineProblems();
     const r = JR.isUndoOf(sc) ? JR.undo() : JR.isRedoOf(sc) ? JR.redo() : JR.edit(clone(sc), JR.partOf(sc, "undo") ? "Studio undo" : JR.partOf(sc, "redo") ? "Studio redo" : "Studio edit");
-    if (r.ok) { lastEngine = live; jnote = ""; } else { jnote = "Refused: " + r.reason; live = null; publish(JR.J.current, "engine refused the edit"); lastEngine = engineProblems(); if (window.MF.x && window.MF.x.tip) window.MF.x.tip("Factory Engine refused the edit: " + r.reason); }
+    if (r.ok) { lastEngine = live; jnote = ""; checkLater(sc); } else { jnote = "Refused: " + r.reason; live = null; publish(JR.J.current, "engine refused the edit"); lastEngine = engineProblems(); if (window.MF.x && window.MF.x.tip) window.MF.x.tip("Factory Engine refused the edit: " + r.reason); }
     live = null; renderJournal();
   }
   function startJournal() {
     const S = window.MFS, X = window.MFX; if (JR || !S || !X || !X.replaceScene || !window.MFScene || !S.scene) return false;
-    firstScene = clone(X.toScene ? X.toScene() : S.scene); JR = B.makeJournal(clone(firstScene), { validate });   // the Studio's own form of the scene, so its undo is recognised lastEngine = engineProblems();
+    firstScene = clone(S.scene); JR = B.makeJournal(clone(firstScene), { validate });   // the raw scene: cheap at start-up; Studio normalisation is handled by partOf
+    setTimeout(() => { if (lastIssues == null) lastIssues = sceneIssues(firstScene); }, 1500);   // baseline of the scene validator, off the start-up path   // the Studio's own form of the scene, so its undo is recognised lastEngine = engineProblems();
     const orig = S.setScene; S.setScene = function (sc) { const r = orig.apply(this, arguments); if (!busy) { try { record(sc); } catch (e) { console.error("[Factory Engine] journal:", e); } } return r; };
     renderJournal(); return true;
   }
@@ -101,7 +104,7 @@ ${r.aisleCapacity ? `<div>${r.zones.length} shared section(s), ${r.aisleCapacity
     const open = jr.querySelector("details") && jr.querySelector("details").open, h = JR.J.history().slice(-6).reverse();
     jr.innerHTML = `<details${open ? " open" : ""}><summary>Layout journal (Studio edits as engine commands)</summary>
 <div><span class="k">Revision</span> ${JR.J.revision} &middot; <span class="k">hash</span> <span class="fp">${esc(JR.J.hash)}</span></div>
-${jnote ? `<div class="err">${esc(jnote)}</div>` : `<div class="ok">Every edit is checked by the scene validator and the engine.</div>`}
+${jnote ? `<div class="err">${esc(jnote)}</div>` : `<div class="ok">Every edit is recorded; the engine refuses one after which a path cannot play.</div>`}${jwarn ? `<div class="k" style="color:#f0b429">${esc(jwarn)}</div>` : ""}
 <table>${h.map(e => `<tr><td>r${e.rev}</td><td>${esc(e.type.replace("doc.", ""))}</td><td class="e">${esc(e.label)} (${e.ops} change${e.ops === 1 ? "" : "s"})</td></tr>`).join("") || `<tr><td class="k">no edits yet</td></tr>`}</table>
 <button class="fe-b" id="fe-ju" type="button"${JR.J.canUndo() ? "" : " disabled"}>Undo (engine)</button><button class="fe-b" id="fe-jd" type="button"${JR.J.canRedo() ? "" : " disabled"}>Redo (engine)</button><button class="fe-b" id="fe-jx" type="button">Export journal</button></details>`;
     jr.querySelector("#fe-ju").onclick = () => engineStep("undo"); jr.querySelector("#fe-jd").onclick = () => engineStep("redo");
@@ -127,7 +130,7 @@ ${jnote ? `<div class="err">${esc(jnote)}</div>` : `<div class="ok">Every edit i
   setInterval(render, 250);
   MF.engine = { version: B.version, info: fi => B.infoFor(MF.D.flows[fi ?? MF.S.flow]), stateAt: (t, fi) => B.stateAt(B.infoFor(MF.D.flows[fi ?? MF.S.flow]), t ?? MF.S.t), toggle,
     shift: opts => B.runShift(MF.D, opts || {}), shiftUI: extra => { toggle(true); $("fe-sh").open = true; return runShiftUI(extra); },
-    journal: () => JR && { revision: JR.J.revision, hash: JR.J.hash, history: JR.J.history(), note: jnote, canUndo: JR.J.canUndo(), canRedo: JR.J.canRedo(), verified: JR.J.verify(firstScene) },
+    journal: () => JR && { revision: JR.J.revision, hash: JR.J.hash, history: JR.J.history(), note: jnote, warning: jwarn, canUndo: JR.J.canUndo(), canRedo: JR.J.canRedo(), verified: JR.J.verify(firstScene) },
     journalUndo: () => engineStep("undo"), journalRedo: () => engineStep("redo"), times: () => times,
     summary: () => MF.D.flows.map(f => { const d = B.infoFor(f); return d && d.ok ? { id: f.id, ok: true, steps: d.steps, total: d.total, fingerprint: d.fingerprint, events: d.log.length } : { id: f.id, ok: false, error: d ? d.error : "no engine data" }; }) };
   render(); return true;

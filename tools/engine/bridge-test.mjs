@@ -46,5 +46,12 @@ for (const file of files) {
     console.log(`engine authority: lift step delayed ${shift.toFixed(3)} s by a busy lift; ${r.data.moved} step(s) moved`);
   } catch (e) { fails++; console.log("FAIL engine authority: " + e.message); }
 }
+// Layout journal: an edit after which a path cannot play is refused and changes nothing; a viewer undo is recognised.
+try {
+  const J = bridge.makeJournal({ paths: ["a"] }, { validate: (d, w) => w === "next" && d.paths.includes("broken") ? ["path broken: cannot play on the engine"] : [] });
+  const bad = J.edit({ paths: ["a", "broken"] }, "bad"); assert.equal(bad.ok, false); assert.deepEqual(J.J.current, { paths: ["a"] });
+  assert.ok(J.edit({ paths: ["a", "b"] }, "good").ok); assert.ok(J.isUndoOf({ paths: ["a"] })); assert.ok(J.undo().ok); assert.ok(J.isRedoOf({ paths: ["a", "b"] }));
+  console.log("journal: engine refusal changes nothing; undo/redo recognised");
+} catch (e) { fails++; console.log("FAIL journal: " + e.message); }
 console.log(fails ? `FAIL: ${fails} check(s)` : `PASS: ${paths} paths, ${steps} steps play from the Factory Engine ${FE.ENGINE_VERSION}, bit-identical to the motion core (worst ${worst} s)`);
 process.exit(fails ? 1 : 0);
