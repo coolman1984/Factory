@@ -10,7 +10,7 @@
 
 ٢. [المعمارية](02_ARCHITECTURE.md) و[البيانات](03_DATA_MODEL.md).
 
-٣. [التنفيذ](09_ROADMAP.md) و[التحقق](10_VALIDATION_AND_PERFORMANCE.md).
+٣. [التنفيذ](09_ROADMAP.md) و[حزم العمل](16_EXECUTION_PLAN.md) و[التحقق](10_VALIDATION_AND_PERFORMANCE.md).
 
 ٤. ملف المجال المطلوب، و[القرارات](11_DECISIONS_AND_OPEN_QUESTIONS.md)، ثم [العينة](../examples/README.md).
 
