@@ -34,6 +34,7 @@
 | [docs/18_CONTROL_CENTER.md](18_CONTROL_CENTER.md) | Factory Control Center: master data, database, control UI, agent interface, tests (English) |
 | `control/` | Control Center: `schema.js` (master data registry), `store.js` (SQLite store, commands, runs), `seed.js`, `server.mjs` (UI + API), `fc.mjs` (command line), `ui/` (page, styles, languages), `test/` |
 | `start-control-center.cmd` | Starts the Control Center and opens it in the browser |
+| `material-flow/` | Material Flow player project (V8.3, the first viewer of the engine), merged with its own history; its own README, docs and tools. Company drawings, decks, private scenes and built players stay untracked (`material-flow/.gitignore`) |
 | `package.json` | npm scripts only (`test`, `build`, `validate`, `demo`); no dependencies |
 
 Section 2 below was the proposal before the engine existed; the built layout is `engine/` as listed above.
