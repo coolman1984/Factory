@@ -79,3 +79,10 @@ Each: what happened, the cause, the rule.
   endpoints. Move the reviewed arithmetic into one browser/Node core; use it for current and baseline numbers. Verify
   exact engine steps, displayed summaries and explicit older-player lookup; do not force current scene totals to historical
   examples. Keep the byte proof before the modularization proof so extraction errors cannot masquerade as motion bugs.
+
+# 2026-11-13 - Factory Engine V8.3
+
+- **L-ENG-01 - Do not run hot engine code in a vm sandbox.** Global lookups (Math, JSON, Object) inside `vm.runInNewContext` go through interceptors; an 8 h shift run with traffic took 242 s. Running the same files in the main realm (`vm.runInThisContext` wrapper) plus engine fixes (local `imul`, event chain hashing as emitted, trimmed finished missions) took 19 s. Profile with `node --cpu-prof` before guessing.
+- **L-ENG-02 - The Studio normalises the scene on its first rebuild.** A Studio undo then differs from the journal's pre-edit document, so exact equality cannot recognise undo. Start the journal from `MFX.toScene()`, and treat a scene whose changes are part of the last edit's inverse as an undo.
+- **L-ENG-03 - A refusal test must prove which layer refused.** An edit to an unknown stop was rejected by the Studio itself, not by the engine; the engine's own refusal is proven with an edit the Studio accepts (a duplicate path id).
+- **L-ENG-04 - A full C: drive breaks headless Chrome tests silently.** Point TEMP/TMP to `dist/test/tmp` for test runs; Chrome test profiles (`mf_v7_*`) left in the system temp folder need the owner's permission to be removed.

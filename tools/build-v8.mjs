@@ -18,6 +18,8 @@ const STAGES={
 STAGES["8.1"]={...STAGES["8.0"],engine:true};
 // 8.2 = 8.1 + engine 0.2 (loop policy, seeded spread) + the Shift run in the Engine panel (MF.engine.shift / shiftUI).
 STAGES["8.2"]={...STAGES["8.0"],engine:true};
+// 8.3 = engine 0.3 (traffic zones, serials/test/packing, layout journal) + Shift run with drawn returns, measured times and aisle/crossing traffic + Studio edits through the engine journal.
+STAGES["8.3"]={...STAGES["8.0"],engine:true};
 const ref=stage==='ref-772',version=ref?'7.7.2':stage,S=STAGES[ref?'8.0':stage];if(!S)throw new Error('unknown V8 stage '+stage);
 if(ref&&!options['--out'])throw new Error('ref-772 requires explicit --out dist/test/<name>.html');
 const out=options['--out']||`dist/Material_Flow_Player_v${stage}.html`,output=planBuildOutput(ref?'7.7.2':stage,'private/v8/base/projects.json',out);

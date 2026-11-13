@@ -3,6 +3,23 @@
 Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (older ones kept). Newest first.
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
+## V8.3 - Engine 0.3: real returns, measured times, traffic, Studio edits through the engine - 2026-11-13
+
+- Factory Engine 0.3.0 (traffic zones, serial numbers / test-repair / packing plan, layout journal); bridge still replays every
+  path bit-identically.
+- Shift run: a path named "... return ..." from a path end back to its start is that path's **drawn empty return** (otherwise
+  estimated as before); **measured times** per path (trip, return, load, unload) in the panel (saved per project in this
+  browser, Export/Import JSON) or `shift.mjs --times file.json` replace the geometric times; **Aisle cap**: every 2 m cell of a
+  crossing or aisle used by two or more different paths is an engine traffic zone (N trolleys at a time), so trolleys queue at
+  crossings and keep headway; table adds traffic wait per trip and the source of times/return (M/G, D/E/M).
+- **Layout journal**: every scene the Studio publishes is an engine command, checked by the scene validator and by the engine
+  (every path must still play); an edit that adds a problem is refused and the Studio is rolled back with a tip; engine-level
+  Undo / Redo / Export journal in the Engine panel; Studio undo is recorded as an undo.
+- Node loader runs the player files in the main realm (vm sandbox global lookups made long runs slow); `shift.mjs --check` is
+  now opt-in. Defaults reproduce the V8.2 numbers exactly.
+- Tests: identity V8.0 vs V8.3 PASS; smoke PASS on all tabs (adds shift with traffic + measured time, journal edit, Studio undo,
+  engine refusal of a duplicate path, engine undo/redo, journal verify); bridge test PASS; 8.0 rebuild byte-identical.
+
 ## V8.2 - Shift run on the Factory Engine 0.2 - 2026-11-13
 - Engine 0.2.0 (3D Factory): `loop` policy (a trolley repeats its trip as soon as the last one is done; trips, mean cycle and
   lift waits per policy) and optional seeded time spread on legs and waits.

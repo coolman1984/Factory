@@ -16,11 +16,31 @@ for (const tab of ["inj1", "inj2", "eps", "press"]) {
     assert.ok(r.sum.length > 0 && r.sum.every(x => x.ok), `${tab}: engine fallback ${JSON.stringify(r.sum.filter(x => !x.ok))}`);
     assert.ok(r.s.ok && r.s.onTrolley && /moving|at |lift/.test(r.s.activity), `${tab}: engine state at mid-trip ${JSON.stringify(r.s)}`);
     assert.ok(r.ok && r.after === r.before, `${tab}: rebuild re-runs the engine with the same result`);
-    assert.match(r.panel, /Factory Engine/); assert.match(r.panel, /on the trolley/); assert.match(r.title, /V8\.[12]/);
+    assert.match(r.panel, /Factory Engine/); assert.match(r.panel, /on the trolley/); assert.match(r.title, /V8\.[123]/);
     if (await pg.ev("typeof MF.engine.shiftUI === 'function'")) {   // V8.2: shift run from the panel
       const sh = await pg.ev(`(() => { const r = MF.engine.shiftUI(); return { paths: r.paths.map(p => [p.id, p.trips, p.naive]), inv: r.invariants, html: document.getElementById("fe-out").innerText }; })()`);
       assert.ok(sh.paths.length > 0 && sh.paths.every(p => p[1] > 0 && p[1] <= p[2] * 1.01 + 1), `${tab}: shift trips ${JSON.stringify(sh.paths)}`);
       assert.deepEqual(sh.inv, []); assert.match(sh.html, /engine trips/);
+    }
+    if (await pg.ev("typeof MF.engine.journal === 'function'")) {   // V8.3: traffic + measured times in the shift run; Studio edits through the engine journal
+      const t = await pg.ev(`(() => { const id = MF.D.flows[0].id, r = MF.engine.shiftUI({ hours: 1, aisleCapacity: 1, times: { [id]: { trip_s: 100, load_s: 20 } } }); return { p: r.paths[0], inv: r.invariants, zones: r.zones.length, html: document.getElementById("fe-out").innerText }; })()`);
+      assert.equal(t.p.timeSource, "measured"); assert.ok(Math.abs(t.p.oneWay - 100) < 1e-6, `${tab}: measured trip time used (${t.p.oneWay})`); assert.deepEqual(t.inv, []); assert.match(t.html, /traffic s/);
+      const j = await pg.ev(`new Promise(ok => { let n = 0; (function w() { if (MF.engine.journal() || ++n > 50) go(); else setTimeout(w, 100); })();
+        function go() { const X = MFX, j0 = MF.engine.journal(); if (!j0) return ok({ none: true });
+          const name0 = X.doc.flows[0].name || ""; X.commit("rename path", () => { X.doc.flows[0].name = name0 + " (j)"; }); const j1 = MF.engine.journal();
+          X.undo(); const j2 = MF.engine.journal(), afterUndo = X.doc.flows[0].name;
+          const node0 = X.doc.flows[0].steps[1].node; let threw = null; try { X.commit("bad stop", () => { X.doc.flows[0].steps[1].node = 987654; }); } catch (e) { threw = e.message; }
+          const j3 = MF.engine.journal(), nodeAfter = X.doc.flows[0].steps[1].node;
+          const nFlows = X.doc.flows.length; X.commit("duplicate path", () => { X.doc.flows.push(JSON.parse(JSON.stringify(X.doc.flows[0]))); }); const jDup = MF.engine.journal(), flowsAfter = X.doc.flows.length;
+          const eu = MF.engine.journalUndo(), nameEU = X.doc.flows[0].name, er = MF.engine.journalRedo(), nameER = X.doc.flows[0].name, j4 = MF.engine.journal();
+          setTimeout(() => ok({ j0, j1, j2, j3, j4, jDup, nFlows, flowsAfter, name0, afterUndo, node0, nodeAfter, threw, eu: eu && eu.ok, er: er && er.ok, nameEU, nameER, html: document.getElementById("fe-journal").innerText }), 300); } })`);
+      assert.ok(!j.none, `${tab}: the layout journal started`);
+      assert.equal(j.j1.revision, j.j0.revision + 1, `${tab}: a Studio edit is one journal command`); assert.equal(j.j1.history.at(-1).type, "doc.edit");
+      assert.ok(j.j2.history.at(-1).type === "doc.undo" || j.j2.history.at(-1).label === "Studio undo", `${tab}: Studio undo is recorded as an undo (${JSON.stringify(j.j2.history.at(-1))})`); assert.equal(j.afterUndo, j.name0);
+      assert.equal(j.nodeAfter, j.node0, `${tab}: an edit to an unknown stop is rolled back`); assert.equal(j.j3.history.filter(h => h.label === "Studio edit").length, j.j2.history.filter(h => h.label === "Studio edit").length, `${tab}: the bad edit is not in the journal`);
+      assert.ok(/^Refused/.test(j.jDup.note) && j.flowsAfter === j.nFlows, `${tab}: the engine refused a duplicate path and rolled the Studio back (${j.jDup.note}; ${j.flowsAfter} vs ${j.nFlows})`);
+      assert.ok(j.eu && j.nameEU === j.name0 + " (j)" && j.er && j.nameER === j.name0, `${tab}: engine undo/redo change the Studio scene (${j.eu} ${j.nameEU} / ${j.er} ${j.nameER})`); assert.ok(j.j4.verified, `${tab}: journal replays to the current scene`);
+      console.log(`  ${tab}: shift with traffic (${t.zones} shared section(s)) + measured time OK; journal r${j.j4.revision}: edit, Studio undo, bad stop (${j.j3.note || j.threw || "rejected by the Studio"}), duplicate path refused by the engine, engine undo + redo OK`);
     }
     await pg.wait(600);
     const shot = await pg.call("Page.captureScreenshot", { format: "png" }); writeFileSync(`${out}/${tab}-engine-panel.png`, Buffer.from(shot.data, "base64"));

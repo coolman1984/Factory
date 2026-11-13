@@ -50,7 +50,8 @@ custom waits. Studio current/base comparisons use this same core; the legacy V7 
 (`src/v8/engine/factory-engine.js`, built in the 3D Factory repository by `node engine/build.mjs`, copied here by
 `node tools/engine/sync-engine.mjs`), the bridge (`engine-bridge.js`) and the read-only Engine panel (`engine-panel.js`).
 Stage `8.2` builds the same scripts (engine 0.2 with the Shift run); 8.1 and 8.2 differ only in the engine and panel source
-they were built from.
+they were built from. Stage `8.3` (engine 0.3) adds drawn returns, measured times and traffic to the Shift run and the layout
+journal (below).
 
 - The bridge wraps `MFMotion.timeline`. For every path it builds one engine model (stops = locations, the trolley = a carrier,
   each elevator = a lift resource, one lot at the first stop) and one transport mission whose legs are the steps with the motion
@@ -62,6 +63,15 @@ they were built from.
   and (V8.2) `shift(opts)` / `shiftUI()`: the Shift run (`bridge.runShift(D, { hours, trolleys, liftCars, spread, seed,
   returnTrip })`): all paths of the tab in one engine world, one loop policy per trolley, one shared lift resource per
   elevator, estimated empty return. CLI: `node tools/engine/shift.mjs`.
+- V8.3 Shift run options: `times` ({ pathId: { trip_s, return_s, load_s, unload_s } }, panel "Measured times", stored in
+  localStorage `fe:times:<project>`), `aisleCapacity` (0 = off; N trolleys per 2 m cell shared by different paths; `cellMetres`),
+  drawn returns (a path whose name contains "return" and runs from a path end back to its start; `bridge.returnRoutes(D)`).
+  Rows add `trafficWaitPerTrip`, `timeSource` (measured/geometric), `returnSource` (drawn/estimated/measured/none); `zones` lists
+  shared sections. CLI: `--aisle N --times file.json [--check]`.
+- V8.3 layout journal (`bridge.makeJournal`, panel "Layout journal", `MF.engine.journal()`, `journalUndo()`, `journalRedo()`):
+  the panel wraps `MFS.setScene`; each published scene becomes a `doc.edit` (or undo/redo) on `FactoryEngine.Journal`, validated
+  by `MFScene.validate` plus "every path plays on the engine"; only problems the edit adds are refused; a refused edit is rolled
+  back through `MFX.replaceScene`. Engine undo/redo publish the journal document back to the Studio.
 - Node: `tools/engine/engine-node.mjs` loads the same two files; `bridge.runFlow(D, f, E, base, { model, commands })` runs
   what-if trips (another trolley on the lift, blocked time) without a browser.
 - The engine itself (API, events, tests, plan) is documented in the 3D Factory repository: `docs/17_ENGINE_CORE.md`.

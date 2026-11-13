@@ -86,44 +86,137 @@ function makeBridge(MC, FE) {
     return s;
   }
 
-  /* Shift run (V8.2): every path of the tab at once, for a whole shift, in ONE engine world. Each trolley of a path is a loop
-     policy (next trip as soon as its last one is done); every elevator is ONE shared lift resource (cars: opts.liftCars) used by
-     all paths in both directions; the empty return is the loaded route reversed with no waits (ESTIMATED: the scenes do not
-     draw return routes). The result compares the engine's trips with today's geometric "shift / trip time" number. */
+  /* Shift run (V8.2, V8.3): every path of the tab at once, for a whole shift, in ONE engine world. Each trolley of a path is a
+     loop policy (next trip as soon as its last one is done); every elevator is ONE shared lift resource (cars: opts.liftCars)
+     used by all paths in both directions.
+     Empty return (V8.3): a path whose name contains "return" and that runs from a path's last stop back to its first stop is
+     that path's DRAWN return route (it is then not a loaded path itself); otherwise the return is ESTIMATED as the loaded route
+     reversed with no waits. Measured times (opts.times[pathId] = { trip_s, return_s, load_s, unload_s }, any subset) replace the
+     geometric ones: legs are scaled to the measured total. Traffic (opts.aisleCapacity > 0): plan cells (opts.cellMetres, 2 m)
+     used by two or more different paths are shared (crossings, common aisles); every shared cell is one engine traffic zone that
+     admits aisleCapacity trolleys at a time and is held only while a trolley crosses it (time split by distance: an estimate),
+     so trolleys queue at crossings and keep one cell of headway in a shared aisle. Connected shared cells are reported together
+     as one shared section. The result compares the engine's trips with today's geometric "shift / trip time" number. */
+  const nodeAt = (D, id) => D.nodes && D.nodes[id] || null;
+  const samePlace = (D, a, b) => { if (a === b) return true; const A = nodeAt(D, a), B = nodeAt(D, b); return !!(A && B && (A.plate || null) === (B.plate || null) && Math.hypot(A.x - B.x, A.y - B.y) < 1.5); };
+  function returnRoutes(D) {
+    const map = new Map(), of = new Map();
+    for (const r of D.flows) {
+      if (!/\breturn\b/i.test(r.name || r.id) || r.steps.length < 2) continue;
+      const a = r.steps[0].node, b = r.steps[r.steps.length - 1].node;
+      const p = D.flows.find(f => f !== r && !map.has(f.id) && !of.has(f.id) && f.steps.length > 1 && samePlace(D, f.steps[f.steps.length - 1].node, a) && samePlace(D, f.steps[0].node, b));
+      if (p) { map.set(p.id, r); of.set(r.id, p.id); }
+    }
+    return { returnOf: map, isReturn: of };
+  }
+  // Distance runs of one step's drawn line through the shared-cell map: [{ frac, zone|null }] (fractions add up to 1).
+  function runsOf(it, cellOf) {
+    const P = Array.isArray(it.path) ? it.path : null; if (!P || P.length < 2 || it.s.lift) return [{ frac: 1, zone: null }];
+    let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); if (!(L > 0)) return [{ frac: 1, zone: null }];
+    const runs = [], step = L / Math.max(1, Math.ceil(L / 0.5)), push = (len, z) => { const r = runs[runs.length - 1]; if (r && r.zone === z) r.len += len; else runs.push({ len, zone: z }); };
+    for (let i = 1; i < P.length; i++) { const [ax, ay] = P[i - 1], [bx, by] = P[i], l = Math.hypot(bx - ax, by - ay); for (let d = 0; d < l - 1e-9; d += step) { const q = Math.min(step, l - d), u = (d + q / 2) / l; push(q, cellOf(it, ax + (bx - ax) * u, ay + (by - ay) * u)); } }
+    return runs.map(r => ({ frac: r.len / L, zone: r.zone }));
+  }
   function shiftModel(D, opts = {}) {
-    const hours = opts.hours ?? 8, cars = opts.liftCars ?? 1, elevatorOf = opts.elevatorOf || (f => f.E || null), locs = new Map(), lifts = new Set(), units = [], policies = [], stock = [], items = [], paths = [];
-    D.flows.forEach(f => {
-      const E = elevatorOf(f), base = original(D, f, E), steps = base.items.slice(1); if (!steps.length) return;
-      const liftOf = it => it.s.lift ? liftId(it.s.elevator || (E && E.label)) : null, first = stopId(steps[0].s.node), last = stopId(steps[steps.length - 1].s.node);
-      for (const it of steps) { locs.set(stopId(it.s.node), true); const l = liftOf(it); if (l) lifts.add(l); }
-      const sp = opts.spread || 0, vary = it => it.s.lift ? {} : { travelSpread: sp, dwellSpread: sp };   // lift rides keep their fixed time
-      const legs = steps.map(it => ({ k: "leg", to: stopId(it.s.node), travelSeconds: it.tm - it.t0, dwellSeconds: it.t1 - it.tm, lift: liftOf(it), label: it.s.title || null, ...vary(it) }));
-      const back = opts.returnTrip === false || first === last ? [] : steps.slice().reverse().map((it, j, arr) => ({ k: "leg", to: j + 1 < arr.length ? stopId(arr[j + 1].s.node) : first, travelSeconds: it.tm - it.t0, dwellSeconds: 0, lift: liftOf(it), label: "empty return (estimated)", ...vary(it) }));
-      const oneWay = steps.reduce((n, it) => n + (it.t1 - it.t0), 0), backTime = back.reduce((n, l) => n + l.travelSeconds, 0), n = Math.max(1, opts.trolleys ? opts.trolleys(f) : (f.trolleys || 1)), item = "lot:" + f.id;
+    const hours = opts.hours ?? 8, cars = opts.liftCars ?? 1, elevatorOf = opts.elevatorOf || (f => f.E || null), times = opts.times || {}, cap = Math.max(0, Math.floor(opts.aisleCapacity || 0)), cellM = opts.cellMetres || 2;
+    const locs = new Map(), lifts = new Set(), units = [], policies = [], stock = [], items = [], paths = [], { returnOf, isReturn } = returnRoutes(D);
+    const tl = new Map(); for (const f of D.flows) { const E = elevatorOf(f); tl.set(f.id, { E, steps: original(D, f, E).items.slice(1) }); }
+    const liftOf = (it, E) => it.s.lift ? liftId(it.s.elevator || (E && E.label)) : null;
+    // shared cells -> traffic zones (connected groups of cells used by two or more different paths)
+    const scale = it => { const P = it.path; let L = 0; if (Array.isArray(P)) for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); return L > 0 && it.metres > 0 ? it.metres / L : null; };
+    let unitM = null; for (const { steps } of tl.values()) for (const it of steps) if (!unitM && !it.s.lift) unitM = scale(it);
+    const cell = unitM ? cellM / unitM : 1, plateOf = it => (nodeAt(D, it.s.node) || {}).plate || "-", key = (it, x, y) => plateOf(it) + ":" + Math.floor(x / cell) + ":" + Math.floor(y / cell);
+    const owner = f => isReturn.get(f.id) || f.id, zoneOfCell = new Map(), zones = [];
+    if (cap > 0) {
+      const users = new Map();
+      for (const f of D.flows) for (const it of tl.get(f.id).steps) { const P = it.path; if (it.s.lift || !Array.isArray(P)) continue; for (let i = 1; i < P.length; i++) { const [ax, ay] = P[i - 1], [bx, by] = P[i], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / (cell / 4))); for (let q = 0; q <= n; q++) { const k = key(it, ax + (bx - ax) * q / n, ay + (by - ay) * q / n); if (!users.has(k)) users.set(k, new Set()); users.get(k).add(owner(f)); } } }
+      const shared = [...users].filter(([, u]) => u.size > 1).map(([k]) => k).sort(), left = new Set(shared);
+      for (const k0 of shared) {
+        if (!left.has(k0)) continue; const id = "section:" + (zones.length + 1), cells = [], todo = [k0], who = new Set(); left.delete(k0);
+        while (todo.length) { const k = todo.pop(); cells.push(k); zoneOfCell.set(k, id + "/" + cells.length); for (const u of users.get(k)) who.add(u); const [pl, cx, cy] = k.split(":"); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = pl + ":" + (+cx + dx) + ":" + (+cy + dy); if (left.has(n)) { left.delete(n); todo.push(n); } } }
+        zones.push({ id, capacity: cap, plate: k0.split(":")[0], cells: cells.length, cellIds: cells.map((_, i) => id + "/" + (i + 1)), paths: [...who].sort() });
+      }
+    }
+    const cellOf = (it, x, y) => zoneOfCell.get(key(it, x, y)) || null;
+    // one step -> one or more engine legs (split where it crosses a traffic zone); reverse = the same line driven backwards
+    const legsOf = (it, E, { to, dwell, label, k = 1, reverse = false, spread = 0 }) => {
+      const travel = (it.tm - it.t0) * k, lift = liftOf(it, E), vary = lift ? {} : { travelSpread: spread, dwellSpread: spread };
+      let runs = cap > 0 ? runsOf(it, cellOf) : [{ frac: 1, zone: null }]; if (reverse) runs = runs.slice().reverse();
+      return runs.map((r, j) => ({ k: "leg", to: j === runs.length - 1 ? to : null, travelSeconds: travel * r.frac, dwellSeconds: j === runs.length - 1 ? dwell : 0, lift: j === 0 ? lift : null, zones: r.zone ? [r.zone] : [], label, ...vary }));
+    };
+    for (const f of D.flows) {
+      if (isReturn.has(f.id)) continue;
+      const { E, steps } = tl.get(f.id); if (!steps.length) continue;
+      const first = stopId(steps[0].s.node), last = stopId(steps[steps.length - 1].s.node), m = times[f.id] || {}, sp = opts.spread || 0;
+      for (const it of steps) { locs.set(stopId(it.s.node), true); const l = liftOf(it, E); if (l) lifts.add(l); }
+      const geoOne = steps.reduce((n, it) => n + (it.t1 - it.t0), 0), kOne = m.trip_s > 0 ? m.trip_s / Math.max(1e-9, geoOne) : 1;
+      const legs = steps.flatMap(it => legsOf(it, E, { to: stopId(it.s.node), dwell: (it.t1 - it.tm) * kOne, label: it.s.title || null, k: kOne, spread: sp }));
+      // the empty return: drawn route, estimated reverse, or none
+      let back = [], returnSource = "none", geoBack = 0;
+      if (opts.returnTrip !== false && first !== last) {
+        const R = returnOf.get(f.id);
+        if (R) {
+          const r = tl.get(R.id); r.steps.forEach(it => { locs.set(stopId(it.s.node), true); const l = liftOf(it, r.E); if (l) lifts.add(l); }); geoBack = r.steps.reduce((n, it) => n + (it.t1 - it.t0), 0);
+          const kB = m.return_s > 0 ? m.return_s / Math.max(1e-9, geoBack) : 1;
+          back = r.steps.flatMap((it, j, arr) => legsOf(it, r.E, { to: j === arr.length - 1 ? first : stopId(it.s.node), dwell: (it.t1 - it.tm) * kB, label: "empty return (drawn)", k: kB, spread: sp }));
+          returnSource = m.return_s > 0 ? "measured" : "drawn";
+        } else {
+          geoBack = steps.reduce((n, it) => n + (it.tm - it.t0), 0); const kB = m.return_s > 0 ? m.return_s / Math.max(1e-9, geoBack) : 1;
+          back = steps.slice().reverse().flatMap((it, j, arr) => legsOf(it, E, { to: j + 1 < arr.length ? stopId(arr[j + 1].s.node) : first, dwell: 0, label: "empty return (estimated)", k: kB, reverse: true, spread: sp }));
+          returnSource = m.return_s > 0 ? "measured" : "estimated";
+        }
+      }
+      const oneWay = geoOne * kOne, backTime = back.reduce((n, l) => n + l.travelSeconds + l.dwellSeconds, 0), n = Math.max(1, opts.trolleys ? opts.trolleys(f) : (f.trolleys || 1)), item = "lot:" + f.id;
+      const loadS = m.load_s > 0 ? m.load_s : 0, unloadS = m.unload_s > 0 ? m.unload_s : 0;
       items.push({ id: item, unit: "lot" }); stock.push({ location: first, item, qty: 1000000 });
       for (let k = 0; k < n; k++) {
         const u = "trolley:" + f.id + ":" + (k + 1); units.push({ id: u, node: first });
-        policies.push({ id: "loop:" + f.id + ":" + (k + 1), kind: "loop", item, from: first, to: last, carrier: u, startSeconds: (k * (oneWay + backTime)) / n, actions: [{ k: "load", seconds: 0 }, ...legs, { k: "unload", seconds: 0 }, ...back] });
+        policies.push({ id: "loop:" + f.id + ":" + (k + 1), kind: "loop", item, from: first, to: last, carrier: u, startSeconds: (k * (oneWay + backTime + loadS + unloadS)) / n, actions: [{ k: "load", seconds: loadS }, ...legs, { k: "unload", seconds: unloadS }, ...back] });
       }
-      paths.push({ id: f.id, name: f.name || f.id, trolleys: n, oneWay, cycleAlone: oneWay + backTime, naive: Math.floor(hours * 3600 / Math.max(1, oneWay)) * n, lifts: [...new Set(steps.map(liftOf).filter(Boolean))] });
-    });
-    const model = { format: "fe-model", version: 1, name: "shift", tickPerSecond: 1000, seed: opts.seed ?? 1, items, locations: [...locs.keys()].map(id => ({ id, kind: "stop" })),
+      paths.push({ id: f.id, name: f.name || f.id, trolleys: n, oneWay, cycleAlone: oneWay + backTime + loadS + unloadS, naive: Math.floor(hours * 3600 / Math.max(1, oneWay)) * n,
+        lifts: [...new Set(steps.map(it => liftOf(it, E)).filter(Boolean))], timeSource: Object.keys(m).some(x => m[x] > 0) ? "measured" : "geometric", returnSource, returnPath: returnOf.get(f.id)?.id || null });
+    }
+    const model = { format: "fe-model", version: 1, name: "shift", tickPerSecond: 1000, seed: opts.seed ?? 1, items, locations: [...locs.keys()].map(id => ({ id, kind: "stop" })), zones: zones.flatMap(z => z.cellIds.map(id => ({ id, capacity: z.capacity }))),
       pools: [{ id: "trolleys", kind: "carrier", units }, ...[...lifts].map(id => ({ id, kind: "lift", units: Array.from({ length: cars }, (_, c) => ({ id: id + ":car" + (c + 1) })) }))], policies, initial: { stock } };
-    return { model, paths, hours };
+    return { model, paths, hours, zones, cellMetres: cellM };
   }
   function runShift(D, opts = {}) {
-    const { model, paths, hours } = shiftModel(D, opts), world = new FE.World(model, { keepLog: false, checkInvariants: !!opts.check });
-    world.runUntil(Math.round(hours * 3600 * 1000)); const r = world.report(), byPolicy = new Map(r.policies.map(p => [p.id, p])), util = new Map(r.units.map(u => [u.id, u.utilisation]));
+    const { model, paths, hours, zones } = shiftModel(D, opts), world = new FE.World(model, { keepLog: false, checkInvariants: !!opts.check });
+    world.runUntil(Math.round(hours * 3600 * 1000)); const r = world.report(), byPolicy = new Map(r.policies.map(p => [p.id, p])), util = new Map(r.units.map(u => [u.id, u.utilisation])), zr = new Map(r.zones.map(z => [z.id, z]));
+    const names = new Map(D.flows.map(f => [f.id, f.name || f.id]));
     const rows = paths.map(p => {
-      const pol = [...byPolicy.values()].filter(x => x.id.startsWith("loop:" + p.id + ":")), done = pol.reduce((n, x) => n + x.done, 0), wait = pol.reduce((n, x) => n + x.lift_wait_s, 0);
+      const pol = [...byPolicy.values()].filter(x => x.id.startsWith("loop:" + p.id + ":")), done = pol.reduce((n, x) => n + x.done, 0), wait = pol.reduce((n, x) => n + x.lift_wait_s, 0), zw = pol.reduce((n, x) => n + (x.zone_wait_s || 0), 0);
       const cyc = pol.filter(x => x.done).map(x => x.mean_cycle_s);
-      return { ...p, trips: done, meanCycle: cyc.length ? cyc.reduce((a, b) => a + b, 0) / cyc.length : null, liftWaitPerTrip: done ? wait / done : null };
+      return { ...p, trips: done, meanCycle: cyc.length ? cyc.reduce((a, b) => a + b, 0) / cyc.length : null, liftWaitPerTrip: done ? wait / done : null, trafficWaitPerTrip: done ? zw / done : null };
     });
     const liftRows = model.pools.filter(p => p.kind === "lift").map(p => ({ id: p.id, cars: p.units.length, busy: p.units.reduce((n, u) => n + (util.get(u.id) || 0), 0) / p.units.length }));
-    return { engine: FE.ENGINE_VERSION, hours, returnTrip: opts.returnTrip !== false, liftCars: opts.liftCars ?? 1, spread: opts.spread || 0, seed: model.seed, paths: rows, lifts: liftRows, fingerprint: r.fingerprint, invariants: r.invariants, events: r.events };
+    const zoneRows = zones.map(({ cellIds, ...z }) => { const xs = cellIds.map(id => zr.get(id) || {}); return { ...z, paths: z.paths.map(id => names.get(id) || id), metres: Math.round(z.cells * (opts.cellMetres || 2)),
+      entries: Math.max(0, ...xs.map(x => x.entries || 0)), occupied: Math.max(0, ...xs.map(x => x.occupied || 0)), waits: xs.reduce((n, x) => n + (x.waits || 0), 0), wait_s: +xs.reduce((n, x) => n + (x.wait_s || 0), 0).toFixed(3) }; }).sort((a, b) => b.wait_s - a.wait_s || b.occupied - a.occupied);
+    return { engine: FE.ENGINE_VERSION, hours, returnTrip: opts.returnTrip !== false, liftCars: opts.liftCars ?? 1, spread: opts.spread || 0, seed: model.seed, aisleCapacity: Math.max(0, Math.floor(opts.aisleCapacity || 0)),
+      paths: rows, lifts: liftRows, zones: zoneRows, fingerprint: r.fingerprint, invariants: r.invariants, events: r.events };
   }
 
-  const api = { TPS, version: FE.ENGINE_VERSION, original, timeline, runFlow, flowModel, stateAt, shiftModel, runShift, infoFor: f => info.get(f) || null,
+  /* Layout journal (V8.3): Studio edits become engine commands. The journal (FactoryEngine.Journal) holds the scene; every scene
+     the Studio publishes is submitted as a doc.edit, checked (scene validator + every path must still play on the engine), and
+     refused edits are rolled back. Undo/redo at engine level are journal commands. hooks: { validate(scene, "next" | "prev") -> problems[] }. */
+  function makeJournal(scene, hooks = {}) {
+    const keyOf = p => String(p).replace(/\d+(\.\d+)?/g, "#");
+    const J = new FE.Journal(scene, { name: "scene", validate: (next, prev) => {
+      const now = hooks.validate ? hooks.validate(next, "next") : [], before = new Set((hooks.validate ? hooks.validate(prev, "prev") : []).map(keyOf));
+      return now.filter(p => !before.has(keyOf(p)));   // only problems the edit adds; a scene's old problems never block work
+    } });
+    let seq = 0; const id = k => k + ":" + Date.now().toString(36) + ":" + (++seq);
+    return { J, edit: (doc, label) => J.submit({ command_id: id("edit"), expected_revision: J.revision, type: "doc.edit", payload: { doc, label } }),
+      undo: () => J.submit({ command_id: id("undo"), expected_revision: J.revision, type: "doc.undo" }), redo: () => J.submit({ command_id: id("redo"), expected_revision: J.revision, type: "doc.redo" }),
+      isUndoOf: doc => { const u = J.peekUndo(); return !!u && FE.canonical(u) === FE.canonical(doc); }, isRedoOf: doc => { const r = J.peekRedo(); return !!r && FE.canonical(r) === FE.canonical(doc); },
+      same: doc => FE.canonical(doc) === FE.canonical(J.doc),
+      // A viewer undo can differ from the exact journal undo when the viewer normalised other fields during the edit; it is
+      // still an undo when every change it makes is part of the last edit's inverse (likewise redo).
+      partOf: (doc, which) => { const e = which === "undo" ? J.undoStack[J.undoStack.length - 1] : J.redoStack[J.redoStack.length - 1]; if (!e) return false;
+        const want = new Set((which === "undo" ? FE.invert(e.patch) : e.patch).map(o => FE.canonical([o.path, o.op === "remove" ? null : o.value]))), got = FE.diff(J.doc, doc);
+        return got.length > 0 && got.every(o => want.has(FE.canonical([o.path, o.op === "remove" ? null : o.value]))); } };
+  }
+  const api = { TPS, version: FE.ENGINE_VERSION, original, timeline, runFlow, flowModel, stateAt, shiftModel, runShift, returnRoutes, makeJournal, infoFor: f => info.get(f) || null,
     install() { if (MC.timeline !== timeline) MC.timeline = timeline; return api; } };
   return api;
 }
