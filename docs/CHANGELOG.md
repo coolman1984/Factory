@@ -3,6 +3,19 @@
 Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (older ones kept). Newest first.
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
+## V8.2 - Shift run on the Factory Engine 0.2 - 2026-11-13
+- Engine 0.2.0 (3D Factory): `loop` policy (a trolley repeats its trip as soon as the last one is done; trips, mean cycle and
+  lift waits per policy) and optional seeded time spread on legs and waits.
+- Engine panel "Shift run (all paths of this tab)": hours, trolleys per path (0 = scene value), lift cars, spread %, empty
+  return. All paths run together in ONE engine world; each elevator is one shared lift for all paths in both directions; the
+  empty return is the loaded route reversed (estimated). Shows engine trips next to today's number (shift / one-way trip
+  time x trolleys), mean cycle, lift wait per trip, lift busy %. Also `MF.engine.shift(opts)` and
+  `node tools/engine/shift.mjs [scenes] [--hours --trolleys --lift-cars --spread --seed --no-return --json]`.
+- Finding on the owner's 4 scenes (1 trolley per path, no spread): engine trips are about half of today's number because
+  today's number ignores the trolley's way back; lifts are 2.6-8.3% busy, so no lift waits yet. With 4 trolleys per path and
+  +-15% spread, Elev 5 is 33% busy and small lift queues appear. Return routes and spread are assumptions until measured.
+- Tests: identity V8.0 vs V8.2 PASS (10 paths); smoke (now also runs the shift from the panel on all tabs) PASS; bridge test PASS.
+
 ## V8.1 - the player runs on the Factory Engine - 2026-11-13
 - New stage `node tools/build-v8.mjs 8.1`: V8.0 plus the Factory Engine (from the 3D Factory repository, vendored as
   `src/v8/engine/factory-engine.js` by `node tools/engine/sync-engine.mjs`), the bridge `src/v8/engine/engine-bridge.js`

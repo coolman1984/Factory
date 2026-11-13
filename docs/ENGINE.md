@@ -49,6 +49,8 @@ custom waits. Studio current/base comparisons use this same core; the legacy V7 
 `node tools/build-v8.mjs 8.1` adds three scripts after the motion core: the vendored Factory Engine bundle
 (`src/v8/engine/factory-engine.js`, built in the 3D Factory repository by `node engine/build.mjs`, copied here by
 `node tools/engine/sync-engine.mjs`), the bridge (`engine-bridge.js`) and the read-only Engine panel (`engine-panel.js`).
+Stage `8.2` builds the same scripts (engine 0.2 with the Shift run); 8.1 and 8.2 differ only in the engine and panel source
+they were built from.
 
 - The bridge wraps `MFMotion.timeline`. For every path it builds one engine model (stops = locations, the trolley = a carrier,
   each elevator = a lift resource, one lot at the first stop) and one transport mission whose legs are the steps with the motion
@@ -56,7 +58,10 @@ custom waits. Studio current/base comparisons use this same core; the legacy V7 
   `leg.start` / `leg.arrive` / `leg.end` events become each step's `t0` / `tm` / `t1`.
 - When the engine's tick equals the motion core's instant, the exact float is kept (bit-identical replay); a moved step gets
   the engine time. If the engine refuses or fails, the path falls back to the motion core and the Engine button turns red.
-- `MF.engine`: `summary()`, `info(fi)`, `stateAt(t, fi)` (lot position, trolley activity, step, recent events), `toggle()`.
+- `MF.engine`: `summary()`, `info(fi)`, `stateAt(t, fi)` (lot position, trolley activity, step, recent events), `toggle()`,
+  and (V8.2) `shift(opts)` / `shiftUI()`: the Shift run (`bridge.runShift(D, { hours, trolleys, liftCars, spread, seed,
+  returnTrip })`): all paths of the tab in one engine world, one loop policy per trolley, one shared lift resource per
+  elevator, estimated empty return. CLI: `node tools/engine/shift.mjs`.
 - Node: `tools/engine/engine-node.mjs` loads the same two files; `bridge.runFlow(D, f, E, base, { model, commands })` runs
   what-if trips (another trolley on the lift, blocked time) without a browser.
 - The engine itself (API, events, tests, plan) is documented in the 3D Factory repository: `docs/17_ENGINE_CORE.md`.

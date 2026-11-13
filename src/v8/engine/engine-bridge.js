@@ -86,7 +86,44 @@ function makeBridge(MC, FE) {
     return s;
   }
 
-  const api = { TPS, version: FE.ENGINE_VERSION, original, timeline, runFlow, flowModel, stateAt, infoFor: f => info.get(f) || null,
+  /* Shift run (V8.2): every path of the tab at once, for a whole shift, in ONE engine world. Each trolley of a path is a loop
+     policy (next trip as soon as its last one is done); every elevator is ONE shared lift resource (cars: opts.liftCars) used by
+     all paths in both directions; the empty return is the loaded route reversed with no waits (ESTIMATED: the scenes do not
+     draw return routes). The result compares the engine's trips with today's geometric "shift / trip time" number. */
+  function shiftModel(D, opts = {}) {
+    const hours = opts.hours ?? 8, cars = opts.liftCars ?? 1, elevatorOf = opts.elevatorOf || (f => f.E || null), locs = new Map(), lifts = new Set(), units = [], policies = [], stock = [], items = [], paths = [];
+    D.flows.forEach(f => {
+      const E = elevatorOf(f), base = original(D, f, E), steps = base.items.slice(1); if (!steps.length) return;
+      const liftOf = it => it.s.lift ? liftId(it.s.elevator || (E && E.label)) : null, first = stopId(steps[0].s.node), last = stopId(steps[steps.length - 1].s.node);
+      for (const it of steps) { locs.set(stopId(it.s.node), true); const l = liftOf(it); if (l) lifts.add(l); }
+      const sp = opts.spread || 0, vary = it => it.s.lift ? {} : { travelSpread: sp, dwellSpread: sp };   // lift rides keep their fixed time
+      const legs = steps.map(it => ({ k: "leg", to: stopId(it.s.node), travelSeconds: it.tm - it.t0, dwellSeconds: it.t1 - it.tm, lift: liftOf(it), label: it.s.title || null, ...vary(it) }));
+      const back = opts.returnTrip === false || first === last ? [] : steps.slice().reverse().map((it, j, arr) => ({ k: "leg", to: j + 1 < arr.length ? stopId(arr[j + 1].s.node) : first, travelSeconds: it.tm - it.t0, dwellSeconds: 0, lift: liftOf(it), label: "empty return (estimated)", ...vary(it) }));
+      const oneWay = steps.reduce((n, it) => n + (it.t1 - it.t0), 0), backTime = back.reduce((n, l) => n + l.travelSeconds, 0), n = Math.max(1, opts.trolleys ? opts.trolleys(f) : (f.trolleys || 1)), item = "lot:" + f.id;
+      items.push({ id: item, unit: "lot" }); stock.push({ location: first, item, qty: 1000000 });
+      for (let k = 0; k < n; k++) {
+        const u = "trolley:" + f.id + ":" + (k + 1); units.push({ id: u, node: first });
+        policies.push({ id: "loop:" + f.id + ":" + (k + 1), kind: "loop", item, from: first, to: last, carrier: u, startSeconds: (k * (oneWay + backTime)) / n, actions: [{ k: "load", seconds: 0 }, ...legs, { k: "unload", seconds: 0 }, ...back] });
+      }
+      paths.push({ id: f.id, name: f.name || f.id, trolleys: n, oneWay, cycleAlone: oneWay + backTime, naive: Math.floor(hours * 3600 / Math.max(1, oneWay)) * n, lifts: [...new Set(steps.map(liftOf).filter(Boolean))] });
+    });
+    const model = { format: "fe-model", version: 1, name: "shift", tickPerSecond: 1000, seed: opts.seed ?? 1, items, locations: [...locs.keys()].map(id => ({ id, kind: "stop" })),
+      pools: [{ id: "trolleys", kind: "carrier", units }, ...[...lifts].map(id => ({ id, kind: "lift", units: Array.from({ length: cars }, (_, c) => ({ id: id + ":car" + (c + 1) })) }))], policies, initial: { stock } };
+    return { model, paths, hours };
+  }
+  function runShift(D, opts = {}) {
+    const { model, paths, hours } = shiftModel(D, opts), world = new FE.World(model, { keepLog: false, checkInvariants: !!opts.check });
+    world.runUntil(Math.round(hours * 3600 * 1000)); const r = world.report(), byPolicy = new Map(r.policies.map(p => [p.id, p])), util = new Map(r.units.map(u => [u.id, u.utilisation]));
+    const rows = paths.map(p => {
+      const pol = [...byPolicy.values()].filter(x => x.id.startsWith("loop:" + p.id + ":")), done = pol.reduce((n, x) => n + x.done, 0), wait = pol.reduce((n, x) => n + x.lift_wait_s, 0);
+      const cyc = pol.filter(x => x.done).map(x => x.mean_cycle_s);
+      return { ...p, trips: done, meanCycle: cyc.length ? cyc.reduce((a, b) => a + b, 0) / cyc.length : null, liftWaitPerTrip: done ? wait / done : null };
+    });
+    const liftRows = model.pools.filter(p => p.kind === "lift").map(p => ({ id: p.id, cars: p.units.length, busy: p.units.reduce((n, u) => n + (util.get(u.id) || 0), 0) / p.units.length }));
+    return { engine: FE.ENGINE_VERSION, hours, returnTrip: opts.returnTrip !== false, liftCars: opts.liftCars ?? 1, spread: opts.spread || 0, seed: model.seed, paths: rows, lifts: liftRows, fingerprint: r.fingerprint, invariants: r.invariants, events: r.events };
+  }
+
+  const api = { TPS, version: FE.ENGINE_VERSION, original, timeline, runFlow, flowModel, stateAt, shiftModel, runShift, infoFor: f => info.get(f) || null,
     install() { if (MC.timeline !== timeline) MC.timeline = timeline; return api; } };
   return api;
 }

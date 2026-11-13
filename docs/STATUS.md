@@ -1,5 +1,9 @@
 # Current workstreams — 2026-11-13
 
+2026-11-13 (later): **V8.2** = engine 0.2 + Shift run in the Engine panel (all paths together, shared lifts, estimated empty
+returns, optional seeded spread). Identity V8.0 vs V8.2 PASS, smoke with shift PASS, bridge test PASS. Finding: today's
+"trips per shift" ignores the way back, so it is about twice the engine's number for one trolley per path.
+
 2026-11-13: **V8.1 built on the Factory Engine** (owner: "build our solid core ... make V8 work on our new organized engine").
 The engine lives in the 3D Factory repository (`engine/`, plain JavaScript, no dependencies, 9 tests PASS); V8.1 =
 V8.0 + vendored engine + bridge + Engine panel (see [ENGINE.md](ENGINE.md) "Factory Engine"). Verified: bridge test PASS

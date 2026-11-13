@@ -16,7 +16,12 @@ for (const tab of ["inj1", "inj2", "eps", "press"]) {
     assert.ok(r.sum.length > 0 && r.sum.every(x => x.ok), `${tab}: engine fallback ${JSON.stringify(r.sum.filter(x => !x.ok))}`);
     assert.ok(r.s.ok && r.s.onTrolley && /moving|at |lift/.test(r.s.activity), `${tab}: engine state at mid-trip ${JSON.stringify(r.s)}`);
     assert.ok(r.ok && r.after === r.before, `${tab}: rebuild re-runs the engine with the same result`);
-    assert.match(r.panel, /Factory Engine/); assert.match(r.panel, /on the trolley/); assert.match(r.title, /V8\.1/);
+    assert.match(r.panel, /Factory Engine/); assert.match(r.panel, /on the trolley/); assert.match(r.title, /V8\.[12]/);
+    if (await pg.ev("typeof MF.engine.shiftUI === 'function'")) {   // V8.2: shift run from the panel
+      const sh = await pg.ev(`(() => { const r = MF.engine.shiftUI(); return { paths: r.paths.map(p => [p.id, p.trips, p.naive]), inv: r.invariants, html: document.getElementById("fe-out").innerText }; })()`);
+      assert.ok(sh.paths.length > 0 && sh.paths.every(p => p[1] > 0 && p[1] <= p[2] * 1.01 + 1), `${tab}: shift trips ${JSON.stringify(sh.paths)}`);
+      assert.deepEqual(sh.inv, []); assert.match(sh.html, /engine trips/);
+    }
     await pg.wait(600);
     const shot = await pg.call("Page.captureScreenshot", { format: "png" }); writeFileSync(`${out}/${tab}-engine-panel.png`, Buffer.from(shot.data, "base64"));
     assert.deepEqual(pg.errors, [], `${tab}: page errors`);
