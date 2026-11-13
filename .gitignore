@@ -3,3 +3,6 @@ node_modules/
 *.snapshot.json
 report.json
 events.jsonl
+control/data/
+control/test/.tmp/
+control/test/out/

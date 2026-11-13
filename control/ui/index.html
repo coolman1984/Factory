@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Control Center</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand"><span class="logo">FC</span><div><b>Factory Control Center</b><small id="factory-name">loading...</small></div></div>
+  <button id="find" class="find" title="Find anything, run commands (Ctrl+K or /)"><span>Search or type a command...</span><kbd>Ctrl K</kbd></button>
+  <div class="tools">
+    <select id="lang" class="chip" title="Language" aria-label="Language"><option value="en" translate="no">English</option><option value="ar" translate="no">العربية</option><option value="ko" translate="no">한국어</option></select>
+    <span id="rev" class="chip" title="Master data revision">r0</span>
+    <button id="problems" class="chip ok" title="Validation status">0 problems</button>
+    <button id="undo" class="btn ghost" title="Undo (Ctrl+Z)">&#8630; Undo</button>
+    <button id="redo" class="btn ghost" title="Redo (Ctrl+Y)">&#8631; Redo</button>
+    <button id="run" class="btn primary" title="Run a simulation">&#9654; Run</button>
+  </div>
+</header>
+<nav id="side" aria-label="Sections"></nav>
+<main id="main" tabindex="-1"></main>
+<aside id="drawer" aria-label="Record editor" hidden></aside>
+<div id="palette" hidden><div class="pal"><input id="pal-in" autocomplete="off" spellcheck="false" placeholder="Find a record, go to a page, or type: set process PROC_TEST duration_s=20"><div id="pal-list"></div><div class="pal-help">Enter to run &middot; arrows to choose &middot; Esc to close &middot; commands: set, new, delete, rename, dup, run, undo, redo, go</div></div></div>
+<div id="modal" hidden><div class="card" id="modal-card"></div></div>
+<div id="toasts" aria-live="polite"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

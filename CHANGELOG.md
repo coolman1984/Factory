@@ -1,5 +1,12 @@
 # سجل التغييرات
 
+## 2026-11-13 — Factory Control Center
+
+- Master data for every part of the factory (14 types), one SQLite database recording every change (with exact before/after), every command, every run with its events and serial numbers.
+- Control UI: dashboard, master-data pages with in-place and bulk editing, record editor with where-used and safe rename, layout map with drag-to-move, runs with comparison, event browser and serial trace, change log with undo/redo, database page with read-only SQL, command palette; English, Arabic (right-to-left) and Korean.
+- Agent interface: `control/fc.mjs` and a JSON API on the same checked commands; changes appear live in the open UI.
+- Logical test dataset (handling teams added) and scenarios; 10 Control Center tests pass (including a headless-Chrome UI test).
+
 ## 2026-11-13 — Factory Engine 0.3.0
 
 - Traffic zones (WP3.2): aisle sections and crossings with a capacity; a leg takes its lift car and zones all at once or waits

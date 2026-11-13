@@ -38,6 +38,9 @@
 | D20 | The engine bundle is copied (vendored) into a viewer project; company layouts never enter this repository | built | this repository has a GitHub remote; the company project is local only |
 | D21 | Traffic (WP3.2): a leg takes its lift car and every traffic zone it crosses all at once or waits holding none, so waits cannot form a cycle (deadlock-free by construction); viewers split legs per zone | built (0.3.0) | no deadlock detector needed while nothing is held during a wait; revisit if a trolley must hold a zone while waiting |
 | D22 | Layout edits go through a journal of patch commands (exact inverse, validator, append-only hash chain); a viewer edit that adds a problem is refused and rolled back | built (0.3.0) | the owner asked that every change be checked and undoable at engine level |
+| D24 | Control Center data lives in one local SQLite file through Node's built-in `node:sqlite`; master data records are the blueprint's own JSON objects | built | no installs on the target PC; the assembled blueprint stays the engine's input format |
+| D25 | Every master-data write is a checked command: refused if it adds a problem (unless forced), recorded with exact before/after; undo/redo replay the record | built | the owner and the agent must be able to change anything quickly without silently breaking the data |
+| D26 | UI languages through a dictionary applied to rendered text (English source; Arabic right-to-left; Korean); record data never translated | built | one code path for three languages; a test checks that every label has both translations |
 | D23 | The event hash chain hashes each event as emitted (field order fixed by the engine code) instead of sorted keys; finished missions drop their action list | built (0.3.0) | long shift runs became about 10x faster with the same determinism |
 
 ## ٢. الافتراضات المعلنة

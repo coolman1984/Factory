@@ -31,6 +31,9 @@
 | `engine/src/` | Engine modules: units, rng, queue, canon, ledger, routes, packing, journal, world, blueprint (no rendering) |
 | `engine/cli.mjs`, `engine/build.mjs` | Command line (validate / run / resume) and browser bundle builder |
 | `engine/test/`, `engine/scenarios/` | Acceptance tests and illustrative scenarios |
+| [docs/18_CONTROL_CENTER.md](18_CONTROL_CENTER.md) | Factory Control Center: master data, database, control UI, agent interface, tests (English) |
+| `control/` | Control Center: `schema.js` (master data registry), `store.js` (SQLite store, commands, runs), `seed.js`, `server.mjs` (UI + API), `fc.mjs` (command line), `ui/` (page, styles, languages), `test/` |
+| `start-control-center.cmd` | Starts the Control Center and opens it in the browser |
 | `package.json` | npm scripts only (`test`, `build`, `validate`, `demo`); no dependencies |
 
 Section 2 below was the proposal before the engine existed; the built layout is `engine/` as listed above.

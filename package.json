@@ -2,11 +2,15 @@
   "name": "factory-engine",
   "private": true,
   "type": "module",
-  "description": "Digital TV factory: deterministic simulation core (no rendering, no dependencies)",
+  "description": "Digital TV factory: deterministic simulation core and Factory Control Center (no dependencies)",
   "scripts": {
-    "test": "node --test \"engine/test/*.test.mjs\"",
+    "test": "node --test --test-concurrency=1 \"engine/test/*.test.mjs\" \"control/test/*.test.mjs\"",
+    "test:fast": "node --test \"engine/test/*.test.mjs\" control/test/control.test.mjs",
+    "test:ui": "node --test control/test/ui.test.mjs",
     "build": "node engine/build.mjs",
     "validate": "node engine/cli.mjs validate examples/factory-blueprint.example.json",
-    "demo": "node engine/cli.mjs run examples/factory-blueprint.example.json --scenario engine/scenarios/demo.scenario.json"
+    "demo": "node engine/cli.mjs run examples/factory-blueprint.example.json --scenario engine/scenarios/demo.scenario.json",
+    "control": "node control/server.mjs",
+    "fc": "node control/fc.mjs"
   }
 }
