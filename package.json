@@ -1,0 +1,12 @@
+{
+  "name": "factory-engine",
+  "private": true,
+  "type": "module",
+  "description": "Digital TV factory: deterministic simulation core (no rendering, no dependencies)",
+  "scripts": {
+    "test": "node --test \"engine/test/*.test.mjs\"",
+    "build": "node engine/build.mjs",
+    "validate": "node engine/cli.mjs validate examples/factory-blueprint.example.json",
+    "demo": "node engine/cli.mjs run examples/factory-blueprint.example.json --scenario engine/scenarios/demo.scenario.json"
+  }
+}

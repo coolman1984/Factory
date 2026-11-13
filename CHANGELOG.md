@@ -1,5 +1,14 @@
 # سجل التغييرات
 
+## 2026-11-13 — Engine core built (Factory Engine 0.1.0)
+
+- `engine/`: deterministic simulation core in plain JavaScript (no dependencies): integer ticks and quantities, named random
+  streams, event queue, inventory ledger with reservations and invariants, route graph, command gateway, transport missions,
+  stations with breakdowns, pull/push policies, snapshot/resume, fingerprint, frozen view, report.
+- `engine/cli.mjs` validates and runs the sample blueprint; `engine/build.mjs` bundles `dist/factory-engine.js` for offline pages.
+- 9 acceptance tests pass (`npm test`). Technology decision recorded (D14 closed, D17/D18 settled): see docs/17_ENGINE_CORE.md.
+- First viewer: Material Flow Player V8.1 (local company project) plays every path from this engine.
+
 ## ٢٠٢٦-١١-١٢ — تأسيس حزمة التخطيط
 
 - توثيق نطاق مصنع التليفزيونات ومختلف قطاعاته وحركاته.

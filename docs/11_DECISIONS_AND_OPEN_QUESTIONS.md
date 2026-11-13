@@ -27,6 +27,16 @@
 
 تفاصيل D17 و D18 وبدائلهما في [خطة التنفيذ التفصيلية](16_EXECUTION_PLAN.md).
 
+### Decisions of 2026-11-13 (owner approved the technology; details in [17_ENGINE_CORE.md](17_ENGINE_CORE.md))
+
+| ID | Decision | Status | Reason |
+|---|---|---|---|
+| D14 | Plain modern JavaScript (ES modules, no build step for the core), three.js for rendering, one offline HTML page as the product form | decided | owner agreed after comparing with Unity, Unreal, Godot, Babylon.js, commercial simulators; runs on the target PC with no installs |
+| D17 | Integer ticks with the tick length declared per model (default 1 ms; 1 µs for the V8 bridge); integer base quantities; named seeded streams; state fingerprint | built | determinism and resume proved by tests V24 and V16 |
+| D18 | Superseded by D14: TypeScript dropped (needs an npm build step), the core stays renderer-free | closed | same separation, no installs |
+| D19 | Material Flow V8 (the owner's existing three.js player) is the first viewer; it takes its step times from engine events through one bridge, its graphics unchanged | built | owner: reuse the V8 graphics on the new engine; bit-identical replay keeps V8's tests valid |
+| D20 | The engine bundle is copied (vendored) into a viewer project; company layouts never enter this repository | built | this repository has a GitHub remote; the company project is local only |
+
 ## ٢. الافتراضات المعلنة
 
 - المشروع يمثل مصنع تليفزيونات قابلًا للتوسع، وليس مخططًا مطابقًا لموقع قائم حتى الآن.

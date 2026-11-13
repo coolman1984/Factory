@@ -1,0 +1,5 @@
+dist/
+node_modules/
+*.snapshot.json
+report.json
+events.jsonl

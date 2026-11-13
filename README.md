@@ -2,7 +2,9 @@
 
 خطة تأسيس محرك يمثل مصنع تليفزيونات متكاملًا في عرض ثنائي وثلاثي الأبعاد، مع تصميم حر للتخطيط، ومحاكاة الإنتاج والمناولة والعمال والمخازن والشحن.
 
-**حالة المشروع: تخطيط معماري فقط — لا يوجد محرك أو تطبيق يعمل حتى الآن.**
+**Status (2026-11-13): the engine core is built and tested (`engine/`, 9 tests pass): see [docs/17_ENGINE_CORE.md](docs/17_ENGINE_CORE.md). The data is still the declared sample; there is no measured factory model yet.**
+
+Quick start: `node engine/cli.mjs validate examples/factory-blueprint.example.json`, then `npm run demo`, `npm test`.
 
 تاريخ إعداد هذه الحزمة: ١٢ نوفمبر ٢٠٢٦.
 

@@ -1,0 +1,16 @@
+{
+  "format": "fe-scenario",
+  "version": 1,
+  "note": "Illustrative run settings for the SAMPLE blueprint. None of these values is measured.",
+  "horizon_h": 8,
+  "seed": 20261112,
+  "slot_size": { "ea": 10, "kg": 25 },
+  "trolley_speed_mps": 1.0,
+  "walk_speed_mps": 1.2,
+  "load_s": 30,
+  "unload_s": 30,
+  "pull": { "reorder_cycles": 2, "target_cycles": 6 },
+  "push": { "lot": 10 },
+  "breakdowns": { "PROC_SMT": { "mtbf_s": 3600, "mttr_s": 300 } },
+  "closed_edges": []
+}
