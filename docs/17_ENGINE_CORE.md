@@ -1,4 +1,8 @@
-# 17 — Engine core (Factory Engine 0.1.0)
+# 17 — Engine core (Factory Engine 0.2.0)
+
+0.2.0 (2026-11-13): `loop` policy (repeated trips with a fixed carrier: milk runs, shift runs) with per-policy trips, mean
+cycle and lift-wait statistics in `report().policies`; optional seeded time spread on actions (`spread`, `travelSpread`,
+`dwellSpread`). Material Flow V8.2 uses both for its Shift run. 11 tests pass.
 
 Status 2026-11-13: **built and tested** (Phase 0 WP0.3 and the Phase 1 core). It is a deterministic simulation core with no
 rendering. Material Flow Player V8.1 (a separate local company project) uses it for every path it plays. All data in this
@@ -59,7 +63,10 @@ Seconds in the model; converted to ticks once at load.
   pools:     [{ id, kind: "carrier"|"worker"|"lift", units: [{ id, node?, speed?, mode? }] }],
   handling:  [{ id, carriers: [unit ids], workers: [unit ids], loadSeconds, unloadSeconds }],
   stations:  [{ id, input, output, inputs: [{ item, qty }], outputs: [{ item, qty }], cycleSeconds, slots?, breakdown?: { mtbfSeconds, mttrSeconds } }],
-  policies:  [{ id, kind: "pull"|"push", item, from, to, fromNode?, toNode?, handling, reorderPoint?, target?, lot?, countInbound?, maxOpen? }],
+  policies:  [{ id, kind: "pull"|"push", item, from, to, fromNode?, toNode?, handling, reorderPoint?, target?, lot?, countInbound?, maxOpen? }
+            | { id, kind: "loop", item, from, to, carrier, actions, qty?, startSeconds?, count? }],
+  // explicit actions: { k: "load"|"unload", seconds, spread? } | { k: "leg", to, travelSeconds, dwellSeconds?, lift?, marks?, travelSpread?, dwellSpread? }
+  // spread f: time x (1 + f*t), t symmetric triangular on (-1, 1), drawn from the policy's own named stream
   initial:   { stock: [{ location, item, qty }] } }
 ```
 
@@ -80,7 +87,8 @@ Scenario fields used by `blueprintToModel` (defaults in brackets): `seed` [bluep
   Cancelling is allowed only before assignment: a loaded trolley keeps its load.
 - **Stations**: start only with all inputs available and room reserved for all outputs; states `working`, `starved`,
   `blocked`, `down`; breakdowns pause the job and resume it after repair (named random stream per station).
-- **Policies**: pull counts on-hand plus confirmed inbound (WP3.4); push moves fixed lots.
+- **Policies**: pull counts on-hand plus confirmed inbound (WP3.4); push moves fixed lots; loop starts the next trip of
+  its carrier as soon as the previous one is done (from `startSeconds`, up to `count` trips).
 - **Events** (`world.log`, each `{ seq, t, type, ... }`): `world.start`, `command.accepted|rejected`, `mission.created|waiting|
   assigned|failed|cancelled|done`, `walk.*`, `leg.start|arrive|end`, `lift.wait|start|end`, `load.start|end`,
   `unload.start|end`, `mark`, `station.start|finish|state|down|up`, `stock.received`, `route.changed`, `policy.blocked`.

@@ -80,6 +80,31 @@ test("V12 shared lift: the second trolley waits for the car, then runs; payloads
   assert.equal(w.ledger.onHand("s2", "A"), 1); assert.equal(w.ledger.onHand("s2", "B"), 1); assert.equal(w.ledger.onHand("s1", "A"), 0);
 });
 
+test("loop policy: two trolleys cycle through one lift for an hour; waits are counted, payloads conserved, resumable", () => {
+  const m = liftModel(); m.initial.stock = [{ location: "s1", item: "A", qty: 1000 }];
+  const trip = [{ k: "load", seconds: 10 }, { k: "leg", to: "s2", travelSeconds: 30, dwellSeconds: 5, lift: "lift" }, { k: "unload", seconds: 10 }, { k: "leg", to: "s1", travelSeconds: 30, lift: "lift" }];
+  m.policies = [{ id: "L1", kind: "loop", item: "A", from: "s1", to: "s2", carrier: "t1", actions: trip }, { id: "L2", kind: "loop", item: "A", from: "s1", to: "s2", carrier: "t2", actions: trip, startSeconds: 20 }];
+  const w = new World(m, { checkInvariants: true }).runUntil(3600 * 1000), r = w.report(), [p1, p2] = r.policies;
+  // alone, one cycle is 10 + 30 + 5 + 10 + 30 = 85 s (42 trips/h); each cycle holds the single lift car for 60 s, so two
+  // trolleys saturate it: about 120 s per cycle, 30 trips/h each, and the lift is never used by both at once
+  assert.ok(p1.done >= 28 && p2.done >= 28, JSON.stringify(r.policies)); assert.ok(p1.lift_wait_s + p2.lift_wait_s > 0);
+  assert.ok((p1.done + p2.done) * 60 <= 3600 + 120, "lift time cannot exceed the hour"); assert.ok(p1.mean_cycle_s > 115 && p1.mean_cycle_s < 125, String(p1.mean_cycle_s)); assert.equal(w.ledger.onHand("s2", "A"), w.eventsOf("unload.end").length); assert.ok(w.eventsOf("unload.end").length - (p1.done + p2.done) <= 2); assert.deepEqual(r.invariants, []);
+  const a = new World(m).runUntil(3600 * 1000), b = World.restore(m, JSON.parse(JSON.stringify(new World(m).runUntil(1234567).snapshot()))).runUntil(3600 * 1000);
+  assert.equal(a.fingerprint(), b.fingerprint());
+});
+
+test("seeded time spread: same seed same run, other seed different; times stay inside +-spread; zero spread draws nothing", () => {
+  const m = liftModel(); m.initial.stock = [{ location: "s1", item: "A", qty: 1000 }];
+  const trip = [{ k: "load", seconds: 10 }, { k: "leg", to: "s2", travelSeconds: 100, travelSpread: 0.2, dwellSeconds: 5 }, { k: "unload", seconds: 10 }, { k: "leg", to: "s1", travelSeconds: 100, travelSpread: 0.2 }];
+  m.policies = [{ id: "L1", kind: "loop", item: "A", from: "s1", to: "s2", carrier: "t1", actions: trip }];
+  const run = seed => new World({ ...m, seed }).runUntil(7200 * 1000);
+  assert.equal(run(1).fingerprint(), run(1).fingerprint()); assert.notEqual(run(1).fingerprint(), run(2).fingerprint());
+  const legs = run(3).eventsOf("leg.start").map(e => e.arrive - e.t);
+  assert.ok(legs.every(d => d > 80000 && d < 120000), "every leg inside 100 s +-20%"); assert.ok(new Set(legs).size > 5, "times vary");
+  const fixed = new World({ ...m, policies: [{ ...m.policies[0], actions: trip.map(a => ({ ...a, travelSpread: 0 })) }] }).runUntil(7200 * 1000);
+  assert.ok(fixed.eventsOf("leg.start").every(e => e.arrive - e.t === 100000));
+});
+
 test("V06/V07 closed aisle: missions fail with a reason, the policy waits, reopening resumes the flow", () => {
   const model = blueprintToModel(bp, scenario), w = new World(model, { checkInvariants: true });
   const port = bp.ports.find(p => p.port_id === "P_SMT_IN").navigation_node_id, edge = bp.navigation.edges.find(e => e.to_node === port || e.from_node === port).edge_id;

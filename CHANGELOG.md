@@ -1,5 +1,11 @@
 # سجل التغييرات
 
+## 2026-11-13 — Factory Engine 0.2.0
+
+- `loop` policy: repeated trips of a fixed carrier (milk run / shift run) with trips, mean cycle and lift waits per policy.
+- Optional seeded time spread on actions; zero spread draws nothing, so earlier results are unchanged.
+- 11 tests pass. `.gitattributes` keeps LF line endings so the bundle hash is the same on every checkout.
+
 ## 2026-11-13 — Engine core built (Factory Engine 0.1.0)
 
 - `engine/`: deterministic simulation core in plain JavaScript (no dependencies): integer ticks and quantities, named random

@@ -8,7 +8,7 @@ import { canonical, hash64, fingerprintOf, clone } from "./canon.js";
 import { Ledger } from "./ledger.js";
 import { RouteGraph } from "./routes.js";
 
-export const ENGINE_VERSION = "0.1.0";
+export const ENGINE_VERSION = "0.2.0";
 export const PRIORITY = Object.freeze({ repair: 10, finish: 20, mission: 30, mark: 35, fail: 40, release: 50 });
 export const STATION_STATES = Object.freeze(["working", "starved", "blocked", "idle", "down"]);
 
@@ -45,10 +45,13 @@ export function validateModel(m) {
   }
   for (const pol of m.policies || []) {
     seen("policy", pol.id);
-    if (!["pull", "push"].includes(pol.kind)) p.push(`policy ${pol.id}: kind must be pull or push`);
+    if (!["pull", "push", "loop"].includes(pol.kind)) p.push(`policy ${pol.id}: kind must be pull, push or loop`);
     if (!has("item", pol.item)) p.push(`policy ${pol.id}: unknown item ${pol.item}`);
     for (const k of ["from", "to"]) if (!has("location", pol[k])) p.push(`policy ${pol.id}: unknown ${k} location ${pol[k]}`);
-    if (!has("handling", pol.handling)) p.push(`policy ${pol.id}: unknown handling ${pol.handling}`);
+    if (pol.kind === "loop") {
+      if (units.get(pol.carrier) !== "carrier") p.push(`policy ${pol.id}: loop needs a carrier unit (got ${pol.carrier})`);
+      if (!Array.isArray(pol.actions) || !pol.actions.length) p.push(`policy ${pol.id}: loop needs explicit actions`);
+    } else if (!has("handling", pol.handling)) p.push(`policy ${pol.id}: unknown handling ${pol.handling}`);
   }
   for (const s of m.initial?.stock || []) { if (!has("location", s.location)) p.push(`initial stock: unknown location ${s.location}`); if (!has("item", s.item)) p.push(`initial stock: unknown item ${s.item}`); if (!(Number.isSafeInteger(s.qty) && s.qty >= 0)) p.push(`initial stock ${s.item}: quantity must be a non-negative integer`); }
   return p;
@@ -82,7 +85,7 @@ export class World {
       this.stations.set(s.id, { def: { ...s, cycle: this.T(s.cycleSeconds), slots: s.slots || 1, mtbf: s.breakdown ? this.T(s.breakdown.mtbfSeconds) : 0, mttr: s.breakdown ? this.T(s.breakdown.mttrSeconds) : 0 },
         state: "idle", since: 0, jobs: [], jobSeq: 0, down: { breakdown: false, manual: false }, cycles: 0, timeIn: Object.fromEntries(STATION_STATES.map(k => [k, 0])) });
     }
-    this.policies = new Map((model.policies || []).map(p => [p.id, { def: { countInbound: true, maxOpen: 1, ...p }, enabled: true, blockedAt: -1, created: 0 }]));
+    this.policies = new Map((model.policies || []).map(p => [p.id, { def: { countInbound: true, maxOpen: 1, ...p, start: this.T(p.startSeconds || 0), qty: p.qty || 1 }, enabled: true, blockedAt: -1, created: 0, done: 0, leadTicks: 0, waitTicks: 0 }]));
     this.missions = new Map(); this.open = []; this.missionSeq = 0; this.inboundQty = new Map(); this.policyLive = new Map();
     this.commands = new Map(); this.revision = 0;
     this.now = 0; this.eventSeq = 0; this.logHash = "0"; this.log = []; this.logStart = 0;
@@ -92,6 +95,7 @@ export class World {
     for (const s of model.initial?.stock || []) if (s.qty > 0) this.ledger.initial(s.location, s.item, s.qty);
     this.#emit("world.start", { engine: ENGINE_VERSION, model: this.modelHash, seed: model.seed ?? 1, tickPerSecond: this.tps });
     for (const S of this.stations.values()) if (S.def.mtbf > 0) this.#scheduleFailure(S);
+    for (const P of this.policies.values()) if (P.def.start > 0) this.#schedule(P.def.start, PRIORITY.release, "policy.wake", { policy: P.def.id });
     this.#settle(); this.#assertInvariants();
   }
 
@@ -191,7 +195,8 @@ export class World {
     if (spec.worker && this.units.get(spec.worker)?.kind !== "worker") throw new EngineError("unknown_worker", `unknown worker ${spec.worker}`);
     const id = spec.id || "M" + String(++this.missionSeq).padStart(5, "0");
     if (this.missions.has(id)) throw new EngineError("duplicate_mission", `mission ${id} exists`);
-    const actions = spec.actions ? spec.actions.map((a, i) => this.#normaliseAction(a, i)) : null;
+    const spread = this.rng.get("spread:" + (cause.policy || "commands"));
+    const actions = spec.actions ? spec.actions.map((a, i) => this.#normaliseAction(a, i, spread)) : null;
     if (actions) { const kinds = actions.map(a => a.k); if (kinds.filter(k => k === "load").length !== 1 || kinds.filter(k => k === "unload").length !== 1 || kinds.indexOf("load") > kinds.indexOf("unload")) throw new EngineError("bad_actions", "explicit actions need exactly one load before exactly one unload"); }
     if (!actions && !this.graph.nodes.size) throw new EngineError("no_route", "no navigation graph and no explicit legs");
     L.reserveStock("m:" + id + ":stock", spec.from, spec.item, spec.qty);
@@ -206,13 +211,16 @@ export class World {
     if (m.status === "scheduled") this.#schedule(release, PRIORITY.release, "mission.release", { mission: id }); else this.#enqueue(m);
     return m;
   }
-  #normaliseAction(a, i) {
-    if (a.k === "load" || a.k === "unload") return { k: a.k, ticks: this.T(a.seconds || 0) };
+  // Optional seeded variability: travelSpread / dwellSpread / spread = fraction f; the time is multiplied by 1 + f * t, where
+  // t is symmetric triangular on (-1, 1) from the policy's own random stream (same seed, same times; no spread, no draw).
+  #normaliseAction(a, i, rng) {
+    const vary = (seconds, f) => { if (!(f > 0) || !(seconds > 0)) return seconds; if (f >= 1) throw new EngineError("bad_spread", `action ${i}: spread must be below 1`); return seconds * (1 + f * (rng.next() + rng.next() - 1)); };
+    if (a.k === "load" || a.k === "unload") return { k: a.k, ticks: this.T(vary(a.seconds || 0, a.spread)) };
     if (a.k === "leg") {
       if (a.lift != null && this.pools.get(a.lift)?.kind !== "lift") throw new EngineError("unknown_lift", `action ${i}: unknown lift pool ${a.lift}`);
-      const travel = this.T(a.travelSeconds || 0);
+      const travel = this.T(vary(a.travelSeconds || 0, a.travelSpread));
       const marks = (a.marks || []).map(x => ({ at: this.T(x.atSeconds), type: x.type || "mark", ref: x.ref ?? null })).filter(x => x.at <= travel);
-      return { k: "leg", to: a.to ?? null, travel, dwell: this.T(a.dwellSeconds || 0), lift: a.lift ?? null, marks, label: a.label ?? null, ref: a.ref ?? null, path: a.path || null };
+      return { k: "leg", to: a.to ?? null, travel, dwell: this.T(vary(a.dwellSeconds || 0, a.dwellSpread)), lift: a.lift ?? null, marks, label: a.label ?? null, ref: a.ref ?? null, path: a.path || null };
     }
     throw new EngineError("bad_action", `action ${i}: unknown kind ${a.k}`);
   }
@@ -279,6 +287,7 @@ export class World {
 
   #handlers = {
     "mission.release"(d) { const m = this.missions.get(d.mission); if (m && m.status === "scheduled") this.#enqueue(m); },
+    "policy.wake"() {},   // a loop's start time: the settle phase after every event does the work
     "mission.next"(d) { this.#nextAction(this.missions.get(d.mission)); },
     "mission.arrive"(d) { this.#arrive(this.missions.get(d.mission)); },
     "mission.actionEnd"(d) { this.#endAction(this.missions.get(d.mission)); },
@@ -295,6 +304,7 @@ export class World {
     m.ai++;
     if (m.ai >= m.actions.length) {
       const lead = this.now - m.created; this.stats.missionsDone++; this.stats.leadTicks += lead;
+      if (m.policy && this.policies.has(m.policy)) { const P = this.policies.get(m.policy); P.done++; P.leadTicks += lead; P.waitTicks += m.waitTicks || 0; }
       this.#count(m, -1); m.status = "done"; m.done = this.now; m.cur = null;
       for (const u of [m.carrier, m.worker]) if (u) this.#releaseUnit(this.units.get(u));
       this.#emit("mission.done", { mission: m.id, leadTicks: lead }); return;
@@ -307,11 +317,12 @@ export class World {
     }
     if (a.lift) {
       const pool = this.pools.get(a.lift), u = pool.units.map(x => this.units.get(x)).find(x => this.#free(x));
-      if (!u) { pool.queue.push(m.id); m.cur = { k: "lift-wait", t0: this.now, t1: null }; this.#emit("lift.wait", { mission: m.id, lift: a.lift, action: m.ai }); return; }
+      if (!u) { pool.queue.push(m.id); m.waitSince = this.now; m.cur = { k: "lift-wait", t0: this.now, t1: null }; this.#emit("lift.wait", { mission: m.id, lift: a.lift, action: m.ai }); return; }
       this.#beginLeg(m, a, u);
     } else this.#beginLeg(m, a, null);
   }
   #beginLeg(m, a, liftUnit) {
+    if (m.waitSince != null) { m.waitTicks = (m.waitTicks || 0) + this.now - m.waitSince; m.waitSince = null; }
     if (liftUnit) { this.#bindUnit(liftUnit, m); m.liftUnit = liftUnit.id; this.#emit("lift.start", { mission: m.id, lift: liftUnit.id }); }
     const mover = this.units.get(a.k === "walk" ? m.worker : m.carrier);
     m.cur = { k: a.k, t0: this.now, t1: this.now + a.travel, from: mover.node, to: a.to, path: a.path, action: m.ai };
@@ -392,6 +403,11 @@ export class World {
       const d = P.def; if (!P.enabled || P.blockedAt === this.graph.revision) continue;
       if ((this.policyLive.get(d.id) || 0) >= d.maxOpen) continue;
       let qty = 0;
+      if (d.kind === "loop") {   // repeated trip (milk run / shift run): next trip as soon as the carrier's last one is done
+        if (this.now < d.start || (d.count != null && P.created >= d.count) || L.available(d.from, d.item) < d.qty || L.freeQty(d.to, d.item) < d.qty) continue;
+        this.#createMission({ item: d.item, qty: d.qty, from: d.from, to: d.to, carrier: d.carrier, actions: d.actions, priority: d.priority || 0 }, { policy: d.id });
+        P.created++; changed = true; continue;
+      }
       if (d.kind === "pull") {
         const position = L.onHand(d.to, d.item) + (d.countInbound ? this.inbound(d.to, d.item) : 0);
         if (position >= d.reorderPoint) continue;
@@ -417,7 +433,7 @@ export class World {
     const pools = {}; for (const id of [...this.pools.keys()].sort()) pools[id] = this.pools.get(id).queue.slice();
     const stations = {}; for (const id of [...this.stations.keys()].sort()) { const S = this.stations.get(id); stations[id] = { state: S.state, since: S.since, jobs: S.jobs.map(j => ({ ...j })), jobSeq: S.jobSeq, down: { ...S.down }, cycles: S.cycles, timeIn: { ...S.timeIn } }; }
     const missions = {}; for (const id of [...this.missions.keys()].sort()) missions[id] = clone(this.missions.get(id));
-    const policies = {}; for (const id of [...this.policies.keys()].sort()) { const P = this.policies.get(id); policies[id] = { enabled: P.enabled, blockedAt: P.blockedAt, created: P.created }; }
+    const policies = {}; for (const id of [...this.policies.keys()].sort()) { const P = this.policies.get(id); policies[id] = { enabled: P.enabled, blockedAt: P.blockedAt, created: P.created, done: P.done, leadTicks: P.leadTicks, waitTicks: P.waitTicks }; }
     const commands = {}; for (const id of [...this.commands.keys()].sort()) commands[id] = clone(this.commands.get(id));
     return { now: this.now, revision: this.revision, eventSeq: this.eventSeq, logHash: this.logHash, missionSeq: this.missionSeq, open: this.open.slice(),
       queue: this.queue.state(), rng: this.rng.state(), ledger: this.ledger.state(), graph: this.graph.state(), units, pools, stations, missions, policies, commands, stats: { ...this.stats } };
@@ -465,6 +481,7 @@ export class World {
       stations: [...this.stations.values()].map(S => ({ id: S.def.id, cycles: S.cycles, state: S.state, utilisation: +(S.timeIn.working / el).toFixed(4), seconds: Object.fromEntries(STATION_STATES.map(k => [k, s(S.timeIn[k])])) })),
       missions: { done: this.stats.missionsDone, failed: this.stats.missionsFailed, waiting: this.open.length, active: [...this.missions.values()].filter(m => m.status === "active").length, mean_lead_s: this.stats.missionsDone ? s(this.stats.leadTicks / this.stats.missionsDone) : null },
       units: [...this.units.values()].map(u => ({ id: u.id, kind: u.kind, utilisation: +((u.busyTicks + (u.mission ? this.now - u.busySince : 0)) / el).toFixed(4) })),
+      policies: [...this.policies.values()].map(P => ({ id: P.def.id, kind: P.def.kind, created: P.created, done: P.done, mean_cycle_s: P.done ? s(P.leadTicks / P.done) : null, lift_wait_s: s(P.waitTicks) })),
       balance: this.ledger.state().counters, stock: this.view().stock, invariants: this.ledger.check()
     };
   }
