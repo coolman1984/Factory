@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import vm from "node:vm";
 
-const ORDER = ["units.js", "rng.js", "queue.js", "canon.js", "ledger.js", "routes.js", "world.js", "blueprint.js"];
+const ORDER = ["units.js", "rng.js", "queue.js", "canon.js", "ledger.js", "routes.js", "packing.js", "journal.js", "world.js", "blueprint.js"];
 const root = new URL("./src/", import.meta.url), names = [];
 const parts = ORDER.map(file => {
   const src = readFileSync(new URL(file, root), "utf8").replace(/\r\n/g, "\n");

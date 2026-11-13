@@ -12,5 +12,8 @@
   "pull": { "reorder_cycles": 2, "target_cycles": 6 },
   "push": { "lot": 10 },
   "breakdowns": { "PROC_SMT": { "mtbf_s": 3600, "mttr_s": 300 } },
-  "closed_edges": []
+  "closed_edges": [],
+  "quality": { "PROC_TEST": { "pass_rate": 0.9, "repair_s": 240 } },
+  "traffic": { "one_lane_below_m": 2.6 },
+  "shipping": { "carton_m": [1.36, 0.17, 0.86], "carton_kg": 21 }
 }

@@ -28,7 +28,7 @@
 | [examples/factory-blueprint.example.json](../examples/factory-blueprint.example.json) | تعريف مصنع افتراضي مترابط |
 | [schemas/factory-blueprint.schema.json](../schemas/factory-blueprint.schema.json) | عقد بنيوي أولي للعينة |
 | [docs/17_ENGINE_CORE.md](17_ENGINE_CORE.md) | Engine core: technology decision, API, model, events, status (English) |
-| `engine/src/` | Engine modules: units, rng, queue, canon, ledger, routes, world, blueprint (no rendering) |
+| `engine/src/` | Engine modules: units, rng, queue, canon, ledger, routes, packing, journal, world, blueprint (no rendering) |
 | `engine/cli.mjs`, `engine/build.mjs` | Command line (validate / run / resume) and browser bundle builder |
 | `engine/test/`, `engine/scenarios/` | Acceptance tests and illustrative scenarios |
 | `package.json` | npm scripts only (`test`, `build`, `validate`, `demo`); no dependencies |

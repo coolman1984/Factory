@@ -2,7 +2,7 @@
 
 هذا الملف يفصّل [مراحل التنفيذ](09_ROADMAP.md) إلى حزم عمل صغيرة مرتبة، لكل حزمة مخرجات واختبار قبول ودليل. لا يستبدل المراحل ولا شروط خروجها، ولا يعني أن التنفيذ البرمجي بدأ.
 
-**Status 2026-11-13: technology decided (D14); WP0.3 and WP1.1–WP1.8 built and tested, WP3.1/3.3/3.4 built, WP3.2/3.5 partial. Per-package status and evidence: [17_ENGINE_CORE.md §7](17_ENGINE_CORE.md). WP0.1/WP0.2 (target-PC inventory and measured comparison) are still open.**
+**Status 2026-11-13: technology decided (D14); WP0.3 and WP1.1–WP1.8 built and tested, WP3.1/3.3/3.4 built, WP3.2 built (0.3.0: traffic zones), WP3.5 partial; Phase 4 core built (0.3.0: serials, test/repair loop, packing plan). Per-package status and evidence: [17_ENGINE_CORE.md §7](17_ENGINE_CORE.md). WP0.1/WP0.2 (target-PC inventory and measured comparison) are still open.**
 
 معرفات `V` تشير إلى [خطة التحقق](10_VALIDATION_AND_PERFORMANCE.md)، ومعرفات `D` إلى [سجل القرارات](11_DECISIONS_AND_OPEN_QUESTIONS.md).
 

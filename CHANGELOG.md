@@ -1,5 +1,14 @@
 # سجل التغييرات
 
+## 2026-11-13 — Factory Engine 0.3.0
+
+- Traffic zones (WP3.2): aisle sections and crossings with a capacity; a leg takes its lift car and zones all at once or waits
+  holding nothing (deadlock-free). Blueprint scenario: one-lane aisles from edge width, named zones.
+- Phase 4 core: serial numbers per unit (kept through assembly, test and packing), unit genealogy and `trace`, test stations
+  with a seeded pass/fail draw and a repair loop, container packing plan and packing list.
+- Layout journal: edits as patch commands with validator, exact undo/redo and a verifiable hash chain.
+- About 10x faster long runs (event chain hash, finished missions trimmed). 16 tests pass.
+
 ## 2026-11-13 — Factory Engine 0.2.0
 
 - `loop` policy: repeated trips of a fixed carrier (milk run / shift run) with trips, mean cycle and lift waits per policy.

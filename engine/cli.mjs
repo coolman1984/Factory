@@ -43,5 +43,9 @@ if (packed != null) console.log(`  TVs packed: ${packed}; in container: ${(r.sto
 console.log(`  missions: ${r.missions.done} done, ${r.missions.failed} failed, ${r.missions.waiting} waiting, mean lead ${r.missions.mean_lead_s ?? "-"} s`);
 for (const s of r.stations) console.log(`  ${s.id.padEnd(14)} ${String(s.cycles).padStart(5)} cycles  busy ${(s.utilisation * 100).toFixed(1).padStart(5)}%  starved ${s.seconds.starved} s  blocked ${s.seconds.blocked} s  down ${s.seconds.down} s`);
 for (const u of r.units) console.log(`  ${u.id.padEnd(16)} ${u.kind.padEnd(8)} busy ${(u.utilisation * 100).toFixed(1)}%`);
+for (const q of r.quality) console.log(`  quality ${q.station}: ${q.tested} tests, ${q.passed} pass, ${q.failed} fail (repair loop), yield ${q.yield == null ? "-" : (q.yield * 100).toFixed(1) + "%"}, first-pass yield ${q.first_pass_yield == null ? "-" : (q.first_pass_yield * 100).toFixed(1) + "%"}, retests ${q.retests}`);
+if (r.serials) console.log(`  serial numbers issued: ${Object.entries(r.serials.issued).map(([k, v]) => k + " " + v).join(", ")}; units with recorded contents: ${r.serials.with_contents}`);
+if (r.shipping) { const sh = r.shipping, pl = sh.plan; console.log(`  shipping ${sh.location}: plan ${sh.per_container} x ${sh.item} per container (${pl.layers} layers x ${pl.perLayer}, limited by ${pl.limitedBy}, volume fill ${(pl.volumeFill * 100).toFixed(1)}%); loaded ${sh.loaded}, full containers ${sh.containers_full}`); }
+const zw = r.zones.filter(z => z.entries); if (r.zones.length) console.log(`  traffic: ${r.zones.length} zone(s), ${zw.length} used, ${r.zones.reduce((n, z) => n + z.waits, 0)} wait(s), ${r.zones.reduce((n, z) => n + z.wait_s, 0).toFixed(1)} s waiting`);
 console.log(`  invariants: ${r.invariants.length ? r.invariants.join("; ") : "OK"}`);
 console.log(`  fingerprint ${r.fingerprint}`);

@@ -36,6 +36,9 @@
 | D18 | Superseded by D14: TypeScript dropped (needs an npm build step), the core stays renderer-free | closed | same separation, no installs |
 | D19 | Material Flow V8 (the owner's existing three.js player) is the first viewer; it takes its step times from engine events through one bridge, its graphics unchanged | built | owner: reuse the V8 graphics on the new engine; bit-identical replay keeps V8's tests valid |
 | D20 | The engine bundle is copied (vendored) into a viewer project; company layouts never enter this repository | built | this repository has a GitHub remote; the company project is local only |
+| D21 | Traffic (WP3.2): a leg takes its lift car and every traffic zone it crosses all at once or waits holding none, so waits cannot form a cycle (deadlock-free by construction); viewers split legs per zone | built (0.3.0) | no deadlock detector needed while nothing is held during a wait; revisit if a trolley must hold a zone while waiting |
+| D22 | Layout edits go through a journal of patch commands (exact inverse, validator, append-only hash chain); a viewer edit that adds a problem is refused and rolled back | built (0.3.0) | the owner asked that every change be checked and undoable at engine level |
+| D23 | The event hash chain hashes each event as emitted (field order fixed by the engine code) instead of sorted keys; finished missions drop their action list | built (0.3.0) | long shift runs became about 10x faster with the same determinism |
 
 ## ٢. الافتراضات المعلنة
 

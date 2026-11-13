@@ -11,7 +11,7 @@ export class RouteGraph {
       if (!this.nodes.has(e.a) || !this.nodes.has(e.b)) throw new EngineError("unknown_node", `edge ${e.id} joins unknown nodes`);
       const A = this.nodes.get(e.a), B = this.nodes.get(e.b);
       const length = e.length != null ? e.length : Math.hypot(B.x - A.x, B.y - A.y, B.z - A.z);
-      const E = { id: e.id, a: e.a, b: e.b, both: e.both !== false, length, speed: e.speed || Infinity, modes: e.modes || null, open: e.open !== false };
+      const E = { id: e.id, a: e.a, b: e.b, both: e.both !== false, length, speed: e.speed || Infinity, modes: e.modes || null, open: e.open !== false, zone: e.zone ?? null };
       this.edges.set(e.id, E); this.adj.get(e.a).push([E, e.b]); if (E.both) this.adj.get(e.b).push([E, e.a]);
     }
   }

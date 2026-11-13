@@ -2,6 +2,7 @@
 // The blueprint is the definition; the scenario holds start-up and run settings, so one blueprint serves many experiments.
 import { EngineError, unitInfo, toBaseQty, sameDimension } from "./units.js";
 import { RouteGraph } from "./routes.js";
+import { packPlan } from "./packing.js";
 
 const MODE_OF = { transporter: "manual_trolley", worker: "pedestrian" };
 
@@ -98,11 +99,16 @@ export function blueprintToModel(bp, scenario = {}) {
   const problems = validateBlueprint(bp);
   if (problems.length) throw new EngineError("invalid_blueprint", "blueprint has problems:\n  " + problems.map(p => p.message).join("\n  "), problems);
   const S = { seed: bp.initial_conditions?.random_seed ?? 1, tick_per_second: 1000, slot_size: { ea: 10, kg: 25 }, trolley_speed_mps: 1.0, walk_speed_mps: 1.2,
-    load_s: 30, unload_s: 30, pull: { reorder_cycles: 2, target_cycles: 6 }, push: { lot: 10 }, breakdowns: {}, closed_edges: [], ...scenario };
+    load_s: 30, unload_s: 30, pull: { reorder_cycles: 2, target_cycles: 6 }, push: { lot: 10 }, breakdowns: {}, closed_edges: [], serial_prefix: "SN", quality: {}, traffic: {}, shipping: null, ...scenario };
   const items = new Map(bp.items.map(i => [i.item_id, i])), ents = new Map(bp.entities.map(e => [e.entity_id, e])), ports = new Map(bp.ports.map(p => [p.port_id, p]));
   const base = (itemId, q, unit) => toBaseQty(q, unit || items.get(itemId).unit);
   const slotOf = it => { const own = S.slot_size.items?.[it.item_id]; const q = own ?? S.slot_size[it.unit] ?? 1; return Math.max(1, base(it.item_id, q, it.unit)); };
   const graph = navGraph(bp); const closed = new Set(S.closed_edges); for (const e of graph.edges) if (closed.has(e.id)) e.open = false;
+  // Traffic (WP3.2): an aisle narrower than traffic.one_lane_below_m takes one trolley at a time; traffic.zones adds named
+  // zones (capacity, edges), e.g. a crossing. Edges keep one zone each; a later rule wins.
+  const zones = [], widths = new Map((bp.navigation?.edges || []).map(e => [e.edge_id, e.width_m]));
+  if (S.traffic.one_lane_below_m > 0) for (const e of graph.edges) if (widths.get(e.id) < S.traffic.one_lane_below_m) { zones.push({ id: "lane:" + e.id, capacity: 1 }); e.zone = "lane:" + e.id; }
+  for (const z of S.traffic.zones || []) { zones.push({ id: z.id, capacity: z.capacity ?? 1 }); for (const id of z.edges || []) { const e = graph.edges.find(x => x.id === id); if (!e) throw new EngineError("unknown_ref", `traffic zone ${z.id}: unknown edge ${id}`); e.zone = z.id; } }
   const nearest = (x, y) => { let best = null, bd = Infinity; for (const n of graph.nodes) { const d = Math.hypot(n.x - x, n.y - y); if (d < bd || (d === bd && n.id < best)) { bd = d; best = n.id; } } return best; };
   const unitOf = e => { const p = worldTransform(bp, e.entity_id); return { id: e.entity_id, node: nearest(p.x, p.y), speed: e.category === "worker" ? S.walk_speed_mps : S.trolley_speed_mps, mode: MODE_OF[e.category] }; };
   const procByInput = new Map(); for (const pr of bp.processes) for (const i of pr.inputs) procByInput.set(pr.input_location_id + "|" + i.item_id, { pr, q: base(i.item_id, i.quantity, i.unit) });
@@ -116,23 +122,42 @@ export function blueprintToModel(bp, scenario = {}) {
         : { ...common, kind: "pull", reorderPoint: consumer.q * S.pull.reorder_cycles, target: consumer.q * S.pull.target_cycles, countInbound: true });
     } else policies.push({ ...common, kind: "push", lot: base(fl.item_id, S.push.lot_by_item?.[fl.item_id] ?? S.push.lot, items.get(fl.item_id).unit) });
   }
+  // Quality (Phase 4): quality.<process> = { pass_rate, repair_s, repair_slots? } turns the process into a test station; a unit
+  // that fails goes, with its serial number, to a repair bench next to it and comes back to the test input after repair.
+  const stations = bp.processes.map(pr => ({ id: pr.process_id, entity: pr.station_entity_id, input: pr.input_location_id, output: pr.output_location_id,
+    inputs: pr.inputs.map(i => ({ item: i.item_id, qty: base(i.item_id, i.quantity, i.unit) })), outputs: pr.outputs.map(o => ({ item: o.item_id, qty: base(o.item_id, o.quantity, o.unit) })),
+    cycleSeconds: pr.duration_s, slots: pr.parallel_slots, breakdown: S.breakdowns[pr.process_id] ? { mtbfSeconds: S.breakdowns[pr.process_id].mtbf_s, mttrSeconds: S.breakdowns[pr.process_id].mttr_s } : null }));
+  const extraLocations = [];
+  for (const [pid, q] of Object.entries(S.quality || {})) {
+    const st = stations.find(x => x.id === pid); if (!st) throw new EngineError("unknown_ref", `quality: unknown process ${pid}`);
+    const unit = st.inputs.find(i => items.get(i.item)?.tracking === "serial") || st.inputs[0], bench = "REPAIR_" + pid;
+    if (!(q.pass_rate >= 0 && q.pass_rate <= 1)) throw new EngineError("bad_quality", `quality ${pid}: pass_rate must be between 0 and 1`);
+    extraLocations.push({ id: bench, kind: "repair", capacitySlots: null, node: null });
+    st.test = { passRate: q.pass_rate, failTo: bench, failItem: unit.item };
+    stations.push({ id: "REPAIR:" + pid, entity: st.entity, input: bench, output: st.input, inputs: [{ item: unit.item, qty: unit.qty }], outputs: [{ item: unit.item, qty: unit.qty }], cycleSeconds: q.repair_s || 300, slots: q.repair_slots || 1, breakdown: null });
+  }
+  // Shipping (Phase 4): shipping = { carton_m, carton_kg?, allow_tipping? } gives the container packing plan for the item
+  // that flows into the container named by blueprint.shipping.
+  let shipping = null;
+  if (bp.shipping && S.shipping) {
+    const loc = bp.shipping.container_entity_id, into = bp.material_flows.find(fl => ports.get(fl.to_port_id)?.owner_entity_id === loc);
+    const plan = packPlan({ inner_m: bp.shipping.internal_dimensions_m, maxPayloadKg: bp.shipping.max_payload_kg }, { size_m: S.shipping.carton_m, kg: S.shipping.carton_kg }, { allowTipping: !!S.shipping.allow_tipping });
+    if (into) shipping = { location: loc, item: into.item_id, perContainer: plan.perContainer, plan };
+  }
   const initial = new Map();
   for (const h of bp.initial_conditions?.handling_units || []) for (const c of h.contents) { const k = h.location_entity_id + "|" + c.item_id; initial.set(k, (initial.get(k) || 0) + base(c.item_id, c.quantity, c.unit)); }
   return {
     format: "fe-model", version: 1, name: bp.factory?.factory_id || "blueprint", source: { blueprint: bp.factory?.factory_id, schema_version: bp.schema_version, sample_only: !!bp.sample_only },
     tickPerSecond: S.tick_per_second, seed: S.seed,
-    items: bp.items.map(it => ({ id: it.item_id, unit: unitInfo(it.unit).base, slotSize: slotOf(it) })),
-    locations: bp.entities.filter(e => e.storage_capacity || ["storage", "container"].includes(e.category)).map(e => ({ id: e.entity_id, kind: e.category, capacitySlots: e.storage_capacity?.handling_unit_slots ?? null, node: null })),
-    graph,
+    items: bp.items.map(it => ({ id: it.item_id, unit: unitInfo(it.unit).base, slotSize: slotOf(it), ...(it.tracking === "serial" && unitInfo(it.unit).base === "ea" ? { serial: S.serial_prefix } : {}) })),
+    locations: [...bp.entities.filter(e => e.storage_capacity || ["storage", "container"].includes(e.category)).map(e => ({ id: e.entity_id, kind: e.category, capacitySlots: e.storage_capacity?.handling_unit_slots ?? null, node: null })), ...extraLocations],
+    graph, zones,
     pools: [
       { id: "transporters", kind: "carrier", units: bp.entities.filter(e => e.category === "transporter").map(unitOf) },
       { id: "workers", kind: "worker", units: bp.entities.filter(e => e.category === "worker").map(unitOf) }
     ],
     handling: (bp.handling_policies || []).map(h => ({ id: h.policy_id, carriers: h.transporter_entity_ids, workers: h.worker_entity_ids || [], loadSeconds: S.load_s, unloadSeconds: S.unload_s })),
-    stations: bp.processes.map(pr => ({ id: pr.process_id, entity: pr.station_entity_id, input: pr.input_location_id, output: pr.output_location_id,
-      inputs: pr.inputs.map(i => ({ item: i.item_id, qty: base(i.item_id, i.quantity, i.unit) })), outputs: pr.outputs.map(o => ({ item: o.item_id, qty: base(o.item_id, o.quantity, o.unit) })),
-      cycleSeconds: pr.duration_s, slots: pr.parallel_slots, breakdown: S.breakdowns[pr.process_id] ? { mtbfSeconds: S.breakdowns[pr.process_id].mtbf_s, mttrSeconds: S.breakdowns[pr.process_id].mttr_s } : null })),
-    policies,
+    stations, policies, ...(shipping ? { shipping } : {}),
     initial: { stock: [...initial].map(([k, qty]) => { const [location, item] = k.split("|"); return { location, item, qty }; }) }
   };
 }
