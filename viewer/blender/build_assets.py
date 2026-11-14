@@ -337,6 +337,19 @@ def bollard():
     cyl(0.14, 0.04, 0, 0, 0.02, M.dark)
     export("bollard")
 
-for f in (smt_module, eps_machine, table, bin_cart, bollard, injection_machine, aux_unit, equipment, rack, pallet, crane_bridge, trolley, agv, pc_station, rfid_gate, scanner, operator, column):
+def lift_shaft():   # goods elevator: steel frame, glass panels, landing doors at 1F and 2F (6 m), car, machine room
+    reset(); W, H = 3.0, 9.5
+    for x in (-W / 2 + 0.1, W / 2 - 0.1):
+        for y in (-W / 2 + 0.1, W / 2 - 0.1): box(0.2, 0.2, H, x, y, 0, M.accent, 0.01)
+    for z in (0.0, 3.0, 6.0, 9.0): 
+        for s in (-1, 1): box(W, 0.12, 0.15, 0, s * (W / 2 - 0.1), z, M.accent, 0.01); box(0.12, W, 0.15, s * (W / 2 - 0.1), 0, z, M.accent, 0.01)
+    for s in (-1, 1): box(0.03, W - 0.4, H - 0.6, s * (W / 2 - 0.1), 0, 0.3, M.glass, 0.0)
+    box(W - 0.4, 0.03, H - 0.6, 0, W / 2 - 0.1, 0.3, M.glass, 0.0)
+    for z in (0.0, 6.0): box(1.8, 0.08, 2.4, 0, -W / 2 + 0.05, z + 0.1, M.steel, 0.01); box(1.9, 0.1, 0.12, 0, -W / 2 + 0.03, z + 2.55, M.amber_l, 0.0)
+    box(W - 0.5, W - 0.5, 0.2, 0, 0, 0.0, M.dark, 0.02); box(W - 0.6, 0.06, 2.2, 0, W / 2 - 0.4, 0.2, M.white, 0.01)
+    box(W + 0.2, W + 0.2, 1.0, 0, 0, H - 0.5, M.white, 0.03)
+    export("lift_shaft")
+
+for f in (lift_shaft, smt_module, eps_machine, table, bin_cart, bollard, injection_machine, aux_unit, equipment, rack, pallet, crane_bridge, trolley, agv, pc_station, rfid_gate, scanner, operator, column):
     f()
 print("DONE", OUT)

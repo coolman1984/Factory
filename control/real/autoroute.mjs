@@ -51,11 +51,11 @@ export function astar(G, a, b) {
 export function autoRoutePath(path, entities, cadlayers) {
   const routes = (path.routes || []).map(r => (r || []).map(p => [...p])), changed = [];
   for (let i = 1; i < routes.length; i++) {
-    const r = routes[i]; if (!r || r.length < 2) continue;
+    const r = routes[i]; if (!r || r.length < 2 || path.steps?.[i]?.lift || r.some(p => (p[2] || 0) > 0.5)) continue;   // the CAD covers the 1st floor only
     const c = clearance({ ...path, routes: [r] }, entities, cadlayers); if (!c.objects.length && !c.walls.length) continue;
     const xs = r.map(p => p[0]), ys = r.map(p => p[1]), box = [Math.min(...xs) - 40, Math.min(...ys) - 40, Math.max(...xs) + 40, Math.max(...ys) + 40];
     const nr = astar(grid(entities, cadlayers, box), r[0], r.at(-1));
-    if (nr) { routes[i] = nr; changed.push({ step: i, before_m: +len(r).toFixed(1), after_m: +len(nr).toFixed(1), cleared: c.objects.map(o => o.id).concat(c.walls.map(w => "wall@" + w.at.join(","))) }); }
+    if (nr) { routes[i] = nr.map(p => [p[0], p[1], 0]); changed.push({ step: i, before_m: +len(r).toFixed(1), after_m: +len(nr).toFixed(1), cleared: c.objects.map(o => o.id).concat(c.walls.map(w => "wall@" + w.at.join(","))) }); }
     else changed.push({ step: i, failed: true });
   }
   return { routes, changed };

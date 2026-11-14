@@ -4,7 +4,7 @@
 // Usage: node control/real/import-site.mjs [--config control/data/real-site.config.json] [--db control/data/real-factory.db]
 // Every value is in true metres (site frame = CAD world metres minus config.origin). The import is one recorded command, so
 // it shows in the change log and can be undone; running it again replaces the data (also recorded).
-import { readFileSync, mkdirSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Cad, segments, cluster } from "./cad.mjs";
@@ -89,32 +89,50 @@ log("pallets", n);
 L("LOAD_MARKINGS", "Load and lane markings", "marking", 0, 0.1, "#f4c20d", ["_load marking", "_lines"], segsOf(["_load marking", "_lines"], box, 0.3)); log("load markings", cadlayers.at(-1).count);
 L("ROAD_MARKINGS", "Road and kerb lines", "marking", 0, 0.12, "#e8e8e8", ["_road", "road stone"], segsOf(["_road", "road stone"], [box[0] - 30, box[1] - 30, box[2] + 30, box[3] + 30], 0.5)); log("road markings", cadlayers.at(-1).count);
 cad.close();
-/* ---------- stops, devices and paths from the player's INJ 1 scene, moved onto CAD coordinates ---------- */
-const sc = JSON.parse(readFileSync(C.scene, "utf8")), { dx, dy } = C.registration, P = ([x, y]) => S([x + dx, dy - y]);
-const WAIT = { result: 60, mapping: 45, scan: 15, area: 90, gate: 0, dest: 30 }, kitting = 120;
-const stops = sc.stops.map(s => ({ stop_id: s.id, name: s.name, symbol: ["result", "mapping", "area", "scan", "gate", "dest"].includes(s.symbol) ? s.symbol : "area", position_m: [...P([s.x, s.y]), 0], floor: s.floor || "1F", device_entity_id: null }));
+/* ---------- all V8 process tabs: stops, devices, paths (with elevator rides) and the 2nd floors, registered onto the CAD ---------- */
+// One transform for every V8 slide (fitted: 92.9-96.6% line overlap, 0.12 m/px): CAD = (x + dx, dy - y) in plan metres.
+// A 2nd-floor point sits on its plate beside the 1st floor; the elevator landings give the exact shift that puts it above.
+const proj = JSON.parse(readFileSync(C.projects, "utf8")), { dx, dy } = C.registration, Z2 = C.floor2_z ?? 6.0, plansDir = resolve(dirname(dbFile), "film/plans");
+mkdirSync(plansDir, { recursive: true });
+const WAIT = { result: 60, mapping: 45, scan: 15, area: 90, gate: 0, dest: 30, lift: 10 }, kitting = 120;
 const devPrefab = { pc: ["PC_STATION", "station"], "rfid-gate": ["RFID_GATE", "station"], scanner: ["SCANNER", "station"] };
-for (const d of sc.devices || []) { const [pf, cat] = devPrefab[d.type] || ["PC_STATION", "station"]; const id = "DEV-" + d.id.toUpperCase().replace(/[^A-Z0-9]+/g, "-");
-  const at = d.stand || d.at || [d.x, d.y], yaw = d.type === "rfid-gate" ? (d.lane === "east-west" ? 90 : 0) : -(d.heading || 0);   // plan y-down -> CAD y-up mirrors angles
-  E(id, d.label || d.id, cat, pf, P(at), prefabs.find(p => p.prefab_id === pf).dimensions_m, yaw, { source: "player INJ 1 scene device (registered to CAD)" });
-  if (d.serves || d.stop) { const st = stops.find(s => s.stop_id === (d.serves || d.stop)); if (st && !st.device_entity_id) st.device_entity_id = id; } }
-const first = stops.find(s => s.stop_id === sc.paths[0].steps[0].stop).position_m;
-E("TROLLEY-01", "INJ 1 parts trolley", "transporter", "TROLLEY", first, [1.2, 0.8, 1.5], 0, { caps: ["manual_push"], source: "path 1 trolley" });
-E("OPERATOR-01", "Material handler", "worker", "OPERATOR", [first[0] - 1, first[1]], [0.6, 0.4, 1.75], 0, { source: "path 1 operator" });
-E("AGV-01", "Kitting AGV", "transporter", "AGV", stops.find(s => s.stop_id === "to-mapping-gi")?.position_m || first, [1.4, 0.9, 0.35], 0, { caps: ["agv"], source: "path 1 AGV" });
-const paths = sc.paths.map((p, k) => ({ path_id: p.id, name: p.name, color: p.color || (k ? "#22d3ee" : "#f59e0b"), trolley_entity_id: "TROLLEY-01", push_speed_mps: 1.0, agv_speed_mps: 1.2,
-  steps: p.steps.map((s, i) => { const st = stops.find(x => x.stop_id === s.stop); return { stop: s.stop, mode: s.mode === "agv" ? "agv" : "push", wait_s: i === 0 ? 60 : s.stop === "kitting" ? kitting : WAIT[st?.symbol] ?? 30, title: s.title || st?.name || s.stop }; }),
-  routes: p.steps.map(s => s.route && s.route.type === "points" ? s.route.points.map(P) : []), captions: p.steps.map(s => s.text || ""),
-  notes: ["Route and stops from the player's INJ 1 scene, registered onto the CAD (96.6% line overlap).", "Wait times are assumed planning values (s), not measured; edit them here."] }));
-for (const p of paths) {   // the drawn route vs the true CAD layout: record every clash in the path itself
-  const c = clearance(p, entities, cadlayers);
-  p.clearance = { checked: new Date().toISOString().slice(0, 10), objects_on_route: c.objects, walls_crossed: c.walls };
-  p.notes.push(`Clearance vs CAD: ${c.objects.length} object(s) on the route, ${c.walls.length} wall crossing(s) (route from the current plan, objects from the Y26 CAD).`);
-  log(`clearance ${p.path_id}: ${c.objects.length} objects on route (${[...new Set(c.objects.map(o => o.id.replace(/-\d+$/, "")))].join(", ")}), ${c.walls.length} wall crossings`); }
-log("stops", stops.length, "paths", paths.length);
-
+const stops = [], paths = [], lifts = new Map(), PATH_COLORS = ["#f59e0b", "#22d3ee", "#a78bfa", "#34d399", "#f472b6", "#60a5fa", "#fb923c", "#facc15", "#4ade80", "#e879f9"];
+prefabs.push(PF("LIFT", "station", [3, 3, Z2 + 3.5], ["lift"], "lift_shaft"));
+for (const tab of C.tabs) {
+  const D = proj[tab].data, sc = JSON.parse(readFileSync(resolve(C.scenes_dir, tab + ".scene.json"), "utf8"));
+  const box2 = D.plates["2F"]?.box?.map(v => v * 0.3), el = (D.elevators || [])[0], off2 = el ? [(el.high[0] - el.low[0]) * 0.3, (el.high[1] - el.low[1]) * 0.3] : [0, 0];
+  const on2F = ([x, y]) => !!box2 && x >= box2[0] - 1 && x <= box2[2] + 1 && y >= box2[1] - 1 && y <= box2[3] + 1;
+  const P3 = (p, floor) => { const f2 = floor ? floor === "2F" : on2F(p), x = p[0] - (f2 ? off2[0] : 0), y = p[1] - (f2 ? off2[1] : 0); return [...S([x + dx, dy - y]), f2 ? Z2 : 0]; };
+  const sid = id => `${tab}.${id}`, tag = tab.toUpperCase();
+  for (const s of sc.stops) stops.push({ stop_id: sid(s.id), name: s.name, symbol: ["result", "mapping", "area", "scan", "gate", "dest"].includes(s.symbol) ? s.symbol : (s.symbol === "lift" ? "gate" : "area"), position_m: P3([s.x, s.y], s.floor), floor: s.floor || "1F", device_entity_id: null });
+  for (const d of sc.devices || []) { const [pf, cat] = devPrefab[d.type] || ["PC_STATION", "station"], id = `DEV-${tag}-` + d.id.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), at = d.stand || d.at || [d.x, d.y], p = P3(at, d.floor);
+    E(id, d.label || d.id, cat, pf, [p[0], p[1]], prefabs.find(q => q.prefab_id === pf).dimensions_m, d.type === "rfid-gate" ? (d.lane === "east-west" ? 90 : 0) : -(d.heading || 0), { z: p[2], source: `player ${tab} scene device (registered to CAD)` });
+    const st = stops.find(s => s.stop_id === sid(d.serves || d.stop || "")); if (st && !st.device_entity_id) st.device_entity_id = id; }
+  for (const e2 of D.elevators || []) { const p = P3([e2.low[0] * 0.3, e2.low[1] * 0.3], "1F"), key = `${Math.round(p[0])},${Math.round(p[1])}`; if (!lifts.has(key)) { lifts.set(key, e2.label); E("LIFT-" + e2.label.toUpperCase().replace(/[^A-Z0-9]+/g, "-"), e2.label, "station", "LIFT", [p[0], p[1]], [3, 3, Z2 + 3.5], 0, { source: `V8 ${tab} elevator (landings registered)` }); } }
+  for (const p of sc.paths) paths.push({ path_id: p.id, name: p.name, tab, color: p.color || PATH_COLORS[paths.length % PATH_COLORS.length], trolley_entity_id: "TROLLEY-01", push_speed_mps: 1.0, agv_speed_mps: 1.2, lift_s: 60,
+    steps: p.steps.map((s, i) => { const st = sc.stops.find(x => x.id === s.stop), lift = s.route?.type === "elevator" ? (s.route.elevator || "lift") : undefined;
+      return { stop: sid(s.stop), mode: s.mode === "agv" ? "agv" : "push", wait_s: i === 0 ? 60 : lift ? 10 : /kitting/.test(s.stop) ? kitting : WAIT[st?.symbol] ?? 30, title: s.title || st?.name || s.stop, ...(lift ? { lift } : {}) }; }),
+    routes: p.steps.map((s, i) => s.route && s.route.type === "points" ? s.route.points.map(q => P3(q, sc.stops.find(x => x.id === s.stop)?.floor === "2F" && sc.stops.find(x => x.id === p.steps[Math.max(0, i - 1)].stop)?.floor === "2F" ? "2F" : undefined)) : []),
+    captions: p.steps.map(s => s.text || ""), notes: [`Route and stops from the player's ${tab.toUpperCase()} scene, registered onto the CAD (one transform for all V8 slides; 92.9-96.6% line overlap).`, `2nd floor placed above the 1st through the elevator landings at an assumed height of ${Z2} m.`, "Wait times and the elevator ride are assumed planning values (s); edit them here."] });
+  if (box2) {   // the 2nd floor: plan picture(s) as the slab, V8's traced walls (the CAD has no 2nd-floor drawing)
+    const rect = b => { const a = P3([b[0], b[1]], "2F"), c = P3([b[2], b[3]], "2F"); return [r2(Math.min(a[0], c[0])), r2(Math.min(a[1], c[1])), r2(Math.max(a[0], c[0])), r2(Math.max(a[1], c[1]))]; };
+    const slabs = [{ rect: rect(box2), image: null }];
+    for (const pic of D.plates["2F"].pics) { const url = proj[tab].plans[pic.file]; if (!url) continue; const file = `${tab}-${pic.file}.png`;
+      writeFileSync(resolve(plansDir, file), Buffer.from(url.slice(url.indexOf(",") + 1), "base64")); slabs.push({ rect: rect([pic.x * 0.3, pic.y * 0.3, (pic.x + pic.w) * 0.3, (pic.y + pic.h) * 0.3]), image: "plans/" + file }); }
+    cadlayers.push({ layer_id: `FLOOR2_${tag}`, label: `${tag} 2nd floor (V8 plan, placed by elevators)`, kind: "slab", z_m: Z2, floor: "2F", height_m: 0.25, thickness_m: 0.25, color: "#d9dde3", source_layers: ["V8 plan"], count: slabs.length, segments: slabs });
+    const w2 = (proj[tab].replica?.walls || []).filter(w => w.plate === "2F").map(w => { const a = P3([w.a[0] * 0.3, w.a[1] * 0.3], "2F"), b = P3([w.b[0] * 0.3, w.b[1] * 0.3], "2F"); return [r2(a[0]), r2(a[1]), r2(b[0]), r2(b[1])]; });
+    cadlayers.push({ layer_id: `WALLS2_${tag}`, label: `${tag} 2nd-floor walls (V8 trace)`, kind: "wall", z_m: Z2, floor: "2F", height_m: 3.0, thickness_m: 0.2, color: "#e4e1da", source_layers: ["V8 replica"], count: w2.length, segments: w2 });
+    log(`${tab}: 2nd floor offset ${off2.map(v => v.toFixed(2)).join(", ")} m, ${slabs.length - 1} plan picture(s), ${w2.length} walls`);
+  }
+}
+const first = stops.find(s => s.stop_id === paths[0].steps[0].stop).position_m;
+E("TROLLEY-01", "Parts trolley", "transporter", "TROLLEY", first, [1.2, 0.8, 1.5], 0, { caps: ["manual_push"], source: "path trolley" });
+E("OPERATOR-01", "Material handler", "worker", "OPERATOR", [first[0] - 1, first[1]], [0.6, 0.4, 1.75], 0, { source: "path operator" });
+E("AGV-01", "Kitting AGV", "transporter", "AGV", first, [1.4, 0.9, 0.35], 0, { caps: ["agv"], source: "path AGV" });
+for (const p of paths) { const c = clearance(p, entities, cadlayers); p.clearance = { checked: new Date().toISOString().slice(0, 10), objects_on_route: c.objects, walls_crossed: c.walls }; }
+log("tabs", C.tabs.join(", "), "stops", stops.length, "paths", paths.length, "elevators", lifts.size);
 /* ---------- navigation graph from the routes (for the engine and the map) ---------- */
-const nodes = new Map(), edges = new Map(), nodeAt = ([x, y]) => { const k = `${Math.round(x * 20)},${Math.round(y * 20)}`; if (!nodes.has(k)) nodes.set(k, { node_id: "N" + String(nodes.size + 1).padStart(3, "0"), position_m: [r2(x), r2(y), 0] }); return nodes.get(k).node_id; };
+const nodes = new Map(), edges = new Map(), nodeAt = ([x, y, z = 0]) => { const k = `${Math.round(x * 20)},${Math.round(y * 20)},${Math.round(z)}`; if (!nodes.has(k)) nodes.set(k, { node_id: "N" + String(nodes.size + 1).padStart(3, "0"), position_m: [r2(x), r2(y), r2(z)] }); return nodes.get(k).node_id; };
 for (const p of paths) for (const r of p.routes) for (let i = 1; i < r.length; i++) { const a = nodeAt(r[i - 1]), b = nodeAt(r[i]); if (a === b) continue; const k = [a, b].sort().join("-"); if (!edges.has(k)) edges.set(k, { edge_id: "E" + String(edges.size + 1).padStart(3, "0"), from_node: a, to_node: b, bidirectional: true, width_m: 2.5, speed_limit_mps: 1.2, allowed_modes: ["pedestrian", "manual_trolley"] }); }
 
 /* ---------- write everything as one checked, recorded command ---------- */
