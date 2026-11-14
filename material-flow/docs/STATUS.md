@@ -1,5 +1,9 @@
 # Current workstreams — 2026-11-13
 
+2026-11-14: **V9.0** (`dist/Material_Flow_Player_v9.0.html`) = the player on the real factory (true CAD) and the Factory Engine,
+built in the 3D Factory repository (`control/v9/build.mjs`, docs/19_REAL_FACTORY.md there). All tabs and paths; both floors via
+elevators (2F height assumed 6.0 m); engine re-timing in the page.
+
 2026-11-13 (gate): full V8 gate on V8.3 after the journal fix: 21 of 26 rows PASS (docs, validate, validator, identity, layout-adds, review, smoke, mouse, ui, gates, stage1, all 10 camera rows); the run was stopped by low memory before start, take, guard, motion, numbers. start passed separately on an idle machine (8/8 smooth); take, guard, motion, numbers passed in the first V8.3 run (before the journal fix, which changed only the Engine panel).
 
 2026-11-13 (latest): **V8.3** = engine 0.3 + Shift run with drawn empty returns, measured times and aisle/crossing traffic +
