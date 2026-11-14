@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { Cad, segments, cluster } from "./cad.mjs";
 import { Store } from "../store.js";
 import { runAndSave, clearance } from "./path.mjs";
+import { autoRoute } from "./autoroute.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url)), arg = (k, d) => { const i = process.argv.indexOf("--" + k); return i > 0 ? process.argv[i + 1] : d; };
 const C = JSON.parse(readFileSync(arg("config", resolve(here, "../data/real-site.config.json")), "utf8")), dbFile = arg("db", resolve(here, "../data/real-factory.db"));
@@ -129,5 +130,8 @@ if (!res.ok) throw new Error("import refused: " + res.reason);
 const meta = store.get("factory", C.factory.factory_id); store.command({ actor: "cad-import", type: "record.update", force: true, payload: { type: "factory", id: C.factory.factory_id, set: { "_meta.cad_origin_m": [ox, oy], "_meta.cad_source": C.cad_name, "_meta.registration": C.registration } } });
 log(`imported: revision ${store.revision}, ${entities.length} entities, ${cadlayers.reduce((a, l) => a + l.count, 0)} CAD shapes, ${stops.length} stops, ${paths.length} paths; problems ${store.problems().length}`);
 for (const p of store.problems().slice(0, 8)) console.log("  problem:", p.where, p.message);
-for (const p of paths) { const r = runAndSave(store, p.path_id, "cad-import"); log(`engine run ${r.id} ${p.path_id}: trip ${r.trip_s} s, ${r.distance_m} m (push ${r.push_m} m, AGV ${r.agv_m} m), ${r.steps} steps, invariants ${r.invariants ? "BROKEN" : "OK"}`); }
+for (const p of paths) {   // the drawn routes come from the current plan: reroute any step that clashes with the CAD, then time it
+  const r = process.argv.includes("--no-autoroute") ? { path: p.path_id, ...runAndSave(store, p.path_id, "cad-import") } : autoRoute(store, p.path_id, "cad-import");
+  const k = r.run ? r : runAndSave(store, p.path_id, "cad-import");
+  log(`path ${p.path_id}: ${r.changed?.filter(c => !c.failed).length || 0} step(s) auto-routed, clashes left ${r.clash_after ?? "-"}; engine ${k.run || k.id}: trip ${k.trip_s} s, ${k.distance_m} m`); }
 store.close();

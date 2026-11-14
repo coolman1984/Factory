@@ -18,6 +18,7 @@
   #cap-n { color: var(--acc); font-size: 11px; font-weight: 700; letter-spacing: .04em; } #cap-t { font-size: 22px; font-weight: 600; margin: 2px 0; } #cap-x { opacity: .88; }
   #bar { left: 14px; right: 14px; bottom: 14px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
   #scrub { flex: 1; accent-color: var(--acc); } #clock { white-space: nowrap; font-variant-numeric: tabular-nums; } #fps { opacity: .7; min-width: 52px; text-align: right; }
+  #mini { top: 112px; right: 14px; } #rec.on { background: #e5484d; border-color: #e5484d; color: #fff; }
   #steps { right: 14px; bottom: 74px; padding: 6px; display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow: auto; }
   #steps button { text-align: left; } #steps b { color: var(--acc); margin-right: 6px; } #steps button.on b { color: #1b1030; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #dfe7f1; color: #1d2a44; font-size: 16px; z-index: 5; }
@@ -29,15 +30,17 @@
 <div id="loading">Building the real factory from the database…</div>
 <div id="head" class="glass"><b id="title">Real factory</b><small id="sub"></small><div id="kpi"></div></div>
 <div id="tools" class="glass">
-  <button data-mode="follow" title="Follow the trolley (F)">Follow</button><button data-mode="free" title="Free orbit: drag rotate, right-drag pan, wheel zoom (O)">Free</button><button data-mode="plan" title="2D plan from above (P)">2D plan</button>
-  <button data-fly="E1">E1</button><button data-fly="E2">E2</button><button data-fly="EPS">EPS</button><button id="lab">Labels</button>
+  <button data-mode="guided" title="Guided: one calm angle per step, never hidden by walls (G)">Guided</button><button data-mode="follow" title="Follow the trolley (F)">Follow</button><button data-mode="chase" title="Chase, low behind the trolley (C)">Chase</button><button data-mode="overview" title="Whole factory (V)">Overview</button><button data-mode="free" title="Free orbit: drag rotate, right-drag pan, wheel zoom (O)">Free</button><button data-mode="plan" title="2D plan from above (P)">2D plan</button>
+  <button data-fly="E1">E1</button><button data-fly="E2">E2</button><button data-fly="EPS">EPS</button><button id="lab">Labels</button><button id="rec" title="Record the whole trip as a video take (R)">● Record</button>
   <button data-speed="1">1×</button><button data-speed="10" class="on">10×</button><button data-speed="30">30×</button><button data-speed="60">60×</button>
 </div>
 <div id="cap" class="glass"><div id="cap-n"></div><div id="cap-t"></div><div id="cap-x"></div></div>
 <div id="steps" class="glass"></div>
+<canvas id="mini" class="glass" width="300" height="220" title="2D plan from the CAD"></canvas>
 <div id="bar" class="glass"><button id="play">❚❚</button><input id="scrub" type="range" min="0" max="1" step="0.1" value="0"><span id="clock"></span><span id="fps"></span></div>
 <script src="/vendor/three.js"></script>
 <script src="/vendor/three-addons.js"></script>
+<script src="/vendor/look.js"></script>
 <script src="/viewer3d.js"></script>
 </body>
 </html>

@@ -2,7 +2,7 @@
 // Usage: node control/server.mjs [--port 8765] [--db file]   then open http://127.0.0.1:8765/
 // The agent can use the same API (POST /api/command) or the command line (control/fc.mjs) on the same database.
 import { createServer } from "node:http";
-import { readFileSync, mkdirSync, existsSync } from "node:fs";
+import { readFileSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openStore } from "./open.js";
@@ -10,6 +10,7 @@ import { TYPES, refsTo } from "./schema.js";
 import { worldTransform } from "../engine/src/blueprint.js";
 import { openLive, renderFilm, films, filmPath } from "./real/film.mjs";
 import { exportScene } from "./real/export-scene.mjs";
+import { autoRoute } from "./real/autoroute.mjs";
 
 const vendorThree = () => ["three.js", ...Array.from({ length: 10 }, (_, i) => `three-${String(i + 1).padStart(3, "0")}.js`)].map(f => readFileSync(join(vendorDir, f), "utf8")).join("");
 import { statSync, createReadStream } from "node:fs";
@@ -59,6 +60,7 @@ const routes = [
   ["GET", /^\/api\/changes$/, (m, q) => S.changes({ limit: +(q.get("limit") || 100), before: q.get("before") ? +q.get("before") : null })],
   ["POST", /^\/api\/query$/, (m, q, b) => S.query(b.sql)],
   ["GET", /^\/api\/films$/, () => films()],
+  ["POST", /^\/api\/autoroute$/, (m, q, b) => autoRoute(S, b.path)],
   ["GET", /^\/api\/scene3d$/, async (m, q) => { if (!S.all("path").length) return { error: "this database has no real-factory data (start with start-real-factory.cmd)" }; return (await exportScene({ db: S.file, path: q.get("path") || null, out: null })).pack; }],
   ["POST", /^\/api\/live3d$/, (m, q, b) => openLive({ path: b.path || null, db: S.file })],
   ["POST", /^\/api\/film$/, (m, q, b) => { if (S.filmJob) return { ok: false, reason: "a film is already rendering" }; S.filmJob = renderFilm({ path: b.path || null, db: S.file }).then(r => (S.filmJob = null, S.lastFilm = r)).catch(e => (S.filmJob = null, S.lastFilm = { ok: false, reason: e.message })); return { ok: true, started: true }; }],
@@ -72,13 +74,18 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
     if (req.method === "GET" && url.pathname === "/vendor/three.js") return send(res, 200, vendorThree(), "text/javascript; charset=utf-8", { "cache-control": "max-age=3600" });
+    if (req.method === "GET" && url.pathname === "/vendor/look.js") return send(res, 200, readFileSync(join(vendorDir, "../look.js")), "text/javascript; charset=utf-8");
+    if (req.method === "POST" && url.pathname === "/api/films/upload") {   // a take recorded in the browser
+      const name = (url.searchParams.get("name") || "take.webm").replace(/[^\w.\-]/g, ""); if (!/\.webm$/.test(name)) return send(res, 400, { ok: false, reason: "webm only" });
+      const fp = filmPath(name); mkdirSync(dirname(fp), { recursive: true }); const chunks = []; req.on("data", c => chunks.push(c)); req.on("end", () => { writeFileSync(fp, Buffer.concat(chunks)); send(res, 200, { ok: true, name }); }); return;
+    }
     if (req.method === "GET" && url.pathname === "/vendor/three-addons.js") return send(res, 200, readFileSync(join(vendorDir, "three-addons.js")), "text/javascript; charset=utf-8", { "cache-control": "max-age=3600" });
     if (req.method === "GET" && /^\/assets\/[\w-]+\.glb$/.test(url.pathname)) { const fp = join(assetDir, url.pathname.slice(8)); if (existsSync(fp)) return send(res, 200, readFileSync(fp), "model/gltf-binary", { "cache-control": "max-age=600" }); }
     if (req.method === "GET" && url.pathname.startsWith("/films/")) {   // MP4 with byte ranges, so the browser can seek
       const fp = filmPath(decodeURIComponent(url.pathname.slice(7))); let st; try { st = statSync(fp); } catch { return send(res, 404, { error: "not found" }); }
       const m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || "");
-      if (m) { const a = m[1] ? +m[1] : 0, z = m[2] ? +m[2] : st.size - 1; res.writeHead(206, { "content-type": "video/mp4", "content-range": `bytes ${a}-${z}/${st.size}`, "accept-ranges": "bytes", "content-length": z - a + 1 }); return createReadStream(fp, { start: a, end: z }).pipe(res); }
-      res.writeHead(200, { "content-type": "video/mp4", "content-length": st.size, "accept-ranges": "bytes" }); return createReadStream(fp).pipe(res);
+      if (m) { const a = m[1] ? +m[1] : 0, z = m[2] ? +m[2] : st.size - 1; res.writeHead(206, { "content-type": fp.endsWith(".webm") ? "video/webm" : "video/mp4", "content-range": `bytes ${a}-${z}/${st.size}`, "accept-ranges": "bytes", "content-length": z - a + 1 }); return createReadStream(fp, { start: a, end: z }).pipe(res); }
+      res.writeHead(200, { "content-type": fp.endsWith(".webm") ? "video/webm" : "video/mp4", "content-length": st.size, "accept-ranges": "bytes" }); return createReadStream(fp).pipe(res);
     }
     if (req.method === "GET" && url.pathname === "/api/export") return send(res, 200, JSON.stringify(S.exportAll(), null, 2), "application/json", { "content-disposition": `attachment; filename="factory-r${S.revision}.json"` });
     for (const [method, re, fn] of routes) { const m = re.exec(url.pathname); if (m && req.method === method) { const b = method === "POST" ? await body(req) : {}; const out = await fn(m, url.searchParams, b); return send(res, out && out.status === 404 ? 404 : 200, out); } }

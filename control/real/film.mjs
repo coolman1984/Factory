@@ -33,7 +33,7 @@ export async function renderFilm({ path = null, db, name = null } = {}) {
   return { ok: true, file: mp4, name: base + ".mp4", seconds: Math.round((Date.now() - t0) / 1000), run: ex.run };
 }
 
-export function films() { return existsSync(filmDir) ? readdirSync(filmDir).filter(f => f.endsWith(".mp4")).map(f => ({ name: f, mb: +(statSync(join(filmDir, f)).size / 1048576).toFixed(1), at: statSync(join(filmDir, f)).mtime.toISOString() })).sort((a, b) => b.at.localeCompare(a.at)) : []; }
+export function films() { return existsSync(filmDir) ? readdirSync(filmDir).filter(f => /\.(mp4|webm)$/.test(f)).map(f => ({ name: f, mb: +(statSync(join(filmDir, f)).size / 1048576).toFixed(1), at: statSync(join(filmDir, f)).mtime.toISOString() })).sort((a, b) => b.at.localeCompare(a.at)) : []; }
 export const filmPath = name => join(filmDir, name.replace(/[^\w.\-]/g, ""));
 
 if (process.argv[1]?.endsWith("film.mjs")) {

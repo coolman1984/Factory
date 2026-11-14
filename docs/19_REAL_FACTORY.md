@@ -15,7 +15,11 @@ database and the films stay in untracked folders (`Material-Flow/dist`, `control
 | Render a film | Control Center → **3D & film** → *Render film*, or `node control/real/film.mjs film --path inj1-wh` (MP4 in `control/data/film/`) |
 | Re-import after a CAD or setting change | `node control/real/import-site.mjs` (one recorded command; undoable; engine runs every path afterwards) |
 
-Browser keys: Space play/pause, F follow, O free, P 2D plan, 1/2/3 fly to E1/E2/EPS; drag rotate, right-drag pan, wheel zoom.
+Browser keys: Space play/pause, G guided, F follow, C chase, V overview, O free, P 2D plan, R record a take, 1/2/3 fly to
+E1/E2/EPS; drag rotate, right-drag pan, wheel zoom. The browser viewer reuses the Material-Flow V8 player's methods: its three.js
+build, its look library (`MFLook`: studio reflections, concrete floor with joints, wall and paint finishes), neutral tone mapping,
+pixel ratio 1, and a guided camera that keeps one calm angle per step and checks the true CAD walls so the trolley is never
+hidden. Takes (browser video, WebM) are saved to the Control Center and play on the **3D & film** page.
 Godot window keys: Space pause, Left/Right shot, F free camera (W A S D Q E, right mouse to look, Shift fast), 1/2/3 fly to E1/E2/EPS,
 L labels, H HUD, Esc quit.
 
@@ -59,12 +63,15 @@ CAD x = x + 566.16, CAD y = 587.88 − y. Stops, devices and both INJ 1 routes a
 
 Each path step is an engine transport leg: travel = true route length ÷ push speed (1.0 m/s) or AGV speed (1.2 m/s), plus the
 step's wait. Waits are planning assumptions (item slip 60 s, final scan 60 s, manual scan 15 s, W/H 90 s, TO mapping 45 s,
-kitting 120 s, main line 30 s), editable in the path record. Path 1: **621 s, 212.9 m (142.1 m pushed, 70.8 m AGV)**,
-invariants OK.
+kitting 120 s, main line 30 s), editable in the path record. Path 1 as drawn: 621 s, 212.9 m; after auto-route 611.5 s, 203.3 m (132.5 m pushed, 70.8 m AGV), invariants OK.
 
 Clearance check: the route (from the current plan) is tested against every CAD object (footprint + 0.6 m half trolley width)
-and every wall. Path 1 crosses **2 racks** of the Y26 CAD; path 2 crosses 1 rack and 1 wall. They are recorded in the path
-(`clearance`), drawn as red "route clash" ghosts in 3D, and need the owner's decision (the Y26 layout or the route changes).
+and every wall. As drawn in the plan, path 1 crossed **2 racks** of the Y26 CAD and path 2 crossed 1 rack and 1 wall.
+
+**Auto-route** (`control/real/autoroute.mjs`, run by every import, also `POST /api/autoroute`): each clashing step is replaced
+by the shortest clear route between the same points (A* on a 0.25 m grid, walls + 0.5 m and objects + 0.7 m, simplified to
+straight runs), saved as one recorded, undoable command, then the engine re-times the path. Result: **0 clashes**; path 1
+**611.5 s, 203.3 m**, path 2 690.3 s, 297.1 m. The changed steps and the cleared obstacles are kept in the path's `clearance`.
 
 ## 6. Look, performance, film
 
