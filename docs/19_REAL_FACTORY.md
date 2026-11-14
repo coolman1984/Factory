@@ -116,6 +116,33 @@ V9 is the complete player on the new engine, built from everything the V8 player
 - Checked here: all 10 paths load; offline file 60 fps, live 36–60 fps in headless Chrome on this laptop; engine re-timing and
   save; no page errors.
 
+### 8.2 V9.1 Studio (2026-11-14): editor, director, numbers, light autosave
+
+Open with **✎ Studio** or **E**. Code: `control/ui/v9-studio.js` (the player `v9.js` gives it hooks and an object index).
+Offline file: `node control/v9/build.mjs --version 9.1` → `Material_Flow_Player_v9.1.html`.
+
+| Area | What it does |
+|---|---|
+| Player | V8 trolley model (Blender, 1.4× real size), no people; floor arrows every 4 m on the route; V7 step chips (number + title; done / now / next) at every stop; timeline lanes (move, wait, AGV, lift, captions, camera keys; click to seek); Director camera mode (D); captions on screen. |
+| Objects | Click any object in 3D or the 2D plan; drag to move (snap 0.1 / 0.5 / 1 m, Alt = no snap); Q / E turn 15° (Shift 90°); exact X, Y, turn, size; duplicate (X), delete, focus (F); find by name; place a new object of any type. |
+| Stops | Drag a stop; the routes that end there follow; + Stop (N) makes a new one. |
+| Routes | Drag route points; double-click a leg adds a point; right-click removes one; Straighten (S, Shift = whole path); Auto-route (R, live Control Center). |
+| Draw (2D) | Draw route (B): the camera turns to the 2D plan; redraw a step, or draw a whole new path: click the start stop, corners (Ortho keeps them square), the next stops (Shift+click on empty floor = new stop); Enter finishes. |
+| Steps | Title, text, stop, push / AGV, wait, insert, delete; path name, colour, speeds, lift time. Every change re-times the trip with the Factory Engine in the page. |
+| Director | Camera keys (K; Shift+K rides with the trolley; eases smooth / linear / in / out / cut), record a camera move (J), captions (C), six shots (1–6, Shift = save), play (Shift+P). Record (R) films the Director camera when keys exist. |
+| Numbers | Trip time, distance (push / AGV), lifts, trips per 8 h shift, change since the path was opened, per-step table, live clashes. |
+| Checks | Live clash check of the route (trolley half width 0.42 m) against CAD objects and walls, marked on the floor and counted in the toolbar. |
+
+**Saving (learned from Sticky Notes Pro):** the whole document lives in memory; an edit marks its records dirty and, 0.7 s after
+the last edit, one `batch` command stores them (stops, then objects, then paths) in the Control Center database in one
+transaction: recorded, undoable in the Control Center, revision +1. The engine run of the edited path is stored too. Undo /
+redo in the page: 200 steps (Ctrl+Z / Ctrl+Y). The offline file keeps the edits in this browser (localStorage), restores them
+on open, and **Export** downloads them as JSON. No new server process or library: the existing Node server and SQLite (WAL).
+
+Checked here (headless Chrome, a copy of the database): wait edit re-times and autosaves; object drag saved; new path drawn in
+the 2D plan and saved; Ctrl+Z removes it and the deletion is saved; camera keys and the Director camera; offline edit restored
+after reload; 39–47 fps; no page errors. Not checked: auto-route from the Studio, placing new objects, 2nd-floor editing.
+
 ### 8.1 V7 director camera (2026-11-14)
 
 The owner judged the Material-Flow camera best up to V7 (V7.0–V7.7.1). V9 now uses that camera, converted from V7 units

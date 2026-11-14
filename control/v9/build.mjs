@@ -21,7 +21,7 @@ const safe = s => s.replace(/<\/script/gi, "<\\/script");
 const scripts = [three, readFileSync(join(vendor, "three-addons.js"), "utf8"), readFileSync(join(vendor, "../look.js"), "utf8"), readFileSync(join(vendor, "../engine/factory-engine.js"), "utf8"),
   `window.FCTiming = (() => { ${timing}\nreturn { pathModel, timePath }; })();`,
   `window.V9_PACK = ${JSON.stringify(pack)};\nwindow.V9_ASSETS = ${JSON.stringify(assets)};\nwindow.V9_PLANS = ${JSON.stringify(plans)};\nwindow.V9_BUILD = ${JSON.stringify({ version, built: new Date().toISOString(), revision: pack.revision })};`,
-  readFileSync(join(root, "control/ui/v9.js"), "utf8")].map(s => `<script>${safe(s)}</script>`).join("\n");
+  readFileSync(join(root, "control/ui/v9.js"), "utf8"), readFileSync(join(root, "control/ui/v9-studio.js"), "utf8")].map(s => `<script>${safe(s)}</script>`).join("\n");
 const page = readFileSync(join(root, "control/ui/v9.html"), "utf8").replace(/<!--V9-SCRIPTS-->[\s\S]*<!--\/V9-SCRIPTS-->/, () => scripts).replace("<title>Material Flow Player V9</title>", `<title>Material Flow Player V${version}</title>`);
 mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, page);
 console.log(`${out}: ${(page.length / 1048576).toFixed(1)} MB; sha256 ${createHash("sha256").update(page).digest("hex")}; ${pack.paths.length} paths, ${pack.objects.length} objects, revision ${pack.revision}`);

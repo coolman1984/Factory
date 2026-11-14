@@ -8,7 +8,7 @@ const P = (x, y, z = 0) => new T.Vector3(x, z, -y);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mmss = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 const TABS = [["inj1", "INJ 1"], ["inj2", "INJ 2"], ["eps", "EPS"], ["press", "Press"]];
-const V = { e: 0, playing: true, speed: 10, mode: "guided", labels: true, models: {}, fps: 0, floor2: "auto", dirty: false };
+const V = { e: 0, playing: true, speed: 10, mode: "guided", labels: true, models: {}, fps: 0, floor2: "auto", dirty: false, pickables: [], objIndex: {}, hooks: { ready: [], frame: [], path: [], timeline: [] } };
 window.V9 = V;
 
 /* ---------- renderer (V8 settings) ---------- */
@@ -38,7 +38,21 @@ function fit(md, size, pos, yaw, fitH) {
   const sx = size[0] / s.x, sz = size[1] / s.z, sy = fitH ? size[2] / s.y : Math.min(1.3, Math.max(0.75, Math.sqrt(sx * sz)));
   return new T.Matrix4().makeTranslation(pos.x, pos.y, pos.z).multiply(new T.Matrix4().makeRotationY(yaw * Math.PI / 180)).multiply(new T.Matrix4().makeTranslation(-c.x * sx, -b.min.y * sy, -c.z * sz)).multiply(new T.Matrix4().makeScale(sx, sy, sz));
 }
-function instanced(md, mats, parent = scene) { for (const p of md.parts) { const im = new T.InstancedMesh(p.geo, p.mat, mats.length); mats.forEach((M, i) => im.setMatrixAt(i, M.clone().multiply(p.m))); im.castShadow = true; im.receiveShadow = true; im.instanceMatrix.needsUpdate = true; parent.add(im); } }
+function instanced(md, mats, parent = scene, ids = null) { const ims = [];
+  for (const p of md.parts) { const im = new T.InstancedMesh(p.geo, p.mat, mats.length); mats.forEach((M, i) => im.setMatrixAt(i, M.clone().multiply(p.m))); im.castShadow = true; im.receiveShadow = true; im.instanceMatrix.needsUpdate = true; parent.add(im); ims.push(im);
+    if (ids) { im.userData.ids = ids; im.userData.pm = p.m; V.pickables.push(im); } }
+  // object index: id -> its instances, so the Studio can move, turn or hide one object live
+  if (ids) ids.forEach((id, i) => { V.objIndex[id] = { md, i, ims }; });
+  return ims; }
+const FITH = new Set(["RACK", "PALLET", "CRANE_BRIDGE", "BOLLARD", "TABLE", "BIN_CART", "SMT_MODULE", "EPS_MACHINE", "LIFT"]);
+function placeObject(o) {   // write one object's current pos / yaw / size into its instances (or hide it when deleted)
+  const ix = V.objIndex[o.id]; if (!ix) return false; const md = ix.md, M = o.deleted ? new T.Matrix4().makeScale(0, 0, 0) : fit(md, o.size, P(o.pos[0], o.pos[1], o.pos[2] || 0), o.yaw, FITH.has(o.prefab));
+  if (ix.mesh) { ix.mesh.matrix.copy(M); ix.mesh.matrixAutoUpdate = false; ix.mesh.visible = !o.deleted; return true; }
+  for (const im of ix.ims) { im.setMatrixAt(ix.i, M.clone().multiply(im.userData.pm)); im.instanceMatrix.needsUpdate = true; im.boundingSphere = null; im.boundingBox = null; } return true; }
+async function addObjectMesh(o) {   // a new object placed in the Studio: its own small mesh group (no re-instancing)
+  const md = await model(o.asset.split("/").pop().replace(".glb", "")); if (!md) return false; const g = new T.Group();
+  for (const p of md.parts) { const m = new T.Mesh(p.geo, p.mat); m.matrixAutoUpdate = false; m.matrix.copy(p.m); m.castShadow = m.receiveShadow = true; m.userData.objId = o.id; g.add(m); V.pickables.push(m); }
+  (o.pos[2] > 0.5 ? F2 : scene).add(g); V.objIndex[o.id] = { md, mesh: g }; placeObject(o); return true; }
 function label(text, pos, h, color, group, parent = scene) {
   const c = document.createElement("canvas"), x = c.getContext("2d"), f = 64; x.font = `600 ${f}px Segoe UI, Arial`; const w = Math.ceil(x.measureText(text).width) + 40;
   c.width = w; c.height = f + 30; x.font = `600 ${f}px Segoe UI, Arial`; x.lineWidth = 12; x.strokeStyle = "rgba(10,16,28,.85)"; x.strokeText(text, 20, f); x.fillStyle = color; x.fillText(text, 20, f);
@@ -69,41 +83,49 @@ async function buildFactory(pack) {
     l.segments.forEach((s, i) => { const a = P(s[0], s[1]), b2 = P(s[2], s[3]), d = b2.clone().sub(a), L = Math.max(d.length(), 0.01); M.makeRotationY(-Math.atan2(d.z, d.x)); M.scale(new T.Vector3(L + w[1] * 0.5, hgt, w[1])); M.setPosition(a.clone().add(b2).multiplyScalar(0.5).setY(y0 + hgt / 2)); im.setMatrixAt(i, M); });
     im.castShadow = l.kind !== "partition"; im.receiveShadow = true; parent.add(im);
   }
-  const groups = {}, fitH = new Set(["RACK", "PALLET", "CRANE_BRIDGE", "BOLLARD", "TABLE", "BIN_CART", "SMT_MODULE", "EPS_MACHINE", "LIFT"]);
+  const groups = {};
   for (const o of pack.objects) { if (["TROLLEY", "AGV", "OPERATOR"].includes(o.prefab)) continue; const a = o.asset.split("/").pop().replace(".glb", ""); (groups[a] ||= []).push(o); }
   await Promise.all(Object.keys(groups).map(model));
-  for (const [a, list] of Object.entries(groups)) { const md = await model(a); if (!md) continue; const lo = [], hi = [];
-    for (const o of list) (o.pos[2] > 0.5 && o.prefab !== "CRANE_BRIDGE" ? hi : lo).push(fit(md, o.size, P(o.pos[0], o.pos[1], o.pos[2]), o.yaw, fitH.has(o.prefab)));
-    if (lo.length) instanced(md, lo); if (hi.length) instanced(md, hi, F2); }
+  for (const [a, list] of Object.entries(groups)) { const md = await model(a); if (!md) continue; const lo = [], hi = [], loId = [], hiId = [];
+    for (const o of list) { const up = o.pos[2] > 0.5 && o.prefab !== "CRANE_BRIDGE"; (up ? hi : lo).push(fit(md, o.size, P(o.pos[0], o.pos[1], o.pos[2]), o.yaw, FITH.has(o.prefab))); (up ? hiId : loId).push(o.id); }
+    if (lo.length) instanced(md, lo, scene, loId); if (hi.length) instanced(md, hi, F2, hiId); }
   F2.traverse(o => { if (o.material && !o.isSprite) { o.material = [].concat(o.material).map(m => { const c = m.clone(); c.transparent = true; c.userData.base = c.opacity; return c; }); if (o.material.length === 1) o.material = o.material[0]; } });
-  const [tr, op, agv] = await Promise.all(["trolley", "operator", "agv"].map(model));
-  V.trolley = actor(tr, [1.2, 0.8, 1.15]); V.operator = actor(op, [0.65, 0.56, 1.75]); V.agv = actor(agv, [1.4, 0.9, 0.42]);
-  const halo = new T.Mesh(new T.RingGeometry(1.25, 1.5, 48), new T.MeshBasicMaterial({ color: 0xc89bff, transparent: true, opacity: 0.85, depthWrite: false })); halo.rotation.x = -Math.PI / 2; halo.position.y = 0.05; V.trolley.add(halo);
+  // the hero: V8's Blender trolley (rear covers, 1.4x real size so it stays readable), no people; the AGV for AGV legs
+  const [tr, agv] = await Promise.all([model("trolley_v8").then(m => m || model("trolley")), model("agv")]);
+  V.trolley = actorNative(tr, Math.PI / 2); V.agv = actor(agv, [1.4, 0.9, 0.42]);
+  const halo = new T.Mesh(new T.RingGeometry(1.55, 1.85, 48), new T.MeshBasicMaterial({ color: 0xc89bff, transparent: true, opacity: 0.85, depthWrite: false })); halo.rotation.x = -Math.PI / 2; halo.position.y = 0.05; V.trolley.add(halo);
+  { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), r = g.createRadialGradient(64, 64, 8, 64, 64, 62); r.addColorStop(0, "rgba(10,14,24,.55)"); r.addColorStop(.6, "rgba(10,14,24,.25)"); r.addColorStop(1, "rgba(10,14,24,0)"); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+    const blob = new T.Mesh(new T.PlaneGeometry(2.6, 3.4).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false })); blob.position.y = 0.03; V.trolley.add(blob); }
 }
 function actor(md, size) { const g = new T.Group(); if (md) { const m = md.scene.clone(true); m.applyMatrix4(fit(md, size, new T.Vector3(), 0, true)); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.add(m); } scene.add(g); return g; }
+function actorNative(md, turn = 0) {   // keep the model's own size (V8 trolley), centred on its footprint, standing on the floor
+  const g = new T.Group(); if (md) { const m = md.scene.clone(true), b = md.box, c = new T.Vector3(); b.getCenter(c); m.position.set(-c.x, -b.min.y, -c.z); const pivot = new T.Group(); pivot.rotation.y = turn; pivot.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.add(pivot); } scene.add(g); return g; }
 
 /* ---------- the selected path ---------- */
 const stopsById = () => Object.fromEntries(V.pack.stops.map(s => [s.id, { position_m: s.pos, name: s.name }]));
 function selectPath(id) {
-  const p = V.pack.paths.find(x => x.id === id) || V.pack.paths[0]; V.path = p; V.tab = p.tab; V.edit = JSON.parse(JSON.stringify(p.data)); V.dirty = false;
-  if (!p.timeline) retime(); else applyTimeline(p.timeline, p.kpis);
-  tabsUI(); editorUI(); V.e = 0; camReset(); if (V.mode === "guided") CAM.intro = 0; history.replaceState(null, "", `?path=${encodeURIComponent(p.id)}`);
+  const p = V.pack.paths.find(x => x.id === id) || V.pack.paths[0]; V.path = p; V.tab = p.tab;
+  V.edit = p.data; V.base = V.base && V.base.id === p.id ? V.base : { id: p.id, kpis: null };   // the path record IS the live document (Studio edits it, autosave stores it)
+  if (!p.timeline) retime(); else applyTimeline(p.timeline, p.kpis); if (!V.base.kpis) V.base.kpis = { ...V.kpis };
+  tabsUI(); V.e = 0; camReset(); if (V.mode === "guided") CAM.intro = 0; history.replaceState(null, "", `?path=${encodeURIComponent(p.id)}`);
+  for (const f of V.hooks.path) f(p);
 }
 function retime() {   // the Factory Engine, in this page
-  try { const r = TM.timePath(FE.World, V.edit, stopsById()); applyTimeline(r.timeline, r.kpis); $("#ed-msg").textContent = `Engine re-timed: ${mmss(r.kpis.trip_s)} · invariants ${r.kpis.invariants ? "BROKEN" : "OK"}`; }
-  catch (err) { $("#ed-msg").textContent = "Engine refused: " + err.message; }
+  try { const r = TM.timePath(FE.World, V.edit, stopsById()); V.path.timeline = r.timeline; V.path.kpis = r.kpis; applyTimeline(r.timeline, r.kpis); V.engineMsg = `Engine re-timed: ${mmss(r.kpis.trip_s)} · invariants ${r.kpis.invariants ? "BROKEN" : "OK"}`; V.engineErr = null; }
+  catch (err) { V.engineErr = "Engine refused: " + err.message; }
+  return !V.engineErr;
 }
 function applyTimeline(tl, k) {
   V.steps = tl.steps.map((s, i) => ({ ...s, title: V.edit.steps[i]?.title || s.title, caption: (V.edit.captions || [])[i] || "" })); V.total = tl.total_s; V.kpis = k || {};
   while (PATHG.children.length) PATHG.remove(PATHG.children[0]);
   buildRoute(); const seen = new Set(); V.steps.forEach((s, i) => { if (seen.has(s.stop)) return; seen.add(s.stop); const st = V.pack.stops.find(x => x.id === s.stop); if (st) stopMarker(st, i); });
   $("#scrub").max = V.total; $("#title").textContent = V.edit.name; stepsUI();
-  $("#kpi").textContent = `Engine: ${mmss(V.total)} trip · ${k?.distance_m ?? "-"} m (push ${k?.push_m ?? "-"} m, AGV ${k?.agv_m ?? "-"} m) · ${k?.lift_rides || 0} elevator ride(s) · ${(V.path.data.clearance?.objects_on_route || []).length} clash(es) with the CAD`;
-  V.miniBox = null; V.wg = null;
+  $("#kpi").textContent = `Engine: ${mmss(V.total)} trip · ${k?.distance_m ?? "-"} m (push ${k?.push_m ?? "-"} m, AGV ${k?.agv_m ?? "-"} m) · ${k?.lift_rides || 0} elevator ride(s)`;
+  V.miniBox = null; V.wg = null; if (V.e > V.total) V.e = V.total;
+  for (const f of V.hooks.timeline) f();
 }
-function stopMarker(s, i) {
+function stopMarker(s, i) {   // a ring on the floor; the numbered step chips are drawn by the overlay (Studio)
   const ring = new T.Mesh(new T.RingGeometry(0.75, 0.95, 40), new T.MeshBasicMaterial({ color: 0xffb02e, transparent: true, opacity: 0.95, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.copy(P(s.pos[0], s.pos[1], (s.pos[2] || 0) + 0.04)); PATHG.add(ring);
-  label(`${i + 1}  ${V.steps[i].title}`, P(s.pos[0], s.pos[1], (s.pos[2] || 0) + 3.2), 0.75, "#ffffff", "stop", PATHG);
 }
 function buildRoute() {
   const pts = [], cum = [], start = []; let acc = 0;
@@ -121,6 +143,12 @@ function buildRoute() {
     vertexShader: "attribute float dist; attribute float side; varying float vD; varying float vS; void main(){ vD = dist; vS = side; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
     fragmentShader: "uniform float progress; uniform float time; uniform vec3 col; varying float vD; varying float vS; void main(){ float across = abs(vS-0.5)*2.0; float edge = smoothstep(1.0,0.6,across); float done = step(vD, progress); float chev = step(0.6, fract(vD*0.7 - time*0.9 - across*0.25)); float head = exp(-abs(vD-progress)*0.9); float a = edge*(done*0.75 + (1.0-done)*(0.12+0.25*chev)) + head*edge*0.6; gl_FragColor = vec4(mix(col, vec3(1.0), head*0.45), clamp(a,0.0,1.0)); }" });
   PATHG.add(new T.Mesh(geo, V.routeMat));
+  // direction arrows painted on the floor every 4 m (V8 flow lines): which way the trolley goes, readable from any camera
+  const tri = new T.ShapeGeometry(new T.Shape([new T.Vector2(0.55, 0), new T.Vector2(-0.35, 0.42), new T.Vector2(-0.15, 0), new T.Vector2(-0.35, -0.42)])).rotateX(-Math.PI / 2), marks = [];
+  for (let k = 0; k < pts.length - 1; k++) { const a = pts[k], b = pts[k + 1], L = Math.hypot(b.x - a.x, b.y - a.y); if (L < 0.5 || Math.abs(a.z - b.z) > 0.5) continue; const yaw = Math.atan2(b.y - a.y, b.x - a.x);
+    for (let s = (4 - (cum[k] % 4)) % 4 + 1; s < L - 0.6; s += 4) marks.push([a.x + (b.x - a.x) * s / L, a.y + (b.y - a.y) * s / L, a.z, yaw]); }
+  if (marks.length) { const im = new T.InstancedMesh(tri, new T.MeshBasicMaterial({ color: new T.Color(V.edit.color || "#a78bfa").lerp(new T.Color(1, 1, 1), 0.35), transparent: true, opacity: 0.9, depthWrite: false }), marks.length), M = new T.Matrix4();
+    marks.forEach((m, i) => { M.makeRotationY(m[3]); M.setPosition(m[0], m[2] + 0.06, -m[1]); im.setMatrixAt(i, M); }); im.renderOrder = 2; PATHG.add(im); }
 }
 
 /* ---------- engine timeline -> pose ---------- */
@@ -155,7 +183,7 @@ function setMode(m) {
   if (CAM.init && ["free", "overview", "plan"].includes(m)) { const d = CAM.eye.clone().sub(CAM.tgt), r = Math.max(0.5, d.length()); orbit.tgt.copy(CAM.tgt); orbit.r = r; orbit.th = Math.atan2(d.x, d.z); orbit.ph = Math.acos(Math.min(1, Math.max(-1, d.y / r))); }
   if (m !== "guided") CAM.intro = -1; if (m !== V.mode) { CAM.ready = false; CAM.chosen = false; CAM.chaseAz = null; }
   V.mode = m; document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
-  if (m === "plan") { orbit.ph = 0.02; orbit.r = 70; }
+  if (m === "plan") { orbit.ph = 0.02; orbit.r = Math.max(70, Math.min(orbit.r, 160)); orbit.th = 0; }
   if (m === "overview") { orbit.tgt.copy(P(V.site.c[0], V.site.c[1])); orbit.r = Math.max(...V.site.s) * 1.25; orbit.ph = 0.82; orbit.th = -0.75; } if (m === "free") orbit.ph = Math.max(orbit.ph, 0.3); }
 function wallGrid(floorZ) { V.wg ||= {}; const up = floorZ > 0.5, key = up ? "2F" : "1F"; if (V.wg[key]) return V.wg[key]; const g = new Map(), H = { exterior_wall: 9, wall: 3.4, partition: 2.7 };
   const put = sg => { for (let x = Math.floor(Math.min(sg[0], sg[2]) / 5); x <= Math.floor(Math.max(sg[0], sg[2]) / 5); x++) for (let y = Math.floor(Math.min(sg[1], sg[3]) / 5); y <= Math.floor(Math.max(sg[1], sg[3]) / 5); y++) { const k = x + "," + y; (g.get(k) || g.set(k, []).get(k)).push(sg); } };
@@ -213,6 +241,12 @@ function springFF(x, v, goal, gv, w, dt) { const decay = Math.exp(-w * dt); for 
 const WANT = { t: new T.Vector3(), e: new T.Vector3() }, ZERO = new T.Vector3(), FUT = new T.Vector3();
 function camFrame(dt, ps, tp) { const t0 = performance.now(); camStep(dt, ps, tp); const ms = performance.now() - t0; CAM.stats.ms = CAM.stats.ms ? CAM.stats.ms * 0.95 + ms * 0.05 : ms; CAM.stats.maxMs = Math.max(CAM.stats.maxMs || 0, ms); }
 function camStep(dt, ps, tp) {
+  if (V.mode === "director" && V.directorPose) {   // V7 director: the camera is a pure function of engine time (same at every speed and seek)
+    const p = V.directorPose(V.e);
+    if (p) { CAM.tgt.set(p.x, p.y, p.z); eyeAt(CAM.tgt, p.dist, p.az, p.pol, CAM.eye); CAM.ev.set(0, 0, 0); CAM.tv.set(0, 0, 0); CAM.init = true; CAM.last = null;
+      if (Math.abs(camera.fov - p.fov) > 1e-3) { camera.fov = p.fov; camera.updateProjectionMatrix(); } camera.position.copy(CAM.eye); camera.up.set(0, 1, 0); camera.lookAt(CAM.tgt); return; }
+  }
+  if (V.mode !== "director" && Math.abs(camera.fov - (V.fov || 40)) > 1e-3) { camera.fov += ((V.fov || 40) - camera.fov) * Math.min(1, dt * 6); if (Math.abs(camera.fov - (V.fov || 40)) < 0.01) camera.fov = V.fov || 40; camera.updateProjectionMatrix(); }
   const L = tp.clone(); L.y += 1.2; const fz = floorOf(ps.p[2]), wantT = WANT.t, wantE = WANT.e; let omega = 6, gv = ZERO, cut = false;
   // trolley velocity (feed-forward) and seek / jump detection (a jump is a cut, not a swoop across the factory)
   if (CAM.last) { const v = L.clone().sub(CAM.last).multiplyScalar(1 / Math.max(dt, 1e-3)); if (v.length() * dt > 4) { cut = true; CAM.ready = false; CAM.chosen = false; } else CAM.ff.lerp(v, 1 - Math.exp(-dt / 0.12)); }
@@ -236,7 +270,7 @@ function camStep(dt, ps, tp) {
     CAM.chasePol = pol < CAM.chasePol ? pol : Math.min(pol, CAM.chasePol + 0.6 * dt);
     wantT.copy(L); eyeAt(L, d, CAM.chaseAz, CAM.chasePol, wantE); gv = CAM.ff; omega = 8;
   } else {   // free, overview, 2D plan: the orbit is the goal; the springs make every change a smooth move
-    if (m === "plan") orbit.tgt.copy(tp); wantT.copy(orbit.tgt); eyeAt(orbit.tgt, orbit.r, orbit.th, orbit.ph, wantE); omega = m === "free" ? 12 : 3.5;
+    if (m === "plan" && !V.studioOpen) orbit.tgt.copy(tp); wantT.copy(orbit.tgt); eyeAt(orbit.tgt, orbit.r, orbit.th, orbit.ph, wantE); omega = m === "free" ? 12 : 3.5;
   }
   if (!CAM.init || cut) { CAM.eye.copy(wantE); CAM.tgt.copy(wantT); CAM.ev.set(0, 0, 0); CAM.tv.set(0, 0, 0); CAM.init = true; }
   springFF(CAM.eye, CAM.ev, wantE, gv, omega, dt); springFF(CAM.tgt, CAM.tv, wantT, gv, omega, dt);
@@ -260,33 +294,18 @@ function tabsUI() {
     V.pack.paths.filter(p => p.tab === V.tab).map(p => `<button data-path="${esc(p.id)}" class="${V.path.id === p.id ? "on" : ""}" title="${esc(p.data.name)}">${esc(p.data.name.split(" · ")[0] || p.id)} · ${esc((p.data.name.split(" · ")[1] || p.data.name).slice(0, 34))}</button>`).join("");
 }
 function stepsUI() { $("#steps").innerHTML = V.steps.map((s, i) => `<button data-step="${i}"><b>${i + 1}</b> ${esc(s.title)}${s.lift ? " ⇅" : ""}</button>`).join(""); }
-function editorUI() {
-  const e = V.edit, n = (k, v, step = 0.1) => `<label>${k}<input type="number" step="${step}" min="0" data-ed="${k}" value="${v}"></label>`;
-  $("#ed").innerHTML = `<h4>Path settings · engine</h4><div class="row">${n("push_speed_mps", e.push_speed_mps ?? 1)}${n("agv_speed_mps", e.agv_speed_mps ?? 1.2)}${n("lift_s", e.lift_s ?? 60, 1)}</div>
-<h4>Wait at each stop (s)</h4>${e.steps.map((s, i) => `<label class="w"><span>${i + 1}. ${esc(s.title || s.stop)}${s.lift ? " ⇅" : ""}</span><input type="number" step="1" min="0" data-wait="${i}" value="${s.wait_s}"></label>`).join("")}
-<div class="row"><button id="ed-save">${OFFLINE ? "Download edits" : "Save to master data"}</button><button id="ed-reset">Reset</button></div><div id="ed-msg" class="muted">Edit a value: the Factory Engine in this page re-times the trip at once.</div>`;
-}
-document.addEventListener("input", e => { const el = e.target; if (el.dataset.ed) { V.edit[el.dataset.ed] = +el.value; } else if (el.dataset.wait) { V.edit.steps[+el.dataset.wait].wait_s = +el.value; } else return; V.dirty = true; retime(); });
-async function save() {
-  const set = { steps: V.edit.steps, push_speed_mps: V.edit.push_speed_mps, agv_speed_mps: V.edit.agv_speed_mps, lift_s: V.edit.lift_s };
-  if (OFFLINE) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify({ path: V.path.id, set }, null, 2)], { type: "application/json" })); a.download = `${V.path.id}-edits.json`; a.click(); return; }
-  const r = await fetch("/api/command", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ actor: "v9", type: "record.update", payload: { type: "path", id: V.path.id, set, label: `V9: edit ${V.path.id}` } }) }).then(x => x.json());
-  if (!r.ok) { $("#ed-msg").textContent = "Not saved: " + (r.reason || r.code); return; }
-  const run = await fetch("/api/path-run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: V.path.id }) }).then(x => x.json());
-  V.path.data = JSON.parse(JSON.stringify(V.edit)); V.dirty = false; $("#ed-msg").textContent = `Saved (revision ${r.revision}); engine run ${run.id} stored in the database.`;
-}
-document.addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return;
-  if (b.dataset.mode) setMode(b.dataset.mode); if (b.dataset.fly) fly(b.dataset.fly);
+function tip(msg, ms = 3500) { const t = $("#tip"); if (!t) return; t.textContent = msg; t.classList.add("on"); clearTimeout(tip.h); tip.h = setTimeout(() => t.classList.remove("on"), ms); }
+document.addEventListener("click", e => { const b = e.target.closest("button"); if (!b || b.closest("#studio, #stb, #ctx")) return;
+  if (b.dataset.mode) { if (b.dataset.mode === "director" && !(V.edit.director?.keys || []).length) tip("No camera keys yet: open the Studio, Director tab, and add keys (K)"); else setMode(b.dataset.mode); } if (b.dataset.fly) fly(b.dataset.fly);
   if (b.dataset.tab) { const p = V.pack.paths.find(x => x.tab === b.dataset.tab); if (p) selectPath(p.id); }
   if (b.dataset.path) selectPath(b.dataset.path);
-  if (b.dataset.step) { const s = V.steps[+b.dataset.step]; V.e = +b.dataset.step ? s.t0 : 0; setMode("guided"); CAM.intro = -1; camReset(); }
-  if (b.id === "play") V.playing = !V.playing; if (b.id === "rec") record(); if (b.id === "ed-save") save(); if (b.id === "ed-reset") { V.edit = JSON.parse(JSON.stringify(V.path.data)); editorUI(); retime(); }
-  if (b.id === "edit") $("#ed").classList.toggle("open");
-  if (b.id === "lab") { V.labels = !V.labels; scene.traverse(o => { if (o.userData.label) o.visible = V.labels; }); }
+  if (b.dataset.step) { const s = V.steps[+b.dataset.step]; V.e = +b.dataset.step ? s.t0 : 0; if (!["director", "free", "plan"].includes(V.mode)) setMode("guided"); CAM.intro = -1; camReset(); }
+  if (b.id === "play") V.playing = !V.playing; if (b.id === "rec") record();
+  if (b.id === "lab") { V.labels = !V.labels; b.classList.toggle("on", V.labels); scene.traverse(o => { if (o.userData.label) o.visible = V.labels; }); }
   if (b.id === "f2") { V.floor2 = { auto: "show", show: "hide", hide: "auto" }[V.floor2]; b.textContent = "2F: " + V.floor2; }
   if (b.dataset.speed) { V.speed = +b.dataset.speed; document.querySelectorAll("[data-speed]").forEach(x => x.classList.toggle("on", x === b)); } });
 $("#scrub").addEventListener("input", e => { V.e = +e.target.value; });
-addEventListener("keydown", e => { if (e.target.tagName === "INPUT") return; if (e.key === " ") { V.playing = !V.playing; e.preventDefault(); } const m = { g: "guided", f: "follow", c: "chase", v: "overview", p: "plan", o: "free" }[e.key]; if (m) setMode(m); if (e.key === "r") record(); if (e.key === "e") $("#ed").classList.toggle("open"); });
+addEventListener("keydown", e => { if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return; if (e.key === " ") { V.playing = !V.playing; e.preventDefault(); } const m = { g: "guided", f: "follow", c: "chase", v: "overview", p: "plan", o: "free", d: "director" }[e.key]; if (m) setMode(m); if (e.key === "r") record(); });
 function drawMini(ps) {
   const cv = $("#mini"), x = cv.getContext("2d"), W = cv.width, H = cv.height; if (!V.miniBox) { let mn = [1e9, 1e9], mx = [-1e9, -1e9]; for (const p of V.route) { mn = [Math.min(mn[0], p.x), Math.min(mn[1], p.y)]; mx = [Math.max(mx[0], p.x), Math.max(mx[1], p.y)]; } V.miniBox = [mn[0] - 14, mn[1] - 14, mx[0] + 14, mx[1] + 14]; }
   const [x0, y0, x1, y1] = V.miniBox, sc = Math.min((W - 16) / (x1 - x0), (H - 16) / (y1 - y0)), ox = (W - (x1 - x0) * sc) / 2, oy = (H - (y1 - y0) * sc) / 2, tx = p => [ox + (p[0] - x0) * sc, H - oy - (p[1] - y0) * sc], up = ps.p[2] > 0.5;
@@ -302,8 +321,8 @@ async function record() {
   rec.ondataavailable = e => e.data.size && chunks.push(e.data);
   rec.onstop = async () => { V.rec = null; $("#rec").classList.remove("on"); $("#rec").textContent = "● Record"; const blob = new Blob(chunks, { type: "video/webm" }), name = `v9-${V.path.id}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.webm`;
     if (OFFLINE) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); return; }
-    const r = await fetch("/api/films/upload?name=" + encodeURIComponent(name), { method: "POST", body: blob }).then(x => x.json()).catch(() => ({ ok: false })); $("#ed-msg").textContent = r.ok ? `Take saved: ${name}` : "Take not saved"; };
-  V.rec = rec; V.e = 0; V.playing = true; setMode("guided"); camReset(); CAM.intro = 0; V.recEnd = V.total + 2; rec.start(1000); $("#rec").classList.add("on"); $("#rec").textContent = "■ Stop"; V.recEnd = V.total + 2;
+    const r = await fetch("/api/films/upload?name=" + encodeURIComponent(name), { method: "POST", body: blob }).then(x => x.json()).catch(() => ({ ok: false })); tip(r.ok ? `Take saved: ${name}` : "Take not saved"); };
+  const dir = (V.edit.director?.keys || []).length; V.rec = rec; V.e = 0; V.playing = true; setMode(dir ? "director" : "guided"); camReset(); CAM.intro = dir ? -1 : 0; V.recEnd = V.total + 2; rec.start(1000); $("#rec").classList.add("on"); $("#rec").textContent = "■ Stop"; V.recEnd = V.total + 2;
 }
 
 /* ---------- loop ---------- */
@@ -314,15 +333,15 @@ function frame(now) {
     if (V.playing && !(V.mode === "guided" && CAM.intro >= 0)) { V.e += dt * V.speed; if (V.rec && V.e > V.recEnd) V.rec.stop(); if (V.e > V.total + 4) V.e = 0; }
     const ps = pose(Math.min(V.e, V.total)), d = new T.Vector2(...ps.dir).normalize(), prev = V.dirS || d; V.dirS = prev.clone().lerp(d, Math.min(1, dt * 6)).normalize(); V.dir = [V.dirS.x, V.dirS.y];
     const yaw = Math.atan2(V.dirS.y, V.dirS.x), agvMode = ps.mode === "agv", tp = P(ps.p[0], ps.p[1], ps.p[2] + (agvMode ? 0.36 : 0));
-    V.trolley.position.copy(tp); V.trolley.rotation.y = yaw;
-    if (!agvMode) { const back = [ps.p[0] - V.dirS.x * 1.15, ps.p[1] - V.dirS.y * 1.15]; V.operator.position.copy(P(back[0], back[1], ps.p[2] + (ps.moving && !ps.lift ? Math.abs(Math.sin(ps.dist * 2.6)) * 0.035 : 0))); V.operator.rotation.y = yaw; }
+    V.trolley.position.copy(tp); V.trolley.rotation.y = yaw; V.ps = ps;
     V.agv.visible = agvMode; if (agvMode) { V.agv.position.copy(P(ps.p[0], ps.p[1], ps.p[2])); V.agv.rotation.y = yaw; }
     V.routeMat.uniforms.progress.value = ps.dist; V.routeMat.uniforms.time.value = now / 1000;
     const want2F = V.floor2 === "show" ? 1 : V.floor2 === "hide" ? 0 : ps.p[2] > 0.5 ? 1 : 0.28;   // see through the 2nd floor while the trolley is below
     F2.visible = want2F > 0.01; if (V.f2op !== want2F) { V.f2op = want2F; F2.traverse(o => { for (const m of [].concat(o.material || [])) if (m.userData && "base" in m.userData) { m.opacity = m.userData.base * want2F; m.depthWrite = want2F > 0.9; } }); }
     camFrame(dt, ps, tp);
+    for (const f of V.hooks.frame) f(dt, ps, now);
     const s = V.steps[ps.step]; $("#cap-n").textContent = `STEP ${ps.step + 1} / ${V.steps.length}  ·  ${ps.phase === "travel" ? (ps.lift ? "ELEVATOR " + (s.lift || "") : (s.mode === "agv" ? "AGV" : "PUSHED BY HAND") + " · " + (+s.dist).toFixed(1) + " m") : "WAIT"}  ·  ${ps.p[2] > 0.5 ? "2ND FLOOR" : "1ST FLOOR"}`;
-    $("#cap-t").textContent = s.title; $("#cap-x").textContent = s.caption || ""; $("#clock").textContent = `ENGINE TIME ${mmss(V.e)} / ${mmss(V.total)}  ·  ${ps.dist.toFixed(1)} m  ·  ${V.speed}×${V.dirty ? "  ·  unsaved edits" : ""}`;
+    $("#cap-t").textContent = s.title; $("#cap-x").textContent = V.edit.captions?.[ps.step] || ""; $("#clock").textContent = `ENGINE TIME ${mmss(V.e)} / ${mmss(V.total)}  ·  ${ps.dist.toFixed(1)} m  ·  ${V.speed}×`;
     if (document.activeElement !== $("#scrub")) $("#scrub").value = V.e; $("#play").textContent = V.playing ? "❚❚" : "▶";
     document.querySelectorAll("[data-step]").forEach(b => b.classList.toggle("on", +b.dataset.step === ps.step)); drawMini(ps);
   }
@@ -335,9 +354,14 @@ function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h
 addEventListener("resize", resize); resize();
 (async () => {
   try {
+    // let later scripts (the Studio) register their hooks first: wait until the whole page is parsed
+    await new Promise(r => document.readyState === "complete" ? setTimeout(r, 0) : addEventListener("DOMContentLoaded", () => r(), { once: true }));
     V.pack = window.V9_PACK || await (await fetch("/api/scene3d")).json(); if (V.pack.error) throw new Error(V.pack.error);
     $("#sub").textContent = `${V.pack.factory.name} · ${V.pack.objects.length} objects from CAD · ${V.pack.paths.length} paths · Factory Engine ${FE.ENGINE_VERSION || ""}${OFFLINE ? " · offline file" : " · live master data"}`;
+    V.api = { T, scene, camera, renderer, canvas, P, F2, PATHG, CAM, orbit, selectPath, retime, applyTimeline, setMode, camReset, pose, stopsById, placeObject, addObjectMesh, model, label, tip, tabsUI, stepsUI, esc, mmss, eyeAt, FITH, fit, OFFLINE };
+    for (const f of V.hooks.ready) await f();   // the Studio restores autosaved edits here, before the first path is shown
     await buildFactory(V.pack); selectPath(q.get("path") || V.pack.paths[0].id); setMode(q.get("mode") || "guided"); V.ready = true; $("#loading").remove();
+    for (const f of V.hooks.built || []) f();
   } catch (err) { $("#loading").textContent = "Could not build V9: " + err.message; console.error(err); }
 })();
 requestAnimationFrame(frame);

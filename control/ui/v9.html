@@ -8,11 +8,12 @@
   :root { --glass: rgba(14, 20, 32, .74); --line: rgba(255, 255, 255, .14); --acc: #c89bff; --ink: #eef3fb; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: #dfe7f1; font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: var(--ink); }
   #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
-  .glass { position: fixed; background: var(--glass); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 12px; }
+  .glass { position: fixed; z-index: 3; background: var(--glass); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 12px; }
   #head { top: 14px; left: 14px; padding: 10px 14px; max-width: 30vw; } #head .v { color: var(--acc); font-weight: 700; margin-right: 8px; }
   #head b { font-size: 15px; } #head small { display: block; opacity: .75; margin-top: 2px; } #kpi { margin-top: 6px; color: #ffe1a6; font-size: 12px; }
   #tabs { top: 14px; left: calc(30vw + 30px); padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(36vw - 30px); } #tabs .sep { width: 1px; background: var(--line); margin: 0 4px; }
-  #tools { top: 14px; right: 14px; padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 32vw; }
+  #tools { top: 14px; right: 14px; padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 40vw; } #tools button { padding: 6px 8px; }
+  #tabs { max-width: calc(100vw - 30vw - 40vw - 70px) !important; }
   button { background: rgba(255, 255, 255, .06); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; }
   button:hover { background: rgba(255, 255, 255, .14); } button.on { background: var(--acc); color: #1b1030; border-color: var(--acc); font-weight: 600; }
   #cap { left: 14px; bottom: 74px; padding: 12px 16px; max-width: min(620px, 56vw); border-left: 5px solid var(--acc); }
@@ -27,6 +28,35 @@
   #ed label { display: flex; flex-direction: column; font-size: 11px; opacity: .9; } #ed label.w { flex-direction: row; justify-content: space-between; align-items: center; gap: 8px; margin: 2px 0; }
   #ed input { width: 78px; background: rgba(255,255,255,.08); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; } #ed .muted { opacity: .75; font-size: 11px; margin-top: 4px; }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #dfe7f1; color: #1d2a44; font-size: 16px; z-index: 5; }
+  #cap { bottom: 112px; } #steps { bottom: 112px; }
+  #tip { position: fixed; left: 50%; top: 210px; transform: translate(-50%, -8px); background: rgba(20, 26, 44, .92); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; opacity: 0; pointer-events: none; transition: .2s; z-index: 6; max-width: 70vw; }
+  #tip.on { opacity: 1; transform: translate(-50%, 0); }
+  #ov { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
+  #lanes { left: 14px; right: 14px; bottom: 66px; width: calc(100% - 28px); height: 34px; cursor: pointer; padding: 0; border-radius: 10px; }
+  .sv { font-size: 12px; padding: 3px 8px; border-radius: 6px; white-space: nowrap; } .sv.saved { color: #9be7c4; } .sv.unsaved, .sv.saving { color: #ffe1a6; } .sv.error { color: #fff; background: #b42318; }
+  #bar .sv:empty { display: none; }
+  /* Studio */
+  #stb { top: 112px; left: 50%; transform: translateX(-50%); padding: 5px; display: none; gap: 4px; align-items: center; flex-wrap: wrap; max-width: calc(100vw - 420px); z-index: 3; }
+  body.studio #stb { display: flex; } #stb .sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; } #stb label { font-size: 12px; } #stb button:disabled { opacity: .4; cursor: default; }
+  #stb select, #studio select, #studio input, #studio textarea { background: rgba(255,255,255,.08); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
+  #studio select option, #stb select option { background: #1b2233; }
+  .chk { font-size: 12px; padding: 3px 8px; border-radius: 6px; cursor: pointer; } .chk.ok { color: #9be7c4; } .chk.bad { background: #b42318; color: #fff; }
+  #studio { top: 112px; right: 14px; width: 380px; max-height: calc(100vh - 250px); overflow: auto; padding: 8px 10px 10px; display: none; z-index: 3; }
+  body.studio #studio { display: block; } body.studio #mini, body.studio #steps { display: none; }
+  .tabs9 { display: flex; gap: 3px; position: sticky; top: -8px; background: rgba(14,20,32,.95); padding: 4px 0 6px; z-index: 1; } .tabs9 button { flex: 1; padding: 5px 4px; font-size: 12px; }
+  #studio h4 { margin: 10px 0 5px; font-size: 11px; color: var(--acc); text-transform: uppercase; letter-spacing: .05em; }
+  #studio .row { display: flex; gap: 5px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 5px; } #studio label { display: flex; flex-direction: column; font-size: 11px; opacity: .92; }
+  #studio input[type=number] { width: 64px; } #studio .w { flex: 1; min-width: 120px; } #studio textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+  #studio .step { border: 1px solid var(--line); border-radius: 8px; padding: 6px; margin-bottom: 6px; } #studio .step.sel { border-color: var(--acc); } #studio .step.now { box-shadow: inset 3px 0 0 #2a74db; }
+  #studio .n { min-width: 28px; padding: 4px 6px; font-weight: 700; } #studio .muted { opacity: .72; font-size: 11px; } #studio .muted button { padding: 2px 7px; font-size: 11px; }
+  #studio .tag { font-size: 11px; color: #5eead4; } #studio .item { align-items: center; } #studio .item.sel { outline: 1px solid var(--acc); border-radius: 8px; } #studio .item i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  #studio .li { display: block; width: 100%; text-align: left; margin: 2px 0; } #studio .li small { opacity: .6; } #studio .capr { border-left: 3px solid #ffe1a6; padding-left: 6px; margin-bottom: 8px; }
+  #studio button.rec { background: #e5484d; color: #fff; } #studio .bad { color: #ffb4b4; } #studio .good { color: #9be7c4; }
+  table.nums { width: 100%; border-collapse: collapse; font-size: 12px; } table.nums td, table.nums th { padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; } table.nums td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  #caps { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+  .cap9 { position: absolute; left: 50%; max-width: min(760px, 70vw); background: linear-gradient(180deg, rgba(52,112,188,.82), rgba(12,36,78,.9)); border: 1px solid rgba(190,224,255,.4); border-radius: 18px; padding: 12px 20px; text-align: center; }
+  .cap9.lower { bottom: 190px; } .cap9.upper { top: 120px; } .cap9.center { top: 50%; } .cap9 b { display: block; font-size: 20px; } .cap9 p { margin: 4px 0 0; opacity: .9; }
+  #ctx { display: none; }
   @media (max-width: 1100px) { #steps, #mini { display: none; } #tabs { top: auto; bottom: 120px; max-width: 92vw; } #head { max-width: 60vw; } }
 </style>
 </head>
@@ -36,11 +66,11 @@
 <div id="head" class="glass"><span class="v">V9</span><b id="title">Material Flow</b><small id="sub"></small><div id="kpi"></div></div>
 <div id="tabs" class="glass"></div>
 <div id="tools" class="glass">
-  <button data-mode="guided" title="Guided: one calm angle per step, never hidden by walls (G)">Guided</button><button data-mode="follow" title="Follow (F)">Follow</button><button data-mode="chase" title="Chase (C)">Chase</button><button data-mode="overview" title="Whole factory (V)">Overview</button><button data-mode="free" title="Free orbit (O)">Free</button><button data-mode="plan" title="2D plan (P)">2D plan</button>
-  <button data-fly="E1">E1</button><button data-fly="E2">E2</button><button data-fly="EPS">EPS</button><button id="f2" title="2nd floor: auto (see-through while the trolley is below), show, hide">2F: auto</button><button id="lab">Labels</button><button id="edit" title="Edit waits and speeds; the engine re-times at once (E)">Edit</button><button id="rec" title="Record the trip as a video take (R)">● Record</button>
+  <button data-mode="guided" title="Guided: one calm angle per step, never hidden by walls (G)">Guided</button><button data-mode="follow" title="Follow (F)">Follow</button><button data-mode="chase" title="Chase (C)">Chase</button><button data-mode="overview" title="Whole factory (V)">Overview</button><button data-mode="free" title="Free orbit (O)">Free</button><button data-mode="plan" title="2D plan (P)">2D plan</button><button data-mode="director" title="Director: plays the camera keys of this path (D)">Director</button>
+  <button data-fly="E1">E1</button><button data-fly="E2">E2</button><button data-fly="EPS">EPS</button><button id="f2" title="2nd floor: auto (see-through while the trolley is below), show, hide">2F: auto</button><button id="lab" class="on" title="Step chips and labels">Labels</button><button id="rec" title="Record the trip as a video take (R); uses the Director camera when the path has keys">● Record</button>
   <button data-speed="1">1×</button><button data-speed="10" class="on">10×</button><button data-speed="30">30×</button><button data-speed="60">60×</button>
 </div>
-<div id="ed" class="glass"></div>
+<div id="tip"></div>
 <div id="cap" class="glass"><div id="cap-n"></div><div id="cap-t"></div><div id="cap-x"></div></div>
 <div id="steps" class="glass"></div>
 <canvas id="mini" class="glass" width="300" height="220"></canvas>
@@ -52,6 +82,7 @@
 <script src="/vendor/factory-engine.js"></script>
 <script type="module">import * as T from "/real/timing.js"; window.FCTiming = T;</script>
 <script type="module" src="/v9.js"></script>
+<script type="module" src="/v9-studio.js"></script>
 <!--/V9-SCRIPTS-->
 </body>
 </html>

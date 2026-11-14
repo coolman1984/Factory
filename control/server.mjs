@@ -21,7 +21,7 @@ const vendorDir = join(here, "../material-flow/src/v8/vendor"), assetDir = join(
 const args = process.argv.slice(2), arg = (k, d) => { const i = args.indexOf("--" + k); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const PORT = +arg("port", process.env.FC_PORT || 8765), S = await openStore(arg("db", process.env.FC_DB || undefined));
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
-const STATIC = { "/v9": "ui/v9.html", "/v9.html": "ui/v9.html", "/v9.js": "ui/v9.js", "/real/timing.js": "real/timing.js", "/3d.html": "ui/3d.html", "/viewer3d.js": "ui/viewer3d.js", "/": "ui/index.html", "/app.js": "ui/app.js", "/app.css": "ui/app.css", "/i18n.js": "ui/i18n.js", "/schema.js": "schema.js" };
+const STATIC = { "/v9": "ui/v9.html", "/v9.html": "ui/v9.html", "/v9.js": "ui/v9.js", "/v9-studio.js": "ui/v9-studio.js", "/real/timing.js": "real/timing.js", "/3d.html": "ui/3d.html", "/viewer3d.js": "ui/viewer3d.js", "/": "ui/index.html", "/app.js": "ui/app.js", "/app.css": "ui/app.css", "/i18n.js": "ui/i18n.js", "/schema.js": "schema.js" };
 
 const send = (res, code, body, type = "application/json; charset=utf-8", extra = {}) => { res.writeHead(code, { "content-type": type, "cache-control": "no-store", ...extra }); res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
 const body = req => new Promise((ok, bad) => { let b = ""; req.on("data", c => { b += c; if (b.length > 50e6) { bad(new Error("request too large")); req.destroy(); } }); req.on("end", () => { try { ok(b ? JSON.parse(b) : {}); } catch (e) { bad(new Error("body is not JSON")); } }); });

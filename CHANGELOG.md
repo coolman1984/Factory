@@ -1,5 +1,13 @@
 # سجل التغييرات
 
+## 2026-11-14 — V9.1 Studio
+
+- Studio in the player (E): move, turn, resize, duplicate, delete and place any object in 3D or 2D; drag stops and route points;
+  draw new routes and whole new paths in the 2D plan; steps with titles and texts; straighten, auto-route, live clash check.
+- Director: camera keys, recorded camera moves, captions, saved shots, Director camera; timeline lanes; Numbers tab.
+- Player: V8 trolley model, no people, floor arrows, step chips. Light autosave: one batch command 0.7 s after the last edit
+  (offline: this browser + export). docs/19 §8.2.
+
 ## 2026-11-14 — V9 camera: the V7 director
 
 - V9 now uses the Material-Flow V7 guided camera (the owner's choice): route intro, one calm angle per long stretch, high oblique
