@@ -87,7 +87,7 @@ const stopsById = () => Object.fromEntries(V.pack.stops.map(s => [s.id, { positi
 function selectPath(id) {
   const p = V.pack.paths.find(x => x.id === id) || V.pack.paths[0]; V.path = p; V.tab = p.tab; V.edit = JSON.parse(JSON.stringify(p.data)); V.dirty = false;
   if (!p.timeline) retime(); else applyTimeline(p.timeline, p.kpis);
-  tabsUI(); editorUI(); V.e = 0; V.guided = null; history.replaceState(null, "", `?path=${encodeURIComponent(p.id)}`);
+  tabsUI(); editorUI(); V.e = 0; camReset(); if (V.mode === "guided") CAM.intro = 0; history.replaceState(null, "", `?path=${encodeURIComponent(p.id)}`);
 }
 function retime() {   // the Factory Engine, in this page
   try { const r = TM.timePath(FE.World, V.edit, stopsById()); applyTimeline(r.timeline, r.kpis); $("#ed-msg").textContent = `Engine re-timed: ${mmss(r.kpis.trip_s)} · invariants ${r.kpis.invariants ? "BROKEN" : "OK"}`; }
@@ -109,6 +109,8 @@ function buildRoute() {
   const pts = [], cum = [], start = []; let acc = 0;
   V.steps.forEach((s, i) => { start.push(acc); if (!i) return; for (const q2 of s.pts) { const v = new T.Vector3(q2[0], q2[1], q2[2] || 0); if (pts.length) { const d = Math.hypot(v.x - pts.at(-1).x, v.y - pts.at(-1).y); if (d < 0.01 && Math.abs(v.z - pts.at(-1).z) < 0.01) continue; acc += d; } pts.push(v); cum.push(acc); } });
   V.route = pts; V.cum = cum; V.stepStart = start;
+  { let a = [1e9, 1e9], b = [-1e9, -1e9]; for (const p of pts) { a = [Math.min(a[0], p.x), Math.min(a[1], p.y)]; b = [Math.max(b[0], p.x), Math.max(b[1], p.y)]; }
+    V.routeC = P((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); V.routeSpan = Math.max(60, b[0] - a[0], b[1] - a[1]); }
   const pos = [], dist = [], side = [], w = 0.45;
   for (let k = 0; k < pts.length - 1; k++) { const a = pts[k], b = pts[k + 1]; if (Math.abs(a.z - b.z) > 0.5) { const tube = new T.Mesh(new T.CylinderGeometry(0.35, 0.35, Math.abs(b.z - a.z), 16, 1, true), new T.MeshBasicMaterial({ color: new T.Color(V.edit.color || "#a78bfa"), transparent: true, opacity: 0.35, depthWrite: false })); tube.position.copy(P(a.x, a.y, (a.z + b.z) / 2)); PATHG.add(tube); continue; }
     const n = new T.Vector2(b.x - a.x, b.y - a.y).normalize(), o = new T.Vector2(-n.y, n.x).multiplyScalar(w);
@@ -136,13 +138,32 @@ function pose(e) {
   return out;
 }
 
-/* ---------- camera (V8 guided + follow, chase, overview, plan, free) ---------- */
+/* ---------- camera: the V7 director (Material-Flow V7.0-V7.7.1 guided camera, ported to true metres) ----------
+   One calm azimuth per long stretch of aisle (the clearest angle near the house angle), a high oblique tilt, a distance that
+   frames the stretch, a sight check against the CAD walls and tall objects that holds a clear shot (the trolley is never
+   hidden), and exact critically damped springs with velocity feed-forward for the eye and the look target. A path opens
+   with the V7 intro: top-down over the route, rising to an oblique view, then landing on the first trolley shot. */
 const orbit = { tgt: new T.Vector3(), r: 60, th: -0.7, ph: 0.9 }; let drag = null;
-function setMode(m) { V.mode = m; document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
-  if (m === "plan") { orbit.ph = 0.02; orbit.r = 70; } if (m === "follow") { orbit.r = 26; orbit.ph = 0.95; } if (m === "chase") { orbit.r = 11; orbit.ph = 1.2; } if (m === "guided") { orbit.r = 30; V.guided = null; }
-  if (m === "overview") { orbit.tgt.copy(P(V.site.c[0], V.site.c[1])); orbit.r = Math.max(...V.site.s) * 1.25; orbit.ph = 0.82; orbit.th = -0.75; } if (m === "free") orbit.ph = Math.max(orbit.ph, 0.6); }
-function wallGrid(floorZ) { V.wg ||= {}; const key = floorZ > 0.5 ? "2F" : "1F"; if (V.wg[key]) return V.wg[key]; const g = new Map(), H = { exterior_wall: 9, wall: 3.4, partition: 2.7 };
-  for (const l of Object.values(V.pack.cad)) if (H[l.kind] && (l.z > 0.5) === (key === "2F")) for (const s of l.segments) { const sg = [...s, H[l.kind]]; for (let x = Math.floor(Math.min(s[0], s[2]) / 5); x <= Math.floor(Math.max(s[0], s[2]) / 5); x++) for (let y = Math.floor(Math.min(s[1], s[3]) / 5); y <= Math.floor(Math.max(s[1], s[3]) / 5); y++) { const k = x + "," + y; (g.get(k) || g.set(k, []).get(k)).push(sg); } }
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), sm01 = x => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); }, lerp = (a, b, u) => a + (b - a) * u;
+const CALM = { base: -0.55, pol: 0.94, D: 34, long: 12, intro: 6.5 };
+const OFFS = [0, .26, -.26, .52, -.52, .79, -.79, 1.05, -1.05, 1.57, -1.57, Math.PI], POLS = [.94, .72, .5, 1.15, 1.3, 1.45, .3, .12, .001];
+const CAM = { eye: new T.Vector3(), tgt: new T.Vector3(), ev: new T.Vector3(), tv: new T.Vector3(), ff: new T.Vector3(), last: null, az: CALM.base, pol: CALM.pol, ready: false, init: false,
+  choice: { az: 0, pol: CALM.pol, forced: false, at: 0 }, chosen: false, clock: 0, prefSince: -1, aisle: new Map(), dist: new Map(), intro: -1, chaseAz: null, chasePol: 1.2, blockedFor: 0, stats: { rescued: 0, forced: 0 } };
+V.cam = CAM;
+function camReset() { CAM.ready = false; CAM.chosen = false; CAM.prefSince = -1; CAM.aisle.clear(); CAM.dist.clear(); CAM.chaseAz = null; CAM.last = null; CAM.init = false; }
+function setMode(m) {
+  if (CAM.init && ["free", "overview", "plan"].includes(m)) { const d = CAM.eye.clone().sub(CAM.tgt), r = Math.max(0.5, d.length()); orbit.tgt.copy(CAM.tgt); orbit.r = r; orbit.th = Math.atan2(d.x, d.z); orbit.ph = Math.acos(Math.min(1, Math.max(-1, d.y / r))); }
+  if (m !== "guided") CAM.intro = -1; if (m !== V.mode) { CAM.ready = false; CAM.chosen = false; CAM.chaseAz = null; }
+  V.mode = m; document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
+  if (m === "plan") { orbit.ph = 0.02; orbit.r = 70; }
+  if (m === "overview") { orbit.tgt.copy(P(V.site.c[0], V.site.c[1])); orbit.r = Math.max(...V.site.s) * 1.25; orbit.ph = 0.82; orbit.th = -0.75; } if (m === "free") orbit.ph = Math.max(orbit.ph, 0.3); }
+function wallGrid(floorZ) { V.wg ||= {}; const up = floorZ > 0.5, key = up ? "2F" : "1F"; if (V.wg[key]) return V.wg[key]; const g = new Map(), H = { exterior_wall: 9, wall: 3.4, partition: 2.7 };
+  const put = sg => { for (let x = Math.floor(Math.min(sg[0], sg[2]) / 5); x <= Math.floor(Math.max(sg[0], sg[2]) / 5); x++) for (let y = Math.floor(Math.min(sg[1], sg[3]) / 5); y <= Math.floor(Math.max(sg[1], sg[3]) / 5); y++) { const k = x + "," + y; (g.get(k) || g.set(k, []).get(k)).push(sg); } };
+  for (const l of Object.values(V.pack.cad)) if (H[l.kind] && (l.z > 0.5) === up) for (const s of l.segments) put([...s, up ? Math.min(H[l.kind], 3) : H[l.kind]]);
+  // tall objects (racks, machines, cells) block a sight line too: their footprint edges at full height; the elevator the trolley rides is open
+  for (const o of V.pack.objects) { if (!o.size || (o.pos[2] > 0.5) !== up || ["LIFT", "CRANE_BRIDGE", "TROLLEY", "AGV", "OPERATOR"].includes(o.prefab) || (o.size[2] || 0) < 1.6) continue;
+    const c = Math.cos((o.yaw || 0) * Math.PI / 180), s = Math.sin((o.yaw || 0) * Math.PI / 180), hx = o.size[0] / 2, hy = o.size[1] / 2, k = [[-hx, -hy], [hx, -hy], [hx, hy], [-hx, hy]].map(([u, v]) => [o.pos[0] + u * c - v * s, o.pos[1] + u * s + v * c]);
+    for (let i = 0; i < 4; i++) put([...k[i], ...k[(i + 1) % 4], o.size[2]]); }
   return V.wg[key] = g; }
 function blockedHeight(a, b, hs, hc, floorZ = 0) {
   let need = hc; const seen = new Set(), g = wallGrid(floorZ);
@@ -152,18 +173,84 @@ function blockedHeight(a, b, hs, hc, floorZ = 0) {
     if (u > 0.04 && u <= 1 && v >= 0 && v <= 1) need = Math.max(need, hs + (s[4] + 0.6 - hs) / u); }
   return need;
 }
-function guidedGoal(ps) {
-  const key = ps.step + ":" + ps.phase; if (V.guided && V.guided.key === key) return V.guided;
-  const s = V.steps[ps.step], pts = s.pts.length > 1 && !s.lift ? s.pts : V.steps[Math.min(ps.step + 1, V.steps.length - 1)].pts, a = pts[0], b = pts.at(-1), main = Math.atan2(b[1] - a[1], b[0] - a[0]) || 0, mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  let best = null; for (const off of [Math.PI / 2, -Math.PI / 2, Math.PI * 0.75, -Math.PI * 0.75, Math.PI / 4, -Math.PI / 4, Math.PI]) { const az = main + off, R = 24, ph = 0.95, h = R * Math.cos(ph), c = [mid[0] + Math.cos(az) * R * Math.sin(ph), mid[1] + Math.sin(az) * R * Math.sin(ph)], need = blockedHeight(mid, c, 1, h, ps.p[2]); const score = need - h; if (!best || score < best.score) best = { az, score, h: need }; if (score <= 0) break; }
-  return V.guided = { key, th: -best.az + Math.PI / 2, ph: Math.max(0.35, Math.acos(Math.min(1, best.h / 24))) };
+const eyeAt = (p, d, az, pol, out = new T.Vector3()) => out.set(p.x + d * Math.sin(pol) * Math.sin(az), p.y + d * Math.cos(pol), p.z + d * Math.sin(pol) * Math.cos(az));
+const floorOf = y => (y > 4 ? 6 : 0);
+function sees(L, E, fz) { const hs = L.y - fz, hc = E.y - fz; return blockedHeight([L.x, -L.z], [E.x, -E.z], hs, hc, fz) <= hc + 1e-6; }   // world target L seen from world eye E
+function segAt(s, along) { let acc = 0; for (let k = 1; k < s.pts.length; k++) { const L = Math.hypot(s.pts[k][0] - s.pts[k - 1][0], s.pts[k][1] - s.pts[k - 1][1]); if (acc + L >= along) return k - 1; acc += L; } return Math.max(0, s.pts.length - 2); }
+const segLen = (P2, k) => P2[k + 1] ? Math.hypot(P2[k + 1][0] - P2[k][0], P2[k + 1][1] - P2[k][1]) : 0;
+function calmSeg(i, seg) {   // a short piece of a route borrows the angle of the nearest long stretch (corners never turn the camera)
+  const P2 = V.steps[i].pts; if (segLen(P2, seg) >= CALM.long) return seg;
+  for (let q = seg - 1; q >= 0; q--) if (segLen(P2, q) >= CALM.long) return q; for (let q = seg + 1; q < P2.length - 1; q++) if (segLen(P2, q) >= CALM.long) return q; return seg; }
+function stepView(ps) {   // [step index, calm segment] of the stretch the camera frames now
+  let i = ps.step; if (!V.steps[i] || V.steps[i].pts.length < 2 || V.steps[i].lift) { const n = V.steps[i + 1]; if (ps.phase === "wait" && n && n.pts.length > 1 && !n.lift && i === 0) return [i + 1, calmSeg(i + 1, 0)]; return null; }
+  return [i, calmSeg(i, segAt(V.steps[i], ps.dist - V.stepStart[i]))]; }
+function frameDist(sv) {   // distance that frames the stretch (V7: 1.35 x its length, between 0.85 and 1.8 x the house distance)
+  if (!sv) return CALM.D; const key = sv.join(":"); if (CAM.dist.has(key)) return CAM.dist.get(key);
+  const d = Math.min(CALM.D * 1.8, Math.max(CALM.D * 0.85, segLen(V.steps[sv[0]].pts, sv[1]) * 1.35)); CAM.dist.set(key, d); return d; }
+function aisleAz(sv, d) {   // the clearest of 16 angles over the stretch, kept close to the house angle; cached per stretch
+  if (!sv) return CAM.ready ? CAM.az : CALM.base; const key = sv.join(":"); if (CAM.aisle.has(key)) return CAM.aisle.get(key);
+  const P2 = V.steps[sv[0]].pts, a = P2[sv[1]], b = P2[sv[1] + 1] || a, fz = floorOf(a[2] || 0), pts = [a, b, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]], reach = d * Math.sin(CALM.pol), hc = d * Math.cos(CALM.pol) + 1.2;
+  let best = [Infinity, CALM.base];
+  for (let k = 0; k < 16; k++) { const az = -Math.PI + k * Math.PI / 8; let sc = 0;
+    for (const p of pts) { const e = [p[0] + reach * Math.sin(az), p[1] - reach * Math.cos(az)], need = blockedHeight(p, e, 1.2, hc, fz); if (need > hc) sc += 1 + Math.min(1, (need - hc) / hc); }
+    sc = sc / 3 + Math.abs(wrap(az - CALM.base)) * 0.06; if (sc < best[0]) best = [sc, az]; }
+  CAM.aisle.set(key, best[1]); return best[1]; }
+// V5/V7 sight: an angle that SEES the trolley now and where it will be, held while clear (no hunting between angles)
+function choose(p, fut, d, pref, cur, fz, dt) {
+  const ok = (az, pol) => { const e = eyeAt(p, d, az, pol); return sees(p, e, fz) && sees(fut, e, fz); }, now = (az, pol) => sees(p, eyeAt(p, d, az, pol), fz);
+  CAM.clock += dt; const prefOk = ok(pref, CALM.pol), c = CAM.choice; if (prefOk) { if (CAM.prefSince < 0) CAM.prefSince = CAM.clock; } else CAM.prefSince = -1;
+  if (CAM.chosen && c.forced && ok(c.az, c.pol) && (CAM.clock - c.at < 1.5 || !prefOk || CAM.clock - CAM.prefSince < 1.2)) return c;
+  if (CAM.chosen && c.forced && !prefOk && CAM.clock - c.at < 0.3) return c;   // a full search at most ~3 times a second (the rescue covers the gap)
+  let az = pref, pol = CALM.pol; const forced = !prefOk;
+  if (forced) { let found = false; for (const t of [ok, now]) { for (const q of POLS) { for (const o of OFFS) if (t(cur + o, q)) { az = cur + o; pol = q; found = true; break; } if (found) break; } if (found) break; }
+    if (!found) { az = cur; pol = 0.001; } CAM.stats.forced++; }
+  Object.assign(c, { az, pol, forced, at: CAM.clock }); CAM.chosen = true; return c; }
+function transitionPol(p, fut, d, az, pol, fz) {   // a safe destination does not imply a safe orbit to it: the tilt on the way must see too
+  const ok = q => { const e = eyeAt(p, d, az, q); return sees(p, e, fz) && sees(fut, e, fz); };
+  if (ok(pol)) return pol; for (const q of POLS) if (ok(q)) return q; for (const q of POLS) if (sees(p, eyeAt(p, d, az, q), fz)) return q; return 0.001; }
+// exact critically damped spring in the frame of a goal moving at velocity gv (stable for any frame time and playback speed)
+function springFF(x, v, goal, gv, w, dt) { const decay = Math.exp(-w * dt); for (const k of ["x", "y", "z"]) { const e0 = x[k] - (goal[k] - gv[k] * dt), ev0 = v[k] - gv[k], j = ev0 + w * e0; x[k] = goal[k] + (e0 + j * dt) * decay; v[k] = gv[k] + (ev0 - w * j * dt) * decay; } }
+const WANT = { t: new T.Vector3(), e: new T.Vector3() }, ZERO = new T.Vector3(), FUT = new T.Vector3();
+function camFrame(dt, ps, tp) { const t0 = performance.now(); camStep(dt, ps, tp); const ms = performance.now() - t0; CAM.stats.ms = CAM.stats.ms ? CAM.stats.ms * 0.95 + ms * 0.05 : ms; CAM.stats.maxMs = Math.max(CAM.stats.maxMs || 0, ms); }
+function camStep(dt, ps, tp) {
+  const L = tp.clone(); L.y += 1.2; const fz = floorOf(ps.p[2]), wantT = WANT.t, wantE = WANT.e; let omega = 6, gv = ZERO, cut = false;
+  // trolley velocity (feed-forward) and seek / jump detection (a jump is a cut, not a swoop across the factory)
+  if (CAM.last) { const v = L.clone().sub(CAM.last).multiplyScalar(1 / Math.max(dt, 1e-3)); if (v.length() * dt > 4) { cut = true; CAM.ready = false; CAM.chosen = false; } else CAM.ff.lerp(v, 1 - Math.exp(-dt / 0.12)); }
+  CAM.last = L.clone(); if (cut) CAM.ff.set(0, 0, 0);
+  const m = V.mode, trip = ["guided", "follow", "chase"].includes(m);
+  if (m === "guided" && CAM.intro >= 0) {   // V7 intro: over the whole route top-down, rise to an oblique view, land on the first shot
+    CAM.intro += dt; const e1 = sm01(CAM.intro / 3.5), u = sm01((CAM.intro - (CALM.intro - 2.5)) / 2.5), sv = stepView(ps), d = frameDist(sv), az1 = aisleAz(sv, d);
+    wantT.copy(V.routeC).lerp(L, u); const dd = lerp(V.routeSpan * lerp(1.25, 1.1, e1), d, u), az = lerp(-0.5 * e1, az1, u), pol = lerp(lerp(0.001, 1, e1), CALM.pol, u);
+    eyeAt(wantT, dd, az, pol, wantE); omega = 9; if (CAM.intro >= CALM.intro) { CAM.intro = -1; CAM.az = az1; CAM.pol = CALM.pol; CAM.ready = true; }
+  } else if (m === "guided" || m === "follow") {
+    const sv = m === "guided" ? stepView(ps) : null, d = m === "guided" ? (ps.lift ? CALM.D * 0.9 : frameDist(sv)) : 26, pref = m === "guided" ? aisleAz(sv, d) : CALM.base;
+    if (ps.moving || ps.phase === "travel") { const f = pose(Math.min(V.total, V.e + Math.min(1.2 * V.speed, 12))); FUT.copy(P(f.p[0], f.p[1], f.p[2] + 1.2)); if (Math.abs(FUT.y - L.y) > 1) FUT.copy(L); } else FUT.copy(L);
+    const vis = choose(L, FUT, d, pref, CAM.ready ? CAM.az : pref, fz, dt), goalPol = transitionPol(L, FUT, d, CAM.ready ? CAM.az : vis.az, vis.pol, fz), rate = vis.forced ? 3.2 : 1.3;
+    if (!CAM.ready) { CAM.az = vis.az; CAM.pol = goalPol; CAM.ready = true; }
+    else { const cap = (vis.forced ? 1.2 : 0.6) * dt; CAM.az += Math.max(-cap, Math.min(cap, wrap(vis.az - CAM.az) * (1 - Math.exp(-dt * rate)))); CAM.pol += (goalPol - CAM.pol) * (1 - Math.exp(-dt * (goalPol < CAM.pol ? 8 : 1.3))); }
+    wantT.copy(L); eyeAt(L, d, CAM.az, CAM.pol, wantE); gv = CAM.ff; omega = (m === "guided" ? 2.7 : 4.2) * (CAM.blockedFor > 0 ? 2.6 : 1);
+  } else if (m === "chase") {   // behind the trolley, turning at most 0.6 rad/s; rises only as much as a wall needs, settles back slowly
+    const d = 14, az = ps.lift ? (CAM.chaseAz ?? CALM.base) : Math.atan2(-V.dirS.x, V.dirS.y); if (CAM.chaseAz == null) CAM.chaseAz = az;
+    CAM.chaseAz += Math.max(-0.6 * dt, Math.min(0.6 * dt, wrap(az - CAM.chaseAz)));
+    let pol = 0.2; for (let q = 1.3; q >= 0.39; q -= 0.15) if (sees(L, eyeAt(L, d, CAM.chaseAz, q), fz)) { pol = q; break; }
+    CAM.chasePol = pol < CAM.chasePol ? pol : Math.min(pol, CAM.chasePol + 0.6 * dt);
+    wantT.copy(L); eyeAt(L, d, CAM.chaseAz, CAM.chasePol, wantE); gv = CAM.ff; omega = 8;
+  } else {   // free, overview, 2D plan: the orbit is the goal; the springs make every change a smooth move
+    if (m === "plan") orbit.tgt.copy(tp); wantT.copy(orbit.tgt); eyeAt(orbit.tgt, orbit.r, orbit.th, orbit.ph, wantE); omega = m === "free" ? 12 : 3.5;
+  }
+  if (!CAM.init || cut) { CAM.eye.copy(wantE); CAM.tgt.copy(wantT); CAM.ev.set(0, 0, 0); CAM.tv.set(0, 0, 0); CAM.init = true; }
+  springFF(CAM.eye, CAM.ev, wantE, gv, omega, dt); springFF(CAM.tgt, CAM.tv, wantT, gv, omega, dt);
+  // guard the rendered eye: blocked for more than a moment -> the smallest tilt that sees the trolley (V7 rescue)
+  if (trip && CAM.intro < 0) { if (sees(L, CAM.eye, fz)) CAM.blockedFor = 0; else { CAM.blockedFor += dt; if (CAM.blockedFor > 0.3) { const d0 = CAM.eye.clone().sub(CAM.tgt), r = d0.length(), az = Math.atan2(d0.x, d0.z), pol = Math.acos(Math.min(1, Math.max(-1, d0.y / r)));
+    for (let k = 1; k <= 18; k++) { const q = pol - k * 0.05; if (q < 0.01) break; const E = eyeAt(CAM.tgt, r, az, q); if (sees(L, E, fz)) { CAM.eye.copy(E); CAM.ev.set(0, 0, 0); CAM.pol = Math.min(CAM.pol, q); CAM.blockedFor = 0; CAM.stats.rescued++; break; } } } } }
+  camera.position.copy(CAM.eye); camera.up.set(0, 1, 0); camera.lookAt(CAM.tgt);
 }
 canvas.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, b: e.button }; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener("pointerup", () => drag = null);
 canvas.addEventListener("pointermove", e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
   if (drag.b === 2 || e.shiftKey) { if (!["free", "overview"].includes(V.mode)) setMode("free"); const f = orbit.r * 0.0016, c = Math.cos(orbit.th), s = Math.sin(orbit.th); orbit.tgt.x += (-dx * c - dy * s) * f; orbit.tgt.z += (dx * s - dy * c) * f; }
   else { if (["guided", "follow", "chase"].includes(V.mode)) setMode("free"); orbit.th -= dx * 0.006; if (V.mode !== "plan") orbit.ph = Math.min(1.5, Math.max(0.08, orbit.ph - dy * 0.005)); } });
-canvas.addEventListener("wheel", e => { e.preventDefault(); orbit.r = Math.min(900, Math.max(4, orbit.r * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); }, { passive: false });
+canvas.addEventListener("wheel", e => { e.preventDefault(); if (["guided", "follow", "chase"].includes(V.mode)) setMode("free"); orbit.r = Math.min(900, Math.max(4, orbit.r * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); }, { passive: false });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 function fly(id) { const b = V.pack.buildings.find(x => x.id === id); if (!b) return; setMode("free"); orbit.tgt.copy(P(b.center[0], b.center[1])); orbit.r = Math.max(b.size[0], b.size[1]) * 1.1; orbit.ph = 0.85; }
 
@@ -192,7 +279,7 @@ document.addEventListener("click", e => { const b = e.target.closest("button"); 
   if (b.dataset.mode) setMode(b.dataset.mode); if (b.dataset.fly) fly(b.dataset.fly);
   if (b.dataset.tab) { const p = V.pack.paths.find(x => x.tab === b.dataset.tab); if (p) selectPath(p.id); }
   if (b.dataset.path) selectPath(b.dataset.path);
-  if (b.dataset.step) { const s = V.steps[+b.dataset.step]; V.e = +b.dataset.step ? s.t0 : 0; setMode("guided"); }
+  if (b.dataset.step) { const s = V.steps[+b.dataset.step]; V.e = +b.dataset.step ? s.t0 : 0; setMode("guided"); CAM.intro = -1; camReset(); }
   if (b.id === "play") V.playing = !V.playing; if (b.id === "rec") record(); if (b.id === "ed-save") save(); if (b.id === "ed-reset") { V.edit = JSON.parse(JSON.stringify(V.path.data)); editorUI(); retime(); }
   if (b.id === "edit") $("#ed").classList.toggle("open");
   if (b.id === "lab") { V.labels = !V.labels; scene.traverse(o => { if (o.userData.label) o.visible = V.labels; }); }
@@ -216,7 +303,7 @@ async function record() {
   rec.onstop = async () => { V.rec = null; $("#rec").classList.remove("on"); $("#rec").textContent = "● Record"; const blob = new Blob(chunks, { type: "video/webm" }), name = `v9-${V.path.id}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.webm`;
     if (OFFLINE) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); return; }
     const r = await fetch("/api/films/upload?name=" + encodeURIComponent(name), { method: "POST", body: blob }).then(x => x.json()).catch(() => ({ ok: false })); $("#ed-msg").textContent = r.ok ? `Take saved: ${name}` : "Take not saved"; };
-  V.rec = rec; V.e = 0; V.playing = true; setMode("guided"); rec.start(1000); $("#rec").classList.add("on"); $("#rec").textContent = "■ Stop"; V.recEnd = V.total + 2;
+  V.rec = rec; V.e = 0; V.playing = true; setMode("guided"); camReset(); CAM.intro = 0; V.recEnd = V.total + 2; rec.start(1000); $("#rec").classList.add("on"); $("#rec").textContent = "■ Stop"; V.recEnd = V.total + 2;
 }
 
 /* ---------- loop ---------- */
@@ -224,7 +311,7 @@ let last = performance.now(), frames = 0, fpsT = last;
 function frame(now) {
   requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
   if (V.ready) {
-    if (V.playing) { V.e += dt * V.speed; if (V.rec && V.e > V.recEnd) V.rec.stop(); if (V.e > V.total + 4) V.e = 0; }
+    if (V.playing && !(V.mode === "guided" && CAM.intro >= 0)) { V.e += dt * V.speed; if (V.rec && V.e > V.recEnd) V.rec.stop(); if (V.e > V.total + 4) V.e = 0; }
     const ps = pose(Math.min(V.e, V.total)), d = new T.Vector2(...ps.dir).normalize(), prev = V.dirS || d; V.dirS = prev.clone().lerp(d, Math.min(1, dt * 6)).normalize(); V.dir = [V.dirS.x, V.dirS.y];
     const yaw = Math.atan2(V.dirS.y, V.dirS.x), agvMode = ps.mode === "agv", tp = P(ps.p[0], ps.p[1], ps.p[2] + (agvMode ? 0.36 : 0));
     V.trolley.position.copy(tp); V.trolley.rotation.y = yaw;
@@ -233,20 +320,14 @@ function frame(now) {
     V.routeMat.uniforms.progress.value = ps.dist; V.routeMat.uniforms.time.value = now / 1000;
     const want2F = V.floor2 === "show" ? 1 : V.floor2 === "hide" ? 0 : ps.p[2] > 0.5 ? 1 : 0.28;   // see through the 2nd floor while the trolley is below
     F2.visible = want2F > 0.01; if (V.f2op !== want2F) { V.f2op = want2F; F2.traverse(o => { for (const m of [].concat(o.material || [])) if (m.userData && "base" in m.userData) { m.opacity = m.userData.base * want2F; m.depthWrite = want2F > 0.9; } }); }
-    if (!["free", "overview"].includes(V.mode)) orbit.tgt.lerp(tp, V.mode === "plan" ? 1 : Math.min(1, dt * 3));
-    const wrap = a2 => Math.atan2(Math.sin(a2), Math.cos(a2));
-    if (V.mode === "follow" || V.mode === "chase") { orbit.th += wrap(-yaw - Math.PI / 2 - orbit.th) * Math.min(1, dt * (V.mode === "chase" ? 1.5 : 0.6)); const cx = orbit.tgt.x + orbit.r * Math.sin(orbit.ph) * Math.sin(orbit.th), cz = orbit.tgt.z + orbit.r * Math.sin(orbit.ph) * Math.cos(orbit.th), need = blockedHeight(ps.p, [cx, -cz], 1, orbit.r * Math.cos(orbit.ph), ps.p[2]);
-      orbit.ph += ((need > orbit.r * Math.cos(orbit.ph) + 0.2 ? Math.acos(Math.min(1, need / orbit.r)) : (V.mode === "chase" ? 1.2 : 0.95)) - orbit.ph) * Math.min(1, dt * 2); }
-    if (V.mode === "guided") { const gg = guidedGoal(ps); orbit.th += wrap(gg.th - orbit.th) * Math.min(1, dt * 0.9); orbit.ph += (gg.ph - orbit.ph) * Math.min(1, dt * 0.9); orbit.r += (30 - orbit.r) * Math.min(1, dt); }
+    camFrame(dt, ps, tp);
     const s = V.steps[ps.step]; $("#cap-n").textContent = `STEP ${ps.step + 1} / ${V.steps.length}  ·  ${ps.phase === "travel" ? (ps.lift ? "ELEVATOR " + (s.lift || "") : (s.mode === "agv" ? "AGV" : "PUSHED BY HAND") + " · " + (+s.dist).toFixed(1) + " m") : "WAIT"}  ·  ${ps.p[2] > 0.5 ? "2ND FLOOR" : "1ST FLOOR"}`;
     $("#cap-t").textContent = s.title; $("#cap-x").textContent = s.caption || ""; $("#clock").textContent = `ENGINE TIME ${mmss(V.e)} / ${mmss(V.total)}  ·  ${ps.dist.toFixed(1)} m  ·  ${V.speed}×${V.dirty ? "  ·  unsaved edits" : ""}`;
     if (document.activeElement !== $("#scrub")) $("#scrub").value = V.e; $("#play").textContent = V.playing ? "❚❚" : "▶";
     document.querySelectorAll("[data-step]").forEach(b => b.classList.toggle("on", +b.dataset.step === ps.step)); drawMini(ps);
   }
-  const sp = Math.sin(orbit.ph), off = new T.Vector3(sp * Math.sin(orbit.th), Math.cos(orbit.ph), sp * Math.cos(orbit.th)).multiplyScalar(orbit.r);
-  camera.position.copy(orbit.tgt).add(off); camera.lookAt(orbit.tgt);
-  const sz = Math.min(220, Math.max(40, orbit.r * 1.3)); Object.assign(sun.shadow.camera, { left: -sz, right: sz, top: sz, bottom: -sz }); sun.shadow.camera.updateProjectionMatrix();
-  sun.position.copy(orbit.tgt).add(new T.Vector3(-90, 160, 70)); sun.target.position.copy(orbit.tgt);
+  const sz = Math.min(220, Math.max(40, camera.position.distanceTo(CAM.tgt) * 1.3)); Object.assign(sun.shadow.camera, { left: -sz, right: sz, top: sz, bottom: -sz }); sun.shadow.camera.updateProjectionMatrix();
+  sun.position.copy(CAM.tgt).add(new T.Vector3(-90, 160, 70)); sun.target.position.copy(CAM.tgt);
   renderer.render(scene, camera);
   frames++; if (now - fpsT > 1000) { V.fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now; $("#fps").textContent = `${V.fps} fps`; }
 }

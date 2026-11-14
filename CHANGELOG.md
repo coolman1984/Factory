@@ -1,5 +1,11 @@
 # سجل التغييرات
 
+## 2026-11-14 — V9 camera: the V7 director
+
+- V9 now uses the Material-Flow V7 guided camera (the owner's choice): route intro, one calm angle per long stretch, high oblique
+  tilt, sight checks against the CAD walls and tall objects with a held clear shot, critically damped springs with feed-forward;
+  Follow and Chase rebuilt on the same rules; smooth moves in Free, Overview and 2D plan (docs/19 §8.1).
+
 ## 2026-11-14 — Material Flow Player V9
 
 - Complete player on the new engine: all V8 tabs (INJ 1, INJ 2, EPS, Press) and 10 paths on the true CAD, both floors with elevator rides, the Factory Engine re-timing paths in the page (edit waits and speeds; save to master data), the V8 look, guided camera, minimap and video takes.

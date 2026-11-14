@@ -115,3 +115,22 @@ V9 is the complete player on the new engine, built from everything the V8 player
   decision 2026-11-14).
 - Checked here: all 10 paths load; offline file 60 fps, live 36–60 fps in headless Chrome on this laptop; engine re-timing and
   save; no page errors.
+
+### 8.1 V7 director camera (2026-11-14)
+
+The owner judged the Material-Flow camera best up to V7 (V7.0–V7.7.1). V9 now uses that camera, converted from V7 units
+(0.3 m) to metres:
+
+| Part | V7 behaviour kept in V9 |
+|---|---|
+| Intro | Top-down over the whole route, rising to an oblique view, then landing on the first trolley shot (6.5 s; the trip waits). |
+| Guided angle | One azimuth per long stretch (≥ 12 m; short pieces borrow the nearest long stretch, so corners never turn the camera): the clearest of 16 angles, kept near the house angle −0.55 rad. |
+| Tilt and distance | High oblique tilt 0.94 rad; distance 1.35 × the stretch, between 0.85 and 1.8 × 34 m. |
+| Sight | Every angle is checked against the CAD walls and tall objects (racks, machines) of the trolley's floor, now and 1.2 s ahead; a clear forced angle is held (no hunting); the tilt on the way must see too; a blocked rendered eye is rescued by the smallest tilt-up. |
+| Motion | Exact critically damped springs for eye and target with trolley-velocity feed-forward (no lag at 10×–60×); turns eased at 1.3/s and capped at 0.6 rad/s (1.2 when forced); a seek or jump is a cut. |
+| Follow / Chase | Follow: same sight logic at 26 m. Chase: 14 m behind, turns ≤ 0.6 rad/s, rises only as far as a wall needs. |
+| Free / Overview / 2D plan | Start from the current view; every change is a smooth spring move. Wheel or drag in a trip camera switches to Free. |
+
+Checked here (headless Chrome, 30×, all 10 paths): no page errors; 36–51 fps; camera cost about 0.3 ms per frame; turn speed
+95th percentile 15–43 deg/s; the one remaining spike per path is the intended cut when the trip loops. Visibility uses a 2D
+wall/object model with heights, not the rendered meshes; low objects (< 1.6 m) and elevators are not obstacles.
