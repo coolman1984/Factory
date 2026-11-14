@@ -6,3 +6,4 @@ events.jsonl
 control/data/
 control/test/.tmp/
 control/test/out/
+viewer/godot/.godot/

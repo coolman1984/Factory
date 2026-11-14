@@ -142,6 +142,7 @@ export class Store {
           const recs = splitBlueprint(q.blueprint || {});
           for (const [type, list] of Object.entries(recs)) list.forEach(d => write(type, idOf(type, d), d));
           for (const [id, sc] of Object.entries(q.scenarios || {})) write("scenario", id, sc.breakdowns && !Array.isArray(sc.breakdowns) ? fromEngineScenario(id, sc) : { ...sc, id });
+          for (const [type, list] of Object.entries(q.extras || {})) { this.#type(type); for (const d of list) write(type, idOf(type, d), d); }
           return q.label || "import blueprint";
         }
         default: this.#fail("unknown_command", `unknown command ${c.type}`);
@@ -213,7 +214,20 @@ export class Store {
     return { file: this.file, revision: this.revision, records: n("records"), changes: n("changes"), commands: n("commands"), runs: n("runs"), run_events: n("run_events"), run_serials: n("run_serials"), counts: this.counts(), engine: ENGINE_VERSION };
   }
   backup(path) { this.db.exec(`VACUUM INTO '${String(path).replace(/'/g, "''")}'`); return path; }
-  exportAll() { const recs = this.records(); return { format: "fc-export", version: 1, revision: this.revision, blueprint: this.blueprint(recs), scenarios: Object.fromEntries(recs.scenario.map(s => [s.id, s.data])) }; }
+  exportAll() { const recs = this.records(); return { format: "fc-export", version: 1, revision: this.revision, blueprint: this.blueprint(recs), scenarios: Object.fromEntries(recs.scenario.map(s => [s.id, s.data])),
+    extras: Object.fromEntries(TYPES.filter(T => !T.section && T.type !== "scenario").map(T => [T.type, recs[T.type].map(r => r.data)])) }; }
+  // Save a run made outside the blueprint model (e.g. one trolley path) with its events, like run() does.
+  saveRun({ scenario, seed = 1, hours = 0, actor = "anon", note = "", model, world, kpis, report, ms = 0 }) {
+    const id = "R" + String((this.db.prepare("SELECT COUNT(*) n FROM runs").get().n || 0) + 1).padStart(4, "0"), tps = model.tickPerSecond;
+    this.db.exec("BEGIN");
+    try {
+      this.db.prepare("INSERT INTO runs (id, at, actor, scenario, seed, hours, revision, engine, model_hash, blueprint_hash, fingerprint, ms, events, kpis, report, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, now(), actor, scenario, seed, hours, this.revision, ENGINE_VERSION, world.modelHash, hash64(canonical(model)), report.fingerprint, ms, world.log.length, JSON.stringify(kpis), JSON.stringify(report), note);
+      const st = this.db.prepare("INSERT INTO run_events (run_id, seq, t, type, mission, station, data) VALUES (?, ?, ?, ?, ?, ?, ?)"); for (const e of world.log) { const { seq, t, type, mission, station, ...rest } = e; st.run(id, seq, t / tps, type, mission ?? null, station ?? null, JSON.stringify(rest)); }
+      this.db.exec("COMMIT");
+    } catch (e) { this.db.exec("ROLLBACK"); throw e; }
+    return id;
+  }
   close() { this.db.close(); }
 }
 

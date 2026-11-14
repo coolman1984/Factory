@@ -76,10 +76,10 @@ test("Control Center UI: pages, editing, guard, undo, palette, map, runs, trace,
     // languages: Arabic (right to left) and Korean, then back to English
     await click("#modal-card [data-m=cancel]").catch(() => {}); await B.ev("document.querySelector('#drawer [data-d=close]') && document.querySelector('#drawer [data-d=close]').click(); true");
     await B.ev("FC.setLang('ar')"); await B.until("document.documentElement.dir === 'rtl' && /لوحة المتابعة/.test(document.querySelector('#side').innerText)");
-    assert.doesNotMatch(await text("#side"), /[A-Za-z]/, "Arabic navigation has no English left"); await click("#side a[data-go=dashboard]"); await B.until("/عنق الزجاجة/.test(document.querySelector('#main').innerText)"); await B.shot(OUT + "13-dashboard-arabic.png");
+    assert.doesNotMatch((await text("#side")).replace(/CAD|3D|AGV/g, ""), /[A-Za-z]/, "Arabic navigation has no English left (abbreviations allowed)"); await click("#side a[data-go=dashboard]"); await B.until("/عنق الزجاجة/.test(document.querySelector('#main').innerText)"); await B.shot(OUT + "13-dashboard-arabic.png");
     await click('#side a[data-type=process]'); await B.ev(`document.querySelector('#main tr[data-id="PROC_TEST"]').click(); true`); await B.until("/المحطة/.test(document.querySelector('#drawer').innerText)"); await B.shot(OUT + "14-process-arabic.png");
     await B.ev("FC.setLang('ko')"); await B.until("document.documentElement.dir === 'ltr' && /대시보드/.test(document.querySelector('#side').innerText) && /스테이션/.test(document.querySelector('#drawer').innerText)");
-    assert.doesNotMatch(await text("#side"), /[A-Za-z]/, "Korean navigation has no English left"); await B.shot(OUT + "15-process-korean.png");
+    assert.doesNotMatch((await text("#side")).replace(/CAD|3D|AGV/g, ""), /[A-Za-z]/, "Korean navigation has no English left (abbreviations allowed)"); await B.shot(OUT + "15-process-korean.png");
     await B.ev("FC.setLang('en')"); await B.until("/Dashboard/.test(document.querySelector('#side').innerText) && /Station entity ID/.test(document.querySelector('#drawer').innerText)");
     assert.deepEqual(B.errors, [], "no page errors: " + JSON.stringify(B.errors));
   } catch (e) { const toasts = await B.ev("[...document.querySelectorAll('.toast')].map(t => t.innerText).join(' | ')").catch(() => ""); e.message += `\n  page errors: ${JSON.stringify(B.errors)}\n  toasts: ${toasts}`; await B.shot(OUT + "failure.png").catch(() => {}); throw e; }

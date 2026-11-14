@@ -1,5 +1,11 @@
 # سجل التغييرات
 
+## 2026-11-14 — Real factory from AutoCAD
+
+- E1-E2 imported from the Y26 AutoCAD layout in true metres: buildings, 9,540 wall/column/marking shapes, 414 objects (injection machines, SMT modules, EPS machines, cranes, racks, pallets, ...), stops and the INJ 1 paths (player plan registered onto the CAD, 96.6% line overlap).
+- Engine timing of every path (path 1: 621 s, 212.9 m) and route clearance against the CAD (path 1 crosses 2 racks), saved in the database.
+- 2D: CAD walls, objects, routes on the Control Center map. 3D: Godot 4.7 viewer (laptop preset) and film renderer with a directed camera; Blender procedural model library (18 models).
+
 ## 2026-11-13 — Factory Control Center
 
 - Master data for every part of the factory (14 types), one SQLite database recording every change (with exact before/after), every command, every run with its events and serial numbers.

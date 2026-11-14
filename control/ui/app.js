@@ -44,7 +44,7 @@ function renderChrome() {
   const bad = new Set(S.problems.map(x => x.type).filter(Boolean)), on = (v, t) => S.view === v && (!t || S.type === t) ? " on" : "";
   $("#side").innerHTML = `<h4>Overview</h4><a data-go="dashboard" class="${on("dashboard")}">Dashboard</a><a data-go="map" class="${on("map")}">Layout map</a>` +
     GROUPS.map(g => `<h4>${esc(g)}</h4>` + TYPES.filter(T => T.group === g).map(T => `<a data-go="type" data-type="${T.type}" class="${on("type", T.type)}"><span>${esc(T.label)}${bad.has(T.type) ? '<span class="dot" title="has problems"></span>' : ""}</span><small>${recs(T.type).length}</small></a>`).join("")).join("") +
-    `<h4>Records</h4><a data-go="runs" class="${on("runs") || on("run")}">Runs</a><a data-go="changes" class="${on("changes")}">Change log</a><a data-go="database" class="${on("database")}">Database</a>`;
+    `<h4>Records</h4><a data-go="runs" class="${on("runs") || on("run")}">Runs</a><a data-go="changes" class="${on("changes")}">Change log</a><a data-go="database" class="${on("database")}">Database</a><a data-go="film" class="${on("film")}">3D &amp; film</a>`;
 }
 function go(view, type = null, extra = {}) { if (S.drawer && !(view === "type" && type === S.drawer.type)) closeDrawer(); S.view = view; S.type = type; Object.assign(S, extra); S.sel = new Set(); renderChrome(); render(); $("#main").scrollTop = 0; location.hash = view + (type ? "/" + type : extra.run ? "/" + extra.run : ""); }
 $("#side").addEventListener("click", e => { const a = e.target.closest("a[data-go]"); if (a) go(a.dataset.go, a.dataset.type || null); });
@@ -60,6 +60,7 @@ function render() {
   if (v === "run") return renderRun(m);
   if (v === "changes") return renderChanges(m);
   if (v === "database") return renderDatabase(m);
+  if (v === "film") return renderFilm(m);
 }
 function cell(T, f, v) {
   if (v == null || v === "") return '<span class="muted">-</span>';
@@ -308,6 +309,20 @@ async function renderMap(m) {
   $("#mf", m).onchange = e => { ms.flows = e.target.checked; drawMap(); }; $("#mv", m).onchange = e => { ms.move = e.target.checked; render(); }; $("#fit", m).onclick = () => { ms.vb = null; drawMap(); };
   drawMap();
 }
+async function renderFilm(m) {
+  const tok = S.seq, [list, st] = await Promise.all([api("/api/films"), api("/api/film-status")]); if (tok !== S.seq) return;
+  const paths = recs("path");
+  m.innerHTML = `<h1>3D &amp; film</h1><p class="sub">The factory in 3D (Godot), built from this database: true CAD walls, columns and objects, and the trolley driven by the Factory Engine timing of a path. 3D in the browser (three.js, like the Material-Flow player) runs smoothly on this laptop; the Godot window is optional; a film renders every frame at full quality (about 7 minutes for a 76 s film on this laptop).</p>
+<div class="bar"><select id="fp">${paths.map(p => `<option value="${esc(p.id)}">${esc(p.data.name || p.id)}</option>`).join("") || "<option value=\"\">(no trolley path)</option>"}</select><a class="btn primary" id="web3d" target="_blank" href="/3d.html?path=${encodeURIComponent(paths[0]?.id || "")}">Open 3D in browser</a><button class="btn" id="live">Godot window</button><button class="btn" id="mk" ${st.rendering ? "disabled" : ""}>${st.rendering ? "Rendering..." : "Render film"}</button>
+<span class="muted">${st.last ? (st.last.ok ? "last film: " + esc(st.last.name) + " (" + st.last.seconds + " s)" : "last film failed: " + esc(st.last.reason)) : ""}</span></div>
+<div class="muted" style="margin:-4px 0 12px">Live keys: Space pause, Left/Right shot, F free camera (W A S D Q E, right mouse to look, Shift fast), 1 / 2 / 3 fly to E1 / E2 / EPS, L labels, H HUD, Esc quit.</div>
+${list.length ? list.map(f => `<div class="panel" style="margin-bottom:16px"><h3>${esc(f.name)} <span class="muted">${f.mb} MB, ${esc(f.at.slice(0, 16).replace("T", " "))}</span></h3><video src="/films/${encodeURIComponent(f.name)}" controls preload="metadata" style="width:100%;max-width:1200px;border-radius:8px;background:#000"></video></div>`).join("") : `<div class="empty">No film yet.</div>`}`;
+  $("#fp", m).onchange = e => { $("#web3d", m).href = "/3d.html?path=" + encodeURIComponent(e.target.value); };
+  $("#live", m).onclick = async () => { const r = await api("/api/live3d", { method: "POST", body: { path: $("#fp", m).value } }); toast(r.ok ? `3D view opening (${r.objects} objects)` : r.reason, r.ok ? "good" : "bad"); };
+  $("#mk", m).onclick = async () => { const r = await api("/api/film", { method: "POST", body: { path: $("#fp", m).value } }); toast(r.ok ? "Film rendering started: it appears here when done" : r.reason, r.ok ? "good" : "bad"); render(); };
+  if (st.rendering) setTimeout(() => { if (S.view === "film") render(); }, 10000);
+}
+
 function drawMap() {
   const L = S.layout, ms = S.mapState, box = $("#map"); if (!box) return;
   const pts = [...L.nodes, ...L.entities.filter(e => e.x != null)]; const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
@@ -315,6 +330,11 @@ function drawMap() {
   ms.vb ||= [minX, -maxY, maxX - minX, maxY - minY];   // y up in the factory, down on screen
   const node = Object.fromEntries(L.nodes.map(n => [n.id, n])), port = Object.fromEntries(L.ports.map(p => [p.id, p])), Y = y => -y;
   let svg = `<svg viewBox="${ms.vb.join(" ")}" xmlns="http://www.w3.org/2000/svg"><defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0 0L10 5L0 10z" fill="#7c3aed"/></marker></defs>`;
+  const CADS = { exterior_wall: ["#475569", 0.45], wall: ["#64748b", 0.3], partition: ["#94a3b8", 0.18], marking: ["#eab308", 0.12], outline: ["#f59e0b", 0.3] };
+  for (const c of L.cad || []) {   // true AutoCAD geometry (metres): one path per layer keeps the map fast
+    if (c.kind === "column") { svg += `<g fill="#334155">${c.segments.map(r => `<rect x="${r[0] - r[2] / 2}" y="${Y(r[1]) - r[3] / 2}" width="${r[2]}" height="${r[3]}"/>`).join("")}</g>`; continue; }
+    const st = CADS[c.kind] || ["#94a3b8", 0.2]; svg += `<path d="${c.segments.map(s => `M${s[0]} ${Y(s[1])}L${s[2]} ${Y(s[3])}`).join("")}" stroke="${st[0]}" stroke-width="${st[1]}" fill="none"><title>${esc(c.id)}</title></path>`;
+  }
   svg += L.edges.map(e => { const a = node[e.a], b = node[e.b]; return a && b ? `<line x1="${a.x}" y1="${Y(a.y)}" x2="${b.x}" y2="${Y(b.y)}" stroke="#cbd5e1" stroke-width="${Math.max(.6, e.width * .8)}" stroke-linecap="round" data-open="edge:${esc(e.id)}"><title>${esc(e.id)} ${e.width} m</title></line>` : ""; }).join("");
   svg += L.nodes.map(n => `<circle cx="${n.x}" cy="${Y(n.y)}" r=".7" fill="#64748b" data-open="node:${esc(n.id)}"><title>${esc(n.id)}</title></circle>`).join("");
   const order = ["site", "zone", "line", "storage", "container", "station", "transporter", "worker"];
@@ -323,6 +343,8 @@ function drawMap() {
     svg += `<g data-ent="${esc(e.id)}" data-open="entity:${esc(e.id)}" transform="translate(${e.x} ${Y(e.y)}) rotate(${-(e.yaw || 0)})" style="cursor:${ms.move ? "move" : "pointer"}"><rect x="${-w / 2}" y="${-d / 2}" width="${w}" height="${d}" rx="${big ? 1.5 : .4}" fill="${CAT_COLOR[cat]}" fill-opacity="${big ? .35 : .9}" stroke="${big ? "#93c5fd" : "#0f172a33"}" stroke-width=".25"/>${["station", "storage", "container", "zone"].includes(cat) ? `<text y="${big ? -d / 2 + 2.6 : .7}" text-anchor="middle" font-size="${big ? 2.4 : 1.6}" fill="${big ? "#1e3a8a" : "#fff"}" pointer-events="none">${esc(e.id.replace(/^(ST_|BUF_|ZONE_|WH_)/, ""))}</text>` : ""}<title>${esc(e.id)} (${cat})</title></g>`;
   }
   if (ms.flows) svg += L.flows.map(f => { const a = port[f.from], b = port[f.to]; return a && b && a.x != null && b.x != null ? `<line x1="${a.x}" y1="${Y(a.y)}" x2="${b.x}" y2="${Y(b.y)}" stroke="#7c3aed" stroke-opacity=".45" stroke-width=".35" marker-end="url(#ar)" data-open="flow:${esc(f.id)}"><title>${esc(f.id)}: ${esc(f.item)}</title></line>` : ""; }).join("");
+  for (const p of L.paths || []) svg += p.routes.filter(r => r && r.length > 1).map(r => `<polyline points="${r.map(q => q[0] + "," + Y(q[1])).join(" ")}" fill="none" stroke="${esc(p.color || "#f59e0b")}" stroke-width=".55" stroke-linejoin="round" stroke-opacity=".9" data-open="path:${esc(p.id)}"><title>${esc(p.name)}${p.clash ? " - " + p.clash + " route clash(es) with CAD objects" : ""}</title></polyline>`).join("");
+  svg += (L.stops || []).map(s => `<g data-open="stop:${esc(s.id)}"><circle cx="${s.x}" cy="${Y(s.y)}" r=".9" fill="#fff" stroke="#7c3aed" stroke-width=".35"/><text x="${s.x + 1.2}" y="${Y(s.y) + .5}" font-size="1.6" fill="#1e1b4b">${esc(s.name)}</text></g>`).join("");
   box.innerHTML = svg + "</svg>"; const el = box.firstChild;
   const toWorld = ev => { const r = el.getBoundingClientRect(), s = Math.max(ms.vb[2] / r.width, ms.vb[3] / r.height), ox = (r.width * s - ms.vb[2]) / 2, oy = (r.height * s - ms.vb[3]) / 2; return [ms.vb[0] - ox + (ev.clientX - r.left) * s, ms.vb[1] - oy + (ev.clientY - r.top) * s]; };
   el.addEventListener("wheel", ev => { ev.preventDefault(); const [wx, wy] = toWorld(ev), k = ev.deltaY > 0 ? 1.15 : 1 / 1.15; ms.vb = [wx - (wx - ms.vb[0]) * k, wy - (wy - ms.vb[1]) * k, ms.vb[2] * k, ms.vb[3] * k]; el.setAttribute("viewBox", ms.vb.join(" ")); }, { passive: false });
@@ -379,7 +401,7 @@ function closePalette() { $("#palette").hidden = true; }
 function palFill() {
   const q = $("#pal-in").value.trim(), ql = q.toLowerCase(), items = [];
   if (/^(set|new|delete|rename|dup|run|undo|redo|go)\b/.test(ql)) items.push({ label: `Run command: ${q}`, hint: "Enter", fn: () => execLine(q) });
-  const pages = [["Dashboard", "dashboard"], ["Layout map", "map"], ["Runs", "runs"], ["Change log", "changes"], ["Database", "database"]];
+  const pages = [["Dashboard", "dashboard"], ["Layout map", "map"], ["Runs", "runs"], ["Change log", "changes"], ["Database", "database"], ["3D & film", "film"]];
   for (const [l, v] of pages) if (!ql || l.toLowerCase().includes(ql)) items.push({ label: l, hint: "page", fn: () => go(v) });
   for (const T of TYPES) if (!ql || T.label.toLowerCase().includes(ql) || T.type.includes(ql)) items.push({ label: T.label, hint: "master data", fn: () => go("type", T.type) });
   if (!ql || "undo".includes(ql)) items.push({ label: "Undo last change", hint: "Ctrl+Z", fn: () => cmd("undo") });
@@ -422,6 +444,6 @@ $("#lang").onchange = e => setLang(e.target.value);
 S.lang = (() => { try { return localStorage.getItem("fc:lang"); } catch { return null; } })() || "en";
 const [v0, t0] = (location.hash.slice(1) || "dashboard").split("/");
 await load();
-if (v0 === "type" && TYPE[t0]) go("type", t0); else if (v0 === "run" && t0) go("run", null, { run: t0 }); else if (["dashboard", "map", "runs", "changes", "database"].includes(v0)) go(v0); else go("dashboard");
+if (v0 === "type" && TYPE[t0]) go("type", t0); else if (v0 === "run" && t0) go("run", null, { run: t0 }); else if (["dashboard", "map", "runs", "changes", "database", "film"].includes(v0)) go(v0); else go("dashboard");
 setLang(S.lang);
 window.FC.ready = true;

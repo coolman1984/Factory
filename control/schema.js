@@ -34,7 +34,9 @@ export const TYPES = [
       { key: "org_parent_id", kind: "ref", ref: "entity", nullable: true, label: "Organisation parent" }, { key: "spatial_parent_id", kind: "ref", ref: "entity", nullable: true, label: "Spatial parent" },
       { key: "prefab_id", kind: "ref", ref: "prefab", nullable: true }, { key: "prefab_version", kind: "text", nullable: true },
       { key: "transform.position_m", kind: "vec3", label: "Position (m)", default: [0, 0, 0] }, { key: "transform.yaw_deg", kind: "number", label: "Yaw (deg)", default: 0 },
-      { key: "capabilities", kind: "tags" }, { key: "storage_capacity.handling_unit_slots", kind: "int", label: "Storage slots", min: 0, nullable: true }] },
+      { key: "capabilities", kind: "tags" }, { key: "storage_capacity.handling_unit_slots", kind: "int", label: "Storage slots", min: 0, nullable: true },
+      { key: "size_m", kind: "vec3", label: "Size of this object (m)", nullable: true }, { key: "model_asset", kind: "text", label: "3D model (GLB)", nullable: true },
+      { key: "source", kind: "text", label: "Source (CAD layer / block)", nullable: true }] },
   { type: "port", label: "Ports", group: "Layout", section: "ports", key: "port_id", columns: ["port_id", "owner_entity_id", "role", "navigation_node_id"],
     help: "Where material enters or leaves a store: linked to a navigation node and the items it accepts.",
     fields: [{ key: "port_id", kind: "text", required: true }, { key: "owner_entity_id", kind: "ref", ref: "entity", required: true }, { key: "role", kind: "enum", options: ["material_in", "material_out"], required: true },
@@ -76,6 +78,23 @@ export const TYPES = [
     help: "The shipping container: inner size and payload, used by the packing plan.",
     fields: [{ key: "container_entity_id", kind: "ref", ref: "entity", filter: { category: "container" }, required: true }, { key: "internal_dimensions_m", kind: "vec3", label: "Inner size (m)" },
       { key: "max_payload_kg", kind: "number", min: 0 }, { key: "packing_plan_status", kind: "text", default: "not_calculated" }] },
+  { type: "cadlayer", label: "CAD layers", group: "Layout", section: null, key: "layer_id", columns: ["layer_id", "label", "kind", "height_m", "count"],
+    help: "Building geometry imported from AutoCAD in true metres (site frame): walls, partitions and columns as line segments or rectangles. The 2D map and the 3D viewer draw these.",
+    fields: [{ key: "layer_id", kind: "text", required: true }, { key: "label", kind: "text" }, { key: "kind", kind: "enum", options: ["exterior_wall", "wall", "partition", "column", "marking", "outline"], required: true, default: "wall" },
+      { key: "height_m", kind: "number", min: 0, default: 3 }, { key: "thickness_m", kind: "number", min: 0, default: 0.2 }, { key: "color", kind: "text", default: "#9aa3ad" },
+      { key: "source_layers", kind: "tags", label: "CAD source layers" }, { key: "count", kind: "int", min: 0, label: "Shapes" },
+      { key: "segments", kind: "json", label: "Segments [x1,y1,x2,y2] or rectangles [x,y,w,d,yaw] (m)" }] },
+  { type: "stop", label: "Stops", group: "Routes", section: null, key: "stop_id", columns: ["stop_id", "name", "symbol", "position_m"],
+    help: "Points a trolley visits (scan PCs, gates, warehouses, lines), in true metres of the site frame.",
+    fields: [{ key: "stop_id", kind: "text", required: true }, { key: "name", kind: "text" }, { key: "symbol", kind: "enum", options: ["result", "mapping", "area", "scan", "gate", "dest"], default: "area" },
+      { key: "position_m", kind: "vec3", label: "Position (m)", required: true, default: [0, 0, 0] }, { key: "floor", kind: "text", default: "1F" }, { key: "device_entity_id", kind: "ref", ref: "entity", nullable: true, label: "Device at the stop" }] },
+  { type: "path", label: "Trolley paths", group: "Routes", section: null, key: "path_id", columns: ["path_id", "name", "trolley_entity_id", "push_speed_mps"],
+    help: "A trolley trip: ordered steps (stop, mode, wait) and the drawn route of each step in true metres. The engine times the trip; the 3D film follows it.",
+    fields: [{ key: "path_id", kind: "text", required: true }, { key: "name", kind: "text" }, { key: "color", kind: "text", default: "#f59e0b" },
+      { key: "trolley_entity_id", kind: "ref", ref: "entity", filter: { category: "transporter" }, nullable: true, label: "Trolley" },
+      { key: "push_speed_mps", kind: "number", min: 0.1, default: 1.0, label: "Push speed (m/s)" }, { key: "agv_speed_mps", kind: "number", min: 0.1, default: 1.2, label: "AGV speed (m/s)" },
+      { key: "steps", kind: "rows", fields: [{ key: "stop", kind: "ref", ref: "stop", required: true }, { key: "mode", kind: "enum", options: ["push", "agv"], required: true }, { key: "wait_s", kind: "number", min: 0, required: true }, { key: "title", kind: "text" }] },
+      { key: "routes", kind: "json", label: "Route points per step [[x,y],...] (m)" }, { key: "captions", kind: "json", label: "Caption text per step" }, { key: "clearance", kind: "json", label: "Clearance vs CAD (objects on the route, walls crossed)" }, { key: "notes", kind: "list" }] },
   { type: "scenario", label: "Scenarios", group: "Scenarios", section: null, key: "id", columns: ["id", "note", "horizon_h", "seed"],
     help: "Run settings: horizon, seed, speeds, handling times, pull/push rules, breakdowns, quality, traffic and shipping. One blueprint, many experiments.",
     fields: [{ key: "id", kind: "text", required: true }, { key: "note", kind: "text" }, { key: "horizon_h", kind: "number", min: 0.01, default: 8 }, { key: "seed", kind: "int", default: 1 },
@@ -117,6 +136,7 @@ export function checkRecord(type, data, exists = () => true) {
       case "refs": if (!Array.isArray(v)) out.push(`${name} must be a list`); else for (const x of v) if (!exists(f.ref, x)) out.push(`${name}: ${f.ref} ${x} does not exist`); break;
       case "tags": case "list": if (!Array.isArray(v) || !v.every(x => typeof x === "string")) out.push(`${name} must be a list of text`); else if (f.options) for (const x of v) if (!f.options.includes(x)) out.push(`${name}: ${x} is not one of ${f.options.join(", ")}`); break;
       case "rows": if (!Array.isArray(v)) out.push(`${name} must be a list`); else v.forEach((row, i) => { for (const sf of f.fields) one(sf, row ? row[sf.key] : undefined, `${name} row ${i + 1}: `); }); break;
+      case "json": break;
     }
   };
   for (const f of T.fields) one(f, getPath(data, f.key), "");

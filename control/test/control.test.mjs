@@ -14,7 +14,7 @@ const fresh = async () => { const s = await Store.open(":memory:"); seed(s); ret
 test("seed: the logic dataset loads through commands with no problems; every type has records", async () => {
   const s = await fresh(), c = s.counts();
   assert.deepEqual(s.problems(), []); assert.equal(s.revision, 2);
-  for (const T of TYPES) assert.ok(c[T.type] > 0, `${T.type} has records`);
+  for (const T of TYPES) if (T.section || T.type === "scenario") assert.ok(c[T.type] > 0, `${T.type} has records`);   // CAD layers, stops and paths belong to a real site
   assert.equal(s.changes().length, 2);
 });
 

@@ -33,6 +33,11 @@
 | `engine/test/`, `engine/scenarios/` | Acceptance tests and illustrative scenarios |
 | [docs/18_CONTROL_CENTER.md](18_CONTROL_CENTER.md) | Factory Control Center: master data, database, control UI, agent interface, tests (English) |
 | `control/` | Control Center: `schema.js` (master data registry), `store.js` (SQLite store, commands, runs), `seed.js`, `server.mjs` (UI + API), `fc.mjs` (command line), `ui/` (page, styles, languages), `test/` |
+| [docs/19_REAL_FACTORY.md](19_REAL_FACTORY.md) | Real factory from AutoCAD: import, 2D/3D, engine timing, route clearance, film (English) |
+| `control/real/` | CAD reader, real-site importer, path engine timing and clearance, scene export, live 3D / film runner |
+| `viewer/blender/`, `viewer/assets/` | Procedural Blender model library and the exported GLB models |
+| `viewer/godot/` | Godot 4.7 viewer and film renderer (world, director, HUD, shaders) |
+| `start-real-factory.cmd` | Real-factory Control Center (port 8766) |
 | `start-control-center.cmd` | Starts the Control Center and opens it in the browser |
 | `material-flow/` | Material Flow player project (V8.3, the first viewer of the engine), merged with its own history; its own README, docs and tools. Company drawings, decks, private scenes and built players stay untracked (`material-flow/.gitignore`) |
 | `package.json` | npm scripts only (`test`, `build`, `validate`, `demo`); no dependencies |
