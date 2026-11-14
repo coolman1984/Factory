@@ -116,6 +116,27 @@ V9 is the complete player on the new engine, built from everything the V8 player
 - Checked here: all 10 paths load; offline file 60 fps, live 36–60 fps in headless Chrome on this laptop; engine re-timing and
   save; no page errors.
 
+### 8.3 V9.1 player shell = the V8 player (2026-11-14)
+
+Code: `control/ui/v9-shell.js` (shell), `control/ui/v9.html` (V8 glass theme). Plans: `node control/real/import-plans.mjs`
+adds each tab's V8 1st-floor plan picture as a `plan` layer (registered to the CAD with the same transform).
+
+| V8 feature | In V9 |
+|---|---|
+| From flat plan to factory | The opening: the tab's plan picture from above with the route and step chips, the factory rises out of it while the camera tilts, then the guided camera lands on the trolley. Home or the ★ step replays it. |
+| Views 2D / 3D / Auto | Right rail (2 / 3 / A): 2D = flat plan (left drag pans), 3D = standing factory, Auto = plan then rise. |
+| Steps list | Left panel (P): ★ opening + every step with its text; current step highlighted, done steps green; click to go there. |
+| Player card | Step title and text, mode badge (pushed by hand, AGV, elevator, at the stop), floor, distance; timeline with a tick per step; previous / play / next; speed 1×–60× (engine seconds per second); save state. |
+| Camera pad (C) | Free / Orbit / Guided / Ride / Director; Orbit, Move, Zoom and Height sticks; lens (mm), speed, smoothing; Top / Front / Side / Iso / Trolley / Reset; shots 1–6 (Shift = save); + Key; Photo (PNG). |
+| Rail tools | Measure (M, two clicks on the floor), Options (camera, fly to, 2nd floor, stop at steps, labels, all paths, plan on the floor, arrows, mini map, glass blur), Engine numbers, Director (D), Studio (E), Record (R), Help (?), Full screen (F). |
+| Floor and markers | V8 ribbon (travelled = teal, next 12 m = orange, ahead = pale, moving chevrons); V8 chips with a marker per stop type (result circle, mapping square, red-striped scan square, area, destination, gate); red lines at handheld-scan stops; glowing halo under the trolley. |
+| Panels fade | After 4 s without movement while playing (V8); H hides every control. |
+
+Trolley: the V8 model at real size (1.24 × 0.70 m); V8 drew it 1.4× larger, wider than the route clearance assumes.
+Collision: the clearance check now also counts a route that scrapes a wall (closer than half the trolley width plus half the
+wall thickness) and covers the 2nd floor; auto-route re-routed those steps on both floors. Measured after: 9 paths keep
+≥ 0.51 m from wall centrelines; eps-kd has one point at 0.38 m beside a stop.
+
 ### 8.2 V9.1 Studio (2026-11-14): editor, director, numbers, light autosave
 
 Open with **✎ Studio** or **E**. Code: `control/ui/v9-studio.js` (the player `v9.js` gives it hooks and an object index).

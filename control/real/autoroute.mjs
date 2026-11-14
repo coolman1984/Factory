@@ -8,16 +8,16 @@ import { Store } from "../store.js";
 import { clearance, runAndSave } from "./path.mjs";
 
 const CELL = 0.25;
-export function grid(entities, cadlayers, box, { wallPad = 0.5, objPad = 0.7 } = {}) {
+export function grid(entities, cadlayers, box, { wallPad = 0.5, objPad = 0.7 } = {}, up = false) {   // up: the 2nd floor (V8-traced walls, 2F objects)
   const [x0, y0, x1, y1] = box, W = Math.ceil((x1 - x0) / CELL), H = Math.ceil((y1 - y0) / CELL), g = new Uint8Array(W * H);
   const mark = (cx0, cy0, cx1, cy1, test) => { for (let j = Math.max(0, Math.floor((cy0 - y0) / CELL)); j <= Math.min(H - 1, Math.floor((cy1 - y0) / CELL)); j++) for (let i = Math.max(0, Math.floor((cx0 - x0) / CELL)); i <= Math.min(W - 1, Math.floor((cx1 - x0) / CELL)); i++) if (test(x0 + (i + 0.5) * CELL, y0 + (j + 0.5) * CELL)) g[j * W + i] = 1; };
-  for (const L of cadlayers.filter(l => ["exterior_wall", "wall", "partition"].includes(l.kind) && !(l.z_m > 0))) for (const [ax, ay, bx, by] of L.segments) {   // 1st-floor walls only
+  for (const L of cadlayers.filter(l => ["exterior_wall", "wall", "partition"].includes(l.kind) && (l.z_m > 0) === up)) for (const [ax, ay, bx, by] of L.segments) {   // the walls of that floor
     if (Math.max(ax, bx) < x0 - 1 || Math.min(ax, bx) > x1 + 1 || Math.max(ay, by) < y0 - 1 || Math.min(ay, by) > y1 + 1) continue;
     const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1e-9;
     mark(Math.min(ax, bx) - wallPad, Math.min(ay, by) - wallPad, Math.max(ax, bx) + wallPad, Math.max(ay, by) + wallPad, (x, y) => { const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2)); return Math.hypot(x - ax - t * dx, y - ay - t * dy) < wallPad; });
   }
   for (const e of entities) {
-    if (!e.size_m || ["zone", "transporter", "worker"].includes(e.category) || ["RFID_GATE", "PC_STATION", "SCANNER", "LIFT"].includes(e.prefab_id) || (e.transform.position_m[2] || 0) > 3) continue;
+    if (!e.size_m || ["zone", "transporter", "worker"].includes(e.category) || ["RFID_GATE", "PC_STATION", "SCANNER", "LIFT", "CRANE_BRIDGE"].includes(e.prefab_id) || ((e.transform.position_m[2] || 0) > 3) !== up) continue;
     const [cx, cy] = e.transform.position_m, a = -(e.transform.yaw_deg || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), hl = e.size_m[0] / 2 + objPad, hd = e.size_m[1] / 2 + objPad, r = Math.hypot(hl, hd);
     if (cx + r < x0 || cx - r > x1 || cy + r < y0 || cy - r > y1) continue;
     mark(cx - r, cy - r, cx + r, cy + r, (x, y) => { const dx = x - cx, dy = y - cy; return Math.abs(dx * c - dy * s) <= hl && Math.abs(dx * s + dy * c) <= hd; });
@@ -53,12 +53,12 @@ export function astar(G, a, b) {
 export function autoRoutePath(path, entities, cadlayers) {
   const routes = (path.routes || []).map(r => (r || []).map(p => [...p])), changed = [];
   for (let i = 1; i < routes.length; i++) {
-    const r = routes[i]; if (!r || r.length < 2 || path.steps?.[i]?.lift || r.some(p => (p[2] || 0) > 0.5)) continue;   // the CAD covers the 1st floor only
-    const c = clearance({ ...path, routes: [r] }, entities, cadlayers); if (!c.objects.length && !c.walls.length) continue;
+    const r = routes[i]; if (!r || r.length < 2 || path.steps?.[i]?.lift) continue; const up = (r[0][2] || 0) > 3; if (r.some(p => ((p[2] || 0) > 3) !== up)) continue;   // one floor per step
+    const c = clearance({ ...path, routes: [r] }, entities, cadlayers); if (!c.objects.length && !c.walls.length && !c.near.length) continue;   // also re-route a step whose trolley would scrape a wall
     const xs = r.map(p => p[0]), ys = r.map(p => p[1]), box = [Math.min(...xs) - 40, Math.min(...ys) - 40, Math.max(...xs) + 40, Math.max(...ys) + 40];
     let nr = null, used = null;   // widest clearance first; never below the trolley's half width (0.4 m)
-    for (const pads of [{ wallPad: 0.5, objPad: 0.7 }, { wallPad: 0.45, objPad: 0.55 }, { wallPad: 0.43, objPad: 0.45 }]) { nr = astar(grid(entities, cadlayers, box, pads), r[0], r.at(-1)); if (nr) { used = pads; break; } }
-    if (nr) { routes[i] = nr.map(p => [p[0], p[1], 0]); changed.push({ step: i, clearance_m: used.objPad, before_m: +len(r).toFixed(1), after_m: +len(nr).toFixed(1), cleared: c.objects.map(o => o.id).concat(c.walls.map(w => "wall@" + w.at.join(","))) }); }
+    for (const pads of [{ wallPad: 0.5, objPad: 0.7 }, { wallPad: 0.45, objPad: 0.55 }, { wallPad: 0.43, objPad: 0.45 }]) { nr = astar(grid(entities, cadlayers, box, pads, up), r[0], r.at(-1)); if (nr) { used = pads; break; } }
+    if (nr) { routes[i] = nr.map(p => [p[0], p[1], up ? r[0][2] : 0]); changed.push({ step: i, clearance_m: used.objPad, before_m: +len(r).toFixed(1), after_m: +len(nr).toFixed(1), cleared: c.objects.map(o => o.id).concat(c.walls.map(w => "wall@" + w.at.join(","))).concat(c.near.length ? [`${c.near.length} points scraping a wall`] : []) }); }
     else changed.push({ step: i, failed: true });
   }
   return { routes, changed };
@@ -72,7 +72,7 @@ export function autoRoute(store, pathId, actor = "auto-route") {
   const after = clearance({ ...P.data, routes }, ents, cad), notes = [...(P.data.notes || []).filter(n => !/^Auto-routed|^Clearance vs CAD/.test(n)),
     `Auto-routed ${new Date().toISOString().slice(0, 10)}: steps ${changed.filter(c => !c.failed).map(c => c.step + 1).join(", ")} rerouted around CAD walls and objects (A*, 0.25 m grid, trolley clearance 0.7 m).`,
     `Clearance vs CAD: ${after.objects.length} object(s) on the route, ${after.walls.length} wall crossing(s).`];
-  const r = store.command({ actor, type: "record.update", payload: { type: "path", id: pathId, set: { routes, notes, clearance: { checked: new Date().toISOString().slice(0, 10), objects_on_route: after.objects, walls_crossed: after.walls, auto_routed: changed } }, label: `auto-route ${pathId}` } });
+  const r = store.command({ actor, type: "record.update", payload: { type: "path", id: pathId, set: { routes, notes, clearance: { checked: new Date().toISOString().slice(0, 10), objects_on_route: after.objects, walls_crossed: after.walls, walls_near: after.near.length, auto_routed: changed } }, label: `auto-route ${pathId}` } });
   if (!r.ok) throw new Error(r.reason);
   const run = runAndSave(store, pathId, actor);
   return { path: pathId, revision: r.revision, changed, clash_after: after.objects.length + after.walls.length, run: run.id, trip_s: run.trip_s, distance_m: run.distance_m };

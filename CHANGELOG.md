@@ -1,5 +1,12 @@
 # سجل التغييرات
 
+## 2026-11-14 — V9.1 player shell from V8, collision fixes
+
+- The V8 player layout and features: flat plan to factory opening, 2D / 3D / Auto views, steps list with texts, player card
+  with step ticks and previous / next, right icon rail, V7 camera pad (sticks, lens, shots, key, photo), measure, options,
+  engine numbers, help, idle fading; V8 floor ribbon, stop markers and scan lines (docs/19 §8.3).
+- Collisions: real-size trolley; clearance counts wall scraping on both floors; auto-route fixed those steps.
+
 ## 2026-11-14 — V9.1 Studio
 
 - Studio in the player (E): move, turn, resize, duplicate, delete and place any object in 3D or 2D; drag stops and route points;

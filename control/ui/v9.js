@@ -22,7 +22,9 @@ const camera = new T.PerspectiveCamera(40, 1, 0.3, 3000);
 scene.add(new T.HemisphereLight(0xffffff, 0x2a3550, 0.9));
 const sun = new T.DirectionalLight(0xfff2e0, 2.2); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 400 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04; scene.add(sun, sun.target);
-const F2 = new T.Group(); scene.add(F2);           // everything of the 2nd floors (fades while the trolley is below)
+const FACT = new T.Group(); scene.add(FACT);       // everything that rises out of the flat plan (walls, columns, objects, 2nd floors)
+const F2 = new T.Group(); FACT.add(F2);            // everything of the 2nd floors (fades while the trolley is below)
+const PLANS = new T.Group(); scene.add(PLANS);     // the V8 plan pictures on the floor (the flat plan)
 const PATHG = new T.Group(); scene.add(PATHG);     // route, stop markers and labels of the selected path
 
 /* ---------- models ---------- */
@@ -52,7 +54,7 @@ function placeObject(o) {   // write one object's current pos / yaw / size into 
 async function addObjectMesh(o) {   // a new object placed in the Studio: its own small mesh group (no re-instancing)
   const md = await model(o.asset.split("/").pop().replace(".glb", "")); if (!md) return false; const g = new T.Group();
   for (const p of md.parts) { const m = new T.Mesh(p.geo, p.mat); m.matrixAutoUpdate = false; m.matrix.copy(p.m); m.castShadow = m.receiveShadow = true; m.userData.objId = o.id; g.add(m); V.pickables.push(m); }
-  (o.pos[2] > 0.5 ? F2 : scene).add(g); V.objIndex[o.id] = { md, mesh: g }; placeObject(o); return true; }
+  (o.pos[2] > 0.5 ? F2 : FACT).add(g); V.objIndex[o.id] = { md, mesh: g }; placeObject(o); return true; }
 function label(text, pos, h, color, group, parent = scene) {
   const c = document.createElement("canvas"), x = c.getContext("2d"), f = 64; x.font = `600 ${f}px Segoe UI, Arial`; const w = Math.ceil(x.measureText(text).width) + 40;
   c.width = w; c.height = f + 30; x.font = `600 ${f}px Segoe UI, Arial`; x.lineWidth = 12; x.strokeStyle = "rgba(10,16,28,.85)"; x.strokeText(text, 20, f); x.fillStyle = color; x.fillText(text, 20, f);
@@ -71,12 +73,16 @@ async function buildFactory(pack) {
   const box = new T.BoxGeometry(1, 1, 1), W = { exterior_wall: [9, 0.25, 0xcfd2d2], wall: [3.4, 0.18, 0xdadcdb], partition: [2.7, 0.1, 0xe6e7e6], outline: [0.55, 0.32, 0xf2b705] };
   const texLoader = new T.TextureLoader(), planUrl = p => (window.V9_PLANS && window.V9_PLANS[p]) || "/" + p;
   for (const [id, l] of Object.entries(pack.cad)) {
-    const parent = l.z > 0 ? F2 : scene;
+    const parent = l.z > 0 ? F2 : FACT;
+    if (l.kind === "plan") { const tab = id.replace(/^PLAN1_/, "").toLowerCase();   // V8 1st-floor plan picture of a tab, registered to the CAD
+      for (const s of l.segments) { if (!s.image) continue; const [x0, y0, x1, y1] = s.rect, t = texLoader.load(planUrl(s.image)); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 8;
+        const pl = new T.Mesh(new T.PlaneGeometry(x1 - x0, y1 - y0), new T.MeshBasicMaterial({ map: t, transparent: true, opacity: 0, depthWrite: false, toneMapped: false })); pl.rotation.x = -Math.PI / 2; pl.position.copy(P((x0 + x1) / 2, (y0 + y1) / 2, 0.035)); pl.renderOrder = 1; pl.userData.tab = tab; PLANS.add(pl);
+        (V.planRect ||= {})[tab] = [x0, y0, x1, y1]; } continue; }
     if (l.kind === "slab") { for (const s of l.segments) { const [x0, y0, x1, y1] = s.rect, w = x1 - x0, d = y1 - y0, c = P((x0 + x1) / 2, (y0 + y1) / 2, l.z);
         if (!s.image) continue;   // the plate frame is not the real floor: only the 2nd-floor drawing is shown
         { const t = texLoader.load(planUrl(s.image)); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 4; const pl = new T.Mesh(new T.PlaneGeometry(w, d), new T.MeshStandardMaterial({ map: t, roughness: 0.8, transparent: true, opacity: 0.8, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 })); pl.rotation.x = -Math.PI / 2; pl.position.copy(c).setY(l.z + 0.02); parent.add(pl); } } continue; }
     if (l.kind === "marking") { const pos = []; for (const s of l.segments) pos.push(s[0], l.z + 0.02, -s[1], s[2], l.z + 0.02, -s[3]); const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); parent.add(new T.LineSegments(geo, new T.LineBasicMaterial({ color: id === "ROAD_MARKINGS" ? 0xeeeeee : 0xe8b407 }))); continue; }
-    if (l.kind === "column") { const md = await model("column"); if (!md) continue; const s = new T.Vector3(); md.box.getSize(s); instanced(md, l.segments.map(r => new T.Matrix4().makeTranslation(r[0], l.z, -r[1]).multiply(new T.Matrix4().makeScale(r[2] / s.x, l.height / s.y, r[3] / s.z)))); continue; }
+    if (l.kind === "column") { const md = await model("column"); if (!md) continue; const s = new T.Vector3(); md.box.getSize(s); instanced(md, l.segments.map(r => new T.Matrix4().makeTranslation(r[0], l.z, -r[1]).multiply(new T.Matrix4().makeScale(r[2] / s.x, l.height / s.y, r[3] / s.z))), FACT); continue; }
     const w = W[l.kind]; if (!w) continue; const hgt = l.z > 0 ? Math.min(l.height, 3) : w[0], y0 = (l.kind === "outline" ? l.height - 0.55 : 0) + l.z;
     const wm = l.kind === "outline" ? window.MFLook.material(T, "paint", { color: new T.Color(w[2]) }) : window.MFLook.material(T, "wall", { color: new T.Color(w[2]) });
     const im = new T.InstancedMesh(box, wm, l.segments.length), M = new T.Matrix4();
@@ -88,18 +94,18 @@ async function buildFactory(pack) {
   await Promise.all(Object.keys(groups).map(model));
   for (const [a, list] of Object.entries(groups)) { const md = await model(a); if (!md) continue; const lo = [], hi = [], loId = [], hiId = [];
     for (const o of list) { const up = o.pos[2] > 0.5 && o.prefab !== "CRANE_BRIDGE"; (up ? hi : lo).push(fit(md, o.size, P(o.pos[0], o.pos[1], o.pos[2]), o.yaw, FITH.has(o.prefab))); (up ? hiId : loId).push(o.id); }
-    if (lo.length) instanced(md, lo, scene, loId); if (hi.length) instanced(md, hi, F2, hiId); }
+    if (lo.length) instanced(md, lo, FACT, loId); if (hi.length) instanced(md, hi, F2, hiId); }
   F2.traverse(o => { if (o.material && !o.isSprite) { o.material = [].concat(o.material).map(m => { const c = m.clone(); c.transparent = true; c.userData.base = c.opacity; return c; }); if (o.material.length === 1) o.material = o.material[0]; } });
   // the hero: V8's Blender trolley (rear covers, 1.4x real size so it stays readable), no people; the AGV for AGV legs
   const [tr, agv] = await Promise.all([model("trolley_v8").then(m => m || model("trolley")), model("agv")]);
-  V.trolley = actorNative(tr, Math.PI / 2); V.agv = actor(agv, [1.4, 0.9, 0.42]);
-  const halo = new T.Mesh(new T.RingGeometry(1.55, 1.85, 48), new T.MeshBasicMaterial({ color: 0xc89bff, transparent: true, opacity: 0.85, depthWrite: false })); halo.rotation.x = -Math.PI / 2; halo.position.y = 0.05; V.trolley.add(halo);
+  V.trolley = actorNative(tr, Math.PI / 2, tr && Math.max(tr.box.max.x - tr.box.min.x, tr.box.max.z - tr.box.min.z) > 1.5 ? 1 / 1.4 : 1); /* real size: V8 drew it 1.4x; the route clearance is for the real 0.8 m wide trolley */ V.agv = actor(agv, [1.4, 0.9, 0.42]);
+  const halo = new T.Mesh(new T.RingGeometry(1.45, 1.75, 64), new T.MeshBasicMaterial({ color: 0xc9fbff, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false })); halo.rotation.x = -Math.PI / 2; halo.position.y = 0.05; V.trolley.add(halo);
   { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), r = g.createRadialGradient(64, 64, 8, 64, 64, 62); r.addColorStop(0, "rgba(10,14,24,.55)"); r.addColorStop(.6, "rgba(10,14,24,.25)"); r.addColorStop(1, "rgba(10,14,24,0)"); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
     const blob = new T.Mesh(new T.PlaneGeometry(2.6, 3.4).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false })); blob.position.y = 0.03; V.trolley.add(blob); }
 }
 function actor(md, size) { const g = new T.Group(); if (md) { const m = md.scene.clone(true); m.applyMatrix4(fit(md, size, new T.Vector3(), 0, true)); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.add(m); } scene.add(g); return g; }
-function actorNative(md, turn = 0) {   // keep the model's own size (V8 trolley), centred on its footprint, standing on the floor
-  const g = new T.Group(); if (md) { const m = md.scene.clone(true), b = md.box, c = new T.Vector3(); b.getCenter(c); m.position.set(-c.x, -b.min.y, -c.z); const pivot = new T.Group(); pivot.rotation.y = turn; pivot.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.add(pivot); } scene.add(g); return g; }
+function actorNative(md, turn = 0, scale = 1) {   // keep the model's own size (V8 trolley), centred on its footprint, standing on the floor
+  const g = new T.Group(); if (md) { const m = md.scene.clone(true), b = md.box, c = new T.Vector3(); b.getCenter(c); m.position.set(-c.x, -b.min.y, -c.z); const pivot = new T.Group(); pivot.rotation.y = turn; pivot.scale.setScalar(scale); pivot.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.add(pivot); } scene.add(g); return g; }
 
 /* ---------- the selected path ---------- */
 const stopsById = () => Object.fromEntries(V.pack.stops.map(s => [s.id, { position_m: s.pos, name: s.name }]));
@@ -107,7 +113,7 @@ function selectPath(id) {
   const p = V.pack.paths.find(x => x.id === id) || V.pack.paths[0]; V.path = p; V.tab = p.tab;
   V.edit = p.data; V.base = V.base && V.base.id === p.id ? V.base : { id: p.id, kpis: null };   // the path record IS the live document (Studio edits it, autosave stores it)
   if (!p.timeline) retime(); else applyTimeline(p.timeline, p.kpis); if (!V.base.kpis) V.base.kpis = { ...V.kpis };
-  tabsUI(); V.e = 0; camReset(); if (V.mode === "guided") CAM.intro = 0; history.replaceState(null, "", `?path=${encodeURIComponent(p.id)}`);
+  tabsUI(); V.e = 0; camReset(); if (V.mode === "guided" && V.view !== "3d") { CAM.intro = 0; V.rise = 0; } else V.rise = 1; history.replaceState(null, "", `?path=${encodeURIComponent(p.id)}`);
   for (const f of V.hooks.path) f(p);
 }
 function retime() {   // the Factory Engine, in this page
@@ -119,8 +125,7 @@ function applyTimeline(tl, k) {
   V.steps = tl.steps.map((s, i) => ({ ...s, title: V.edit.steps[i]?.title || s.title, caption: (V.edit.captions || [])[i] || "" })); V.total = tl.total_s; V.kpis = k || {};
   while (PATHG.children.length) PATHG.remove(PATHG.children[0]);
   buildRoute(); const seen = new Set(); V.steps.forEach((s, i) => { if (seen.has(s.stop)) return; seen.add(s.stop); const st = V.pack.stops.find(x => x.id === s.stop); if (st) stopMarker(st, i); });
-  $("#scrub").max = V.total; $("#title").textContent = V.edit.name; stepsUI();
-  $("#kpi").textContent = `Engine: ${mmss(V.total)} trip · ${k?.distance_m ?? "-"} m (push ${k?.push_m ?? "-"} m, AGV ${k?.agv_m ?? "-"} m) · ${k?.lift_rides || 0} elevator ride(s)`;
+  stepsUI();
   V.miniBox = null; V.wg = null; if (V.e > V.total) V.e = V.total;
   for (const f of V.hooks.timeline) f();
 }
@@ -133,21 +138,21 @@ function buildRoute() {
   V.route = pts; V.cum = cum; V.stepStart = start;
   { let a = [1e9, 1e9], b = [-1e9, -1e9]; for (const p of pts) { a = [Math.min(a[0], p.x), Math.min(a[1], p.y)]; b = [Math.max(b[0], p.x), Math.max(b[1], p.y)]; }
     V.routeC = P((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); V.routeSpan = Math.max(60, b[0] - a[0], b[1] - a[1]); }
-  const pos = [], dist = [], side = [], w = 0.45;
+  const pos = [], dist = [], side = [], w = 0.62;
   for (let k = 0; k < pts.length - 1; k++) { const a = pts[k], b = pts[k + 1]; if (Math.abs(a.z - b.z) > 0.5) { const tube = new T.Mesh(new T.CylinderGeometry(0.35, 0.35, Math.abs(b.z - a.z), 16, 1, true), new T.MeshBasicMaterial({ color: new T.Color(V.edit.color || "#a78bfa"), transparent: true, opacity: 0.35, depthWrite: false })); tube.position.copy(P(a.x, a.y, (a.z + b.z) / 2)); PATHG.add(tube); continue; }
     const n = new T.Vector2(b.x - a.x, b.y - a.y).normalize(), o = new T.Vector2(-n.y, n.x).multiplyScalar(w);
     const quad = [[a.x - o.x, a.y - o.y, a.z, cum[k], 0], [a.x + o.x, a.y + o.y, a.z, cum[k], 1], [b.x + o.x, b.y + o.y, b.z, cum[k + 1], 1], [b.x - o.x, b.y - o.y, b.z, cum[k + 1], 0]];
-    for (const j of [0, 1, 2, 0, 2, 3]) { pos.push(quad[j][0], quad[j][2] + 0.03, -quad[j][1]); dist.push(quad[j][3]); side.push(quad[j][4]); } }
+    for (const j of [0, 1, 2, 0, 2, 3]) { pos.push(quad[j][0], quad[j][2] + 0.05, -quad[j][1]); dist.push(quad[j][3]); side.push(quad[j][4]); } }
   const geo = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(pos, 3)); geo.setAttribute("dist", new T.Float32BufferAttribute(dist, 1)); geo.setAttribute("side", new T.Float32BufferAttribute(side, 1));
-  V.routeMat = new T.ShaderMaterial({ transparent: true, depthWrite: false, uniforms: { progress: { value: 0 }, time: { value: 0 }, col: { value: new T.Color(V.edit.color || "#a78bfa") } },
+  V.routeMat = new T.ShaderMaterial({ transparent: true, depthWrite: false, side: T.DoubleSide, uniforms: { progress: { value: 0 }, time: { value: 0 }, col: { value: new T.Color(V.edit.color || "#a78bfa") } },
     vertexShader: "attribute float dist; attribute float side; varying float vD; varying float vS; void main(){ vD = dist; vS = side; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-    fragmentShader: "uniform float progress; uniform float time; uniform vec3 col; varying float vD; varying float vS; void main(){ float across = abs(vS-0.5)*2.0; float edge = smoothstep(1.0,0.6,across); float done = step(vD, progress); float chev = step(0.6, fract(vD*0.7 - time*0.9 - across*0.25)); float head = exp(-abs(vD-progress)*0.9); float a = edge*(done*0.75 + (1.0-done)*(0.12+0.25*chev)) + head*edge*0.6; gl_FragColor = vec4(mix(col, vec3(1.0), head*0.45), clamp(a,0.0,1.0)); }" });
-  PATHG.add(new T.Mesh(geo, V.routeMat));
+    fragmentShader: "uniform float progress; uniform float time; uniform vec3 col; varying float vD; varying float vS; void main(){ float across = abs(vS-0.5)*2.0; float edge = smoothstep(1.0,0.82,across); float done = step(vD, progress); float ahead = (1.0-done)*step(vD, progress+12.0); float ch = fract(vD*0.55 - across*0.42 - time*0.6*(1.0-done)); float chev = smoothstep(0.0,0.06,ch)*(1.0-smoothstep(0.28,0.36,ch)); vec3 teal = vec3(0.05,0.47,0.52); vec3 pale = vec3(0.55,0.85,0.88); vec3 orange = vec3(1.0,0.62,0.22); vec3 c = done*mix(teal, vec3(0.62,0.97,0.95), chev*0.8) + ahead*mix(orange, vec3(1.0,0.93,0.8), chev*0.85) + (1.0-done-ahead)*mix(pale, vec3(1.0), chev*0.5); float a = edge*(done*0.86 + ahead*0.82 + (1.0-done-ahead)*(0.28+0.22*chev)); gl_FragColor = vec4(c, clamp(a,0.0,1.0)); }" });
+  { const rib = new T.Mesh(geo, V.routeMat); rib.renderOrder = 3; PATHG.add(rib); }   // over the flat-plan picture
   // direction arrows painted on the floor every 4 m (V8 flow lines): which way the trolley goes, readable from any camera
   const tri = new T.ShapeGeometry(new T.Shape([new T.Vector2(0.55, 0), new T.Vector2(-0.35, 0.42), new T.Vector2(-0.15, 0), new T.Vector2(-0.35, -0.42)])).rotateX(-Math.PI / 2), marks = [];
   for (let k = 0; k < pts.length - 1; k++) { const a = pts[k], b = pts[k + 1], L = Math.hypot(b.x - a.x, b.y - a.y); if (L < 0.5 || Math.abs(a.z - b.z) > 0.5) continue; const yaw = Math.atan2(b.y - a.y, b.x - a.x);
     for (let s = (4 - (cum[k] % 4)) % 4 + 1; s < L - 0.6; s += 4) marks.push([a.x + (b.x - a.x) * s / L, a.y + (b.y - a.y) * s / L, a.z, yaw]); }
-  if (marks.length) { const im = new T.InstancedMesh(tri, new T.MeshBasicMaterial({ color: new T.Color(V.edit.color || "#a78bfa").lerp(new T.Color(1, 1, 1), 0.35), transparent: true, opacity: 0.9, depthWrite: false }), marks.length), M = new T.Matrix4();
+  if (marks.length && V.floorArrows) { const im = new T.InstancedMesh(tri, new T.MeshBasicMaterial({ color: new T.Color(V.edit.color || "#a78bfa").lerp(new T.Color(1, 1, 1), 0.35), transparent: true, opacity: 0.9, depthWrite: false }), marks.length), M = new T.Matrix4();
     marks.forEach((m, i) => { M.makeRotationY(m[3]); M.setPosition(m[0], m[2] + 0.06, -m[1]); im.setMatrixAt(i, M); }); im.renderOrder = 2; PATHG.add(im); }
 }
 
@@ -173,17 +178,21 @@ function pose(e) {
    with the V7 intro: top-down over the route, rising to an oblique view, then landing on the first trolley shot. */
 const orbit = { tgt: new T.Vector3(), r: 60, th: -0.7, ph: 0.9 }; let drag = null;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)), sm01 = x => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); }, lerp = (a, b, u) => a + (b - a) * u;
-const CALM = { base: -0.55, pol: 0.94, D: 34, long: 12, intro: 6.5 };
+const CALM = { base: -0.55, pol: 0.94, D: 34, long: 12, intro: 8.5 };
+function planFit() {   // the camera distance that shows the whole flat plan of this tab (V8 2D view)
+  const r = V.planRect?.[V.tab], b = r || [V.routeC.x - V.routeSpan / 2, -V.routeC.z - V.routeSpan / 2, V.routeC.x + V.routeSpan / 2, -V.routeC.z + V.routeSpan / 2];
+  const w = b[2] - b[0], h = b[3] - b[1], k = 2 * Math.tan(camera.fov * Math.PI / 360);
+  return { c: P((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, 0), r: Math.max(h, w / camera.aspect) * 1.06 / k }; }
 const OFFS = [0, .26, -.26, .52, -.52, .79, -.79, 1.05, -1.05, 1.57, -1.57, Math.PI], POLS = [.94, .72, .5, 1.15, 1.3, 1.45, .3, .12, .001];
 const CAM = { eye: new T.Vector3(), tgt: new T.Vector3(), ev: new T.Vector3(), tv: new T.Vector3(), ff: new T.Vector3(), last: null, az: CALM.base, pol: CALM.pol, ready: false, init: false,
   choice: { az: 0, pol: CALM.pol, forced: false, at: 0 }, chosen: false, clock: 0, prefSince: -1, aisle: new Map(), dist: new Map(), intro: -1, chaseAz: null, chasePol: 1.2, blockedFor: 0, stats: { rescued: 0, forced: 0 } };
 V.cam = CAM;
 function camReset() { CAM.ready = false; CAM.chosen = false; CAM.prefSince = -1; CAM.aisle.clear(); CAM.dist.clear(); CAM.chaseAz = null; CAM.last = null; CAM.init = false; }
 function setMode(m) {
-  if (CAM.init && ["free", "overview", "plan"].includes(m)) { const d = CAM.eye.clone().sub(CAM.tgt), r = Math.max(0.5, d.length()); orbit.tgt.copy(CAM.tgt); orbit.r = r; orbit.th = Math.atan2(d.x, d.z); orbit.ph = Math.acos(Math.min(1, Math.max(-1, d.y / r))); }
+  if (CAM.init && ["free", "orbit", "overview", "plan"].includes(m)) { const d = CAM.eye.clone().sub(CAM.tgt), r = Math.max(0.5, d.length()); orbit.tgt.copy(CAM.tgt); orbit.r = r; orbit.th = Math.atan2(d.x, d.z); orbit.ph = Math.acos(Math.min(1, Math.max(-1, d.y / r))); }
   if (m !== "guided") CAM.intro = -1; if (m !== V.mode) { CAM.ready = false; CAM.chosen = false; CAM.chaseAz = null; }
   V.mode = m; document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
-  if (m === "plan") { orbit.ph = 0.02; orbit.r = Math.max(70, Math.min(orbit.r, 160)); orbit.th = 0; }
+  if (m === "plan") { const f = planFit(); orbit.tgt.copy(f.c); orbit.r = f.r; orbit.ph = 0.001; orbit.th = 0; }
   if (m === "overview") { orbit.tgt.copy(P(V.site.c[0], V.site.c[1])); orbit.r = Math.max(...V.site.s) * 1.25; orbit.ph = 0.82; orbit.th = -0.75; } if (m === "free") orbit.ph = Math.max(orbit.ph, 0.3); }
 function wallGrid(floorZ) { V.wg ||= {}; const up = floorZ > 0.5, key = up ? "2F" : "1F"; if (V.wg[key]) return V.wg[key]; const g = new Map(), H = { exterior_wall: 9, wall: 3.4, partition: 2.7 };
   const put = sg => { for (let x = Math.floor(Math.min(sg[0], sg[2]) / 5); x <= Math.floor(Math.max(sg[0], sg[2]) / 5); x++) for (let y = Math.floor(Math.min(sg[1], sg[3]) / 5); y <= Math.floor(Math.max(sg[1], sg[3]) / 5); y++) { const k = x + "," + y; (g.get(k) || g.set(k, []).get(k)).push(sg); } };
@@ -253,8 +262,9 @@ function camStep(dt, ps, tp) {
   CAM.last = L.clone(); if (cut) CAM.ff.set(0, 0, 0);
   const m = V.mode, trip = ["guided", "follow", "chase"].includes(m);
   if (m === "guided" && CAM.intro >= 0) {   // V7 intro: over the whole route top-down, rise to an oblique view, land on the first shot
-    CAM.intro += dt; const e1 = sm01(CAM.intro / 3.5), u = sm01((CAM.intro - (CALM.intro - 2.5)) / 2.5), sv = stepView(ps), d = frameDist(sv), az1 = aisleAz(sv, d);
-    wantT.copy(V.routeC).lerp(L, u); const dd = lerp(V.routeSpan * lerp(1.25, 1.1, e1), d, u), az = lerp(-0.5 * e1, az1, u), pol = lerp(lerp(0.001, 1, e1), CALM.pol, u);
+    // V8 "From flat plan to factory": the flat plan from above (2.5 s), the replica rises while the camera tilts (3 s), then lands on the trolley
+    CAM.intro += dt; const e1 = sm01((CAM.intro - 2.5) / 3), u = sm01((CAM.intro - (CALM.intro - 2.5)) / 2.5), sv = stepView(ps), d = frameDist(sv), az1 = aisleAz(sv, d), pf = planFit(); V.rise = e1;
+    wantT.copy(pf.c).lerp(L, u); const dd = lerp(pf.r * lerp(1, 0.85, e1), d, u), az = lerp(-0.5 * e1, az1, u), pol = lerp(lerp(0.001, 1, e1), CALM.pol, u);
     eyeAt(wantT, dd, az, pol, wantE); omega = 9; if (CAM.intro >= CALM.intro) { CAM.intro = -1; CAM.az = az1; CAM.pol = CALM.pol; CAM.ready = true; }
   } else if (m === "guided" || m === "follow") {
     const sv = m === "guided" ? stepView(ps) : null, d = m === "guided" ? (ps.lift ? CALM.D * 0.9 : frameDist(sv)) : 26, pref = m === "guided" ? aisleAz(sv, d) : CALM.base;
@@ -270,7 +280,8 @@ function camStep(dt, ps, tp) {
     CAM.chasePol = pol < CAM.chasePol ? pol : Math.min(pol, CAM.chasePol + 0.6 * dt);
     wantT.copy(L); eyeAt(L, d, CAM.chaseAz, CAM.chasePol, wantE); gv = CAM.ff; omega = 8;
   } else {   // free, overview, 2D plan: the orbit is the goal; the springs make every change a smooth move
-    if (m === "plan" && !V.studioOpen) orbit.tgt.copy(tp); wantT.copy(orbit.tgt); eyeAt(orbit.tgt, orbit.r, orbit.th, orbit.ph, wantE); omega = m === "free" ? 12 : 3.5;
+    if (m === "orbit") orbit.tgt.lerp(L, 1 - Math.exp(-dt * 8));   // V7 Orbit: turn around the trolley while it moves
+    wantT.copy(orbit.tgt); eyeAt(orbit.tgt, orbit.r, orbit.th, orbit.ph, wantE); omega = m === "free" || m === "orbit" ? (V.freeOmega || 12) : 3.5;
   }
   if (!CAM.init || cut) { CAM.eye.copy(wantE); CAM.tgt.copy(wantT); CAM.ev.set(0, 0, 0); CAM.tv.set(0, 0, 0); CAM.init = true; }
   springFF(CAM.eye, CAM.ev, wantE, gv, omega, dt); springFF(CAM.tgt, CAM.tv, wantT, gv, omega, dt);
@@ -282,32 +293,20 @@ function camStep(dt, ps, tp) {
 canvas.addEventListener("pointerdown", e => { drag = { x: e.clientX, y: e.clientY, b: e.button }; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener("pointerup", () => drag = null);
 canvas.addEventListener("pointermove", e => { if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
-  if (drag.b === 2 || e.shiftKey) { if (!["free", "overview"].includes(V.mode)) setMode("free"); const f = orbit.r * 0.0016, c = Math.cos(orbit.th), s = Math.sin(orbit.th); orbit.tgt.x += (-dx * c - dy * s) * f; orbit.tgt.z += (dx * s - dy * c) * f; }
-  else { if (["guided", "follow", "chase"].includes(V.mode)) setMode("free"); orbit.th -= dx * 0.006; if (V.mode !== "plan") orbit.ph = Math.min(1.5, Math.max(0.08, orbit.ph - dy * 0.005)); } });
+  if (drag.b === 2 || e.shiftKey || V.mode === "plan") { if (!["free", "overview"].includes(V.mode)) setMode("free"); const f = orbit.r * 0.0016, c = Math.cos(orbit.th), s = Math.sin(orbit.th); orbit.tgt.x += (-dx * c - dy * s) * f; orbit.tgt.z += (dx * s - dy * c) * f; }
+  else { if (["guided", "follow", "chase", "director"].includes(V.mode)) setMode("free"); orbit.th -= dx * 0.006; if (V.mode !== "plan") orbit.ph = Math.min(1.5, Math.max(0.08, orbit.ph - dy * 0.005)); } });
 canvas.addEventListener("wheel", e => { e.preventDefault(); if (["guided", "follow", "chase"].includes(V.mode)) setMode("free"); orbit.r = Math.min(900, Math.max(4, orbit.r * (e.deltaY > 0 ? 1.12 : 1 / 1.12))); }, { passive: false });
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 function fly(id) { const b = V.pack.buildings.find(x => x.id === id); if (!b) return; setMode("free"); orbit.tgt.copy(P(b.center[0], b.center[1])); orbit.r = Math.max(b.size[0], b.size[1]) * 1.1; orbit.ph = 0.85; }
 
 /* ---------- UI: tabs, steps, editor (engine in the page), minimap, takes ---------- */
-function tabsUI() {
-  $("#tabs").innerHTML = TABS.map(([id, name]) => `<button data-tab="${id}" class="${V.tab === id ? "on" : ""}">${name}</button>`).join("") + `<span class="sep"></span>` +
-    V.pack.paths.filter(p => p.tab === V.tab).map(p => `<button data-path="${esc(p.id)}" class="${V.path.id === p.id ? "on" : ""}" title="${esc(p.data.name)}">${esc(p.data.name.split(" · ")[0] || p.id)} · ${esc((p.data.name.split(" · ")[1] || p.data.name).slice(0, 34))}</button>`).join("");
-}
-function stepsUI() { $("#steps").innerHTML = V.steps.map((s, i) => `<button data-step="${i}"><b>${i + 1}</b> ${esc(s.title)}${s.lift ? " ⇅" : ""}</button>`).join(""); }
-function tip(msg, ms = 3500) { const t = $("#tip"); if (!t) return; t.textContent = msg; t.classList.add("on"); clearTimeout(tip.h); tip.h = setTimeout(() => t.classList.remove("on"), ms); }
-document.addEventListener("click", e => { const b = e.target.closest("button"); if (!b || b.closest("#studio, #stb, #ctx")) return;
-  if (b.dataset.mode) { if (b.dataset.mode === "director" && !(V.edit.director?.keys || []).length) tip("No camera keys yet: open the Studio, Director tab, and add keys (K)"); else setMode(b.dataset.mode); } if (b.dataset.fly) fly(b.dataset.fly);
-  if (b.dataset.tab) { const p = V.pack.paths.find(x => x.tab === b.dataset.tab); if (p) selectPath(p.id); }
-  if (b.dataset.path) selectPath(b.dataset.path);
-  if (b.dataset.step) { const s = V.steps[+b.dataset.step]; V.e = +b.dataset.step ? s.t0 : 0; if (!["director", "free", "plan"].includes(V.mode)) setMode("guided"); CAM.intro = -1; camReset(); }
-  if (b.id === "play") V.playing = !V.playing; if (b.id === "rec") record();
-  if (b.id === "lab") { V.labels = !V.labels; b.classList.toggle("on", V.labels); scene.traverse(o => { if (o.userData.label) o.visible = V.labels; }); }
-  if (b.id === "f2") { V.floor2 = { auto: "show", show: "hide", hide: "auto" }[V.floor2]; b.textContent = "2F: " + V.floor2; }
-  if (b.dataset.speed) { V.speed = +b.dataset.speed; document.querySelectorAll("[data-speed]").forEach(x => x.classList.toggle("on", x === b)); } });
-$("#scrub").addEventListener("input", e => { V.e = +e.target.value; });
-addEventListener("keydown", e => { if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) || e.ctrlKey || e.metaKey || e.altKey) return; if (e.key === " ") { V.playing = !V.playing; e.preventDefault(); } const m = { g: "guided", f: "follow", c: "chase", v: "overview", p: "plan", o: "free", d: "director" }[e.key]; if (m) setMode(m); if (e.key === "r") record(); });
+function tabsUI() { V.ui?.tabs?.(); }     // the V8 shell (v9-shell.js) draws the top bar, steps list, card and timeline
+function stepsUI() { V.ui?.steps?.(); }
+function tip(msg, ms = 3500) { if (V.ui?.tip) return V.ui.tip(msg, ms); }
+function seekStep(i) { const s = V.steps[i]; if (!s) return; V.e = i ? s.t0 : 0; if (!["director", "free", "plan", "orbit"].includes(V.mode)) setMode("guided"); CAM.intro = -1; V.rise = 1; camReset(); }
+function playIntro() { V.e = 0; V.playing = true; V.view = "auto"; setMode("guided"); camReset(); CAM.intro = 0; V.rise = 0; }
 function drawMini(ps) {
-  const cv = $("#mini"), x = cv.getContext("2d"), W = cv.width, H = cv.height; if (!V.miniBox) { let mn = [1e9, 1e9], mx = [-1e9, -1e9]; for (const p of V.route) { mn = [Math.min(mn[0], p.x), Math.min(mn[1], p.y)]; mx = [Math.max(mx[0], p.x), Math.max(mx[1], p.y)]; } V.miniBox = [mn[0] - 14, mn[1] - 14, mx[0] + 14, mx[1] + 14]; }
+  const cv = $("#minic"); if (!cv || !cv.offsetParent) return; const x = cv.getContext("2d"), W = cv.width, H = cv.height; if (!V.miniBox) { let mn = [1e9, 1e9], mx = [-1e9, -1e9]; for (const p of V.route) { mn = [Math.min(mn[0], p.x), Math.min(mn[1], p.y)]; mx = [Math.max(mx[0], p.x), Math.max(mx[1], p.y)]; } V.miniBox = [mn[0] - 14, mn[1] - 14, mx[0] + 14, mx[1] + 14]; }
   const [x0, y0, x1, y1] = V.miniBox, sc = Math.min((W - 16) / (x1 - x0), (H - 16) / (y1 - y0)), ox = (W - (x1 - x0) * sc) / 2, oy = (H - (y1 - y0) * sc) / 2, tx = p => [ox + (p[0] - x0) * sc, H - oy - (p[1] - y0) * sc], up = ps.p[2] > 0.5;
   x.clearRect(0, 0, W, H); x.lineWidth = 1; x.strokeStyle = "rgba(220,230,245,.55)"; x.beginPath();
   for (const l of Object.values(V.pack.cad)) if (["exterior_wall", "wall", "partition"].includes(l.kind) && (l.z > 0.5) === up) for (const s of l.segments) { if (Math.max(s[0], s[2]) < x0 || Math.min(s[0], s[2]) > x1 || Math.max(s[1], s[3]) < y0 || Math.min(s[1], s[3]) > y1) continue; const a = tx(s), b = tx([s[2], s[3]]); x.moveTo(a[0], a[1]); x.lineTo(b[0], b[1]); }
@@ -319,10 +318,10 @@ async function record() {
   if (V.rec) { V.rec.stop(); return; } if (!window.MediaRecorder) return;
   const type = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)), chunks = [], rec = new MediaRecorder(canvas.captureStream(30), { mimeType: type, videoBitsPerSecond: 12e6 });
   rec.ondataavailable = e => e.data.size && chunks.push(e.data);
-  rec.onstop = async () => { V.rec = null; $("#rec").classList.remove("on"); $("#rec").textContent = "● Record"; const blob = new Blob(chunks, { type: "video/webm" }), name = `v9-${V.path.id}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.webm`;
+  rec.onstop = async () => { V.rec = null; V.ui?.rec?.(false); const blob = new Blob(chunks, { type: "video/webm" }), name = `v9-${V.path.id}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "")}.webm`;
     if (OFFLINE) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.click(); return; }
     const r = await fetch("/api/films/upload?name=" + encodeURIComponent(name), { method: "POST", body: blob }).then(x => x.json()).catch(() => ({ ok: false })); tip(r.ok ? `Take saved: ${name}` : "Take not saved"); };
-  const dir = (V.edit.director?.keys || []).length; V.rec = rec; V.e = 0; V.playing = true; setMode(dir ? "director" : "guided"); camReset(); CAM.intro = dir ? -1 : 0; V.recEnd = V.total + 2; rec.start(1000); $("#rec").classList.add("on"); $("#rec").textContent = "■ Stop"; V.recEnd = V.total + 2;
+  const dir = (V.edit.director?.keys || []).length; V.rec = rec; V.e = 0; V.playing = true; setMode(dir ? "director" : "guided"); camReset(); CAM.intro = dir ? -1 : 0; V.recEnd = V.total + 2; rec.start(1000); V.ui?.rec?.(true);
 }
 
 /* ---------- loop ---------- */
@@ -336,19 +335,20 @@ function frame(now) {
     V.trolley.position.copy(tp); V.trolley.rotation.y = yaw; V.ps = ps;
     V.agv.visible = agvMode; if (agvMode) { V.agv.position.copy(P(ps.p[0], ps.p[1], ps.p[2])); V.agv.rotation.y = yaw; }
     V.routeMat.uniforms.progress.value = ps.dist; V.routeMat.uniforms.time.value = now / 1000;
-    const want2F = V.floor2 === "show" ? 1 : V.floor2 === "hide" ? 0 : ps.p[2] > 0.5 ? 1 : 0.28;   // see through the 2nd floor while the trolley is below
+    // flat plan (V8): 2D view = flat; Auto view during the opening = flat, then the replica rises; 3D = standing
+    const intro = V.mode === "guided" && CAM.intro >= 0, flatT = V.view === "2d" ? 1 : intro ? 1 - (V.rise || 0) : 0;
+    V.flat = intro ? flatT : (V.flat ?? flatT) + (flatT - (V.flat ?? flatT)) * Math.min(1, dt * 4); FACT.scale.y = Math.max(0.012, 1 - V.flat);
+    for (const pl of PLANS.children) { const o = pl.userData.tab === V.tab ? Math.max(V.flat, V.planFloor ? 0.45 : 0) : V.planFloor ? 0.3 : 0; pl.material.opacity = o; pl.visible = o > 0.01; }
+    const want2F = V.flat > 0.5 ? 0 : V.floor2 === "show" ? 1 : V.floor2 === "hide" ? 0 : ps.p[2] > 0.5 ? 1 : 0.28;   // see through the 2nd floor while the trolley is below
     F2.visible = want2F > 0.01; if (V.f2op !== want2F) { V.f2op = want2F; F2.traverse(o => { for (const m of [].concat(o.material || [])) if (m.userData && "base" in m.userData) { m.opacity = m.userData.base * want2F; m.depthWrite = want2F > 0.9; } }); }
     camFrame(dt, ps, tp);
     for (const f of V.hooks.frame) f(dt, ps, now);
-    const s = V.steps[ps.step]; $("#cap-n").textContent = `STEP ${ps.step + 1} / ${V.steps.length}  ·  ${ps.phase === "travel" ? (ps.lift ? "ELEVATOR " + (s.lift || "") : (s.mode === "agv" ? "AGV" : "PUSHED BY HAND") + " · " + (+s.dist).toFixed(1) + " m") : "WAIT"}  ·  ${ps.p[2] > 0.5 ? "2ND FLOOR" : "1ST FLOOR"}`;
-    $("#cap-t").textContent = s.title; $("#cap-x").textContent = V.edit.captions?.[ps.step] || ""; $("#clock").textContent = `ENGINE TIME ${mmss(V.e)} / ${mmss(V.total)}  ·  ${ps.dist.toFixed(1)} m  ·  ${V.speed}×`;
-    if (document.activeElement !== $("#scrub")) $("#scrub").value = V.e; $("#play").textContent = V.playing ? "❚❚" : "▶";
-    document.querySelectorAll("[data-step]").forEach(b => b.classList.toggle("on", +b.dataset.step === ps.step)); drawMini(ps);
+    V.ui?.frame?.(ps, intro); drawMini(ps);
   }
   const sz = Math.min(220, Math.max(40, camera.position.distanceTo(CAM.tgt) * 1.3)); Object.assign(sun.shadow.camera, { left: -sz, right: sz, top: sz, bottom: -sz }); sun.shadow.camera.updateProjectionMatrix();
   sun.position.copy(CAM.tgt).add(new T.Vector3(-90, 160, 70)); sun.target.position.copy(CAM.tgt);
   renderer.render(scene, camera);
-  frames++; if (now - fpsT > 1000) { V.fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now; $("#fps").textContent = `${V.fps} fps`; }
+  frames++; if (now - fpsT > 1000) { V.fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now; }
 }
 function resize() { const w = innerWidth, h = innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
 addEventListener("resize", resize); resize();
@@ -357,10 +357,9 @@ addEventListener("resize", resize); resize();
     // let later scripts (the Studio) register their hooks first: wait until the whole page is parsed
     await new Promise(r => document.readyState === "complete" ? setTimeout(r, 0) : addEventListener("DOMContentLoaded", () => r(), { once: true }));
     V.pack = window.V9_PACK || await (await fetch("/api/scene3d")).json(); if (V.pack.error) throw new Error(V.pack.error);
-    $("#sub").textContent = `${V.pack.factory.name} · ${V.pack.objects.length} objects from CAD · ${V.pack.paths.length} paths · Factory Engine ${FE.ENGINE_VERSION || ""}${OFFLINE ? " · offline file" : " · live master data"}`;
-    V.api = { T, scene, camera, renderer, canvas, P, F2, PATHG, CAM, orbit, selectPath, retime, applyTimeline, setMode, camReset, pose, stopsById, placeObject, addObjectMesh, model, label, tip, tabsUI, stepsUI, esc, mmss, eyeAt, FITH, fit, OFFLINE };
+    V.api = { FE, record, fly, seekStep, playIntro, planFit, FACT, PLANS, T, scene, camera, renderer, canvas, P, F2, PATHG, CAM, orbit, selectPath, retime, applyTimeline, setMode, camReset, pose, stopsById, placeObject, addObjectMesh, model, label, tip, tabsUI, stepsUI, esc, mmss, eyeAt, FITH, fit, OFFLINE };
     for (const f of V.hooks.ready) await f();   // the Studio restores autosaved edits here, before the first path is shown
-    await buildFactory(V.pack); selectPath(q.get("path") || V.pack.paths[0].id); setMode(q.get("mode") || "guided"); V.ready = true; $("#loading").remove();
+    await buildFactory(V.pack); V.view = q.get("view") || "auto"; selectPath(q.get("path") || V.pack.paths[0].id); setMode(q.get("mode") || (V.view === "2d" ? "plan" : "guided")); V.ready = true; $("#loading").remove();
     for (const f of V.hooks.built || []) f();
   } catch (err) { $("#loading").textContent = "Could not build V9: " + err.message; console.error(err); }
 })();

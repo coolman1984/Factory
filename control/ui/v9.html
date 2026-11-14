@@ -3,78 +3,197 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Material Flow Player V9</title>
+<title>Material Flow Player V9</title><link rel="icon" href="data:,">
 <style>
-  :root { --glass: rgba(14, 20, 32, .74); --line: rgba(255, 255, 255, .14); --acc: #c89bff; --ink: #eef3fb; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #dfe7f1; font: 13px/1.4 "Segoe UI", system-ui, sans-serif; color: var(--ink); }
-  #c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; }
-  .glass { position: fixed; z-index: 3; background: var(--glass); backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 12px; }
-  #head { top: 14px; left: 14px; padding: 10px 14px; max-width: 30vw; } #head .v { color: var(--acc); font-weight: 700; margin-right: 8px; }
-  #head b { font-size: 15px; } #head small { display: block; opacity: .75; margin-top: 2px; } #kpi { margin-top: 6px; color: #ffe1a6; font-size: 12px; }
-  #tabs { top: 14px; left: calc(30vw + 30px); padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(36vw - 30px); } #tabs .sep { width: 1px; background: var(--line); margin: 0 4px; }
-  #tools { top: 14px; right: 14px; padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 40vw; } #tools button { padding: 6px 8px; }
-  #tabs { max-width: calc(100vw - 30vw - 40vw - 70px) !important; }
-  button { background: rgba(255, 255, 255, .06); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; cursor: pointer; font: inherit; }
-  button:hover { background: rgba(255, 255, 255, .14); } button.on { background: var(--acc); color: #1b1030; border-color: var(--acc); font-weight: 600; }
-  #cap { left: 14px; bottom: 74px; padding: 12px 16px; max-width: min(620px, 56vw); border-left: 5px solid var(--acc); }
-  #cap-n { color: var(--acc); font-size: 11px; font-weight: 700; letter-spacing: .04em; } #cap-t { font-size: 22px; font-weight: 600; margin: 2px 0; } #cap-x { opacity: .88; }
-  #bar { left: 14px; right: 14px; bottom: 14px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
-  #scrub { flex: 1; accent-color: var(--acc); } #clock { white-space: nowrap; font-variant-numeric: tabular-nums; } #fps { opacity: .7; min-width: 52px; text-align: right; }
-  #mini { top: 112px; right: 14px; } #rec.on { background: #e5484d; border-color: #e5484d; color: #fff; }
-  #steps { right: 14px; bottom: 74px; padding: 6px; display: flex; flex-direction: column; gap: 3px; max-height: 40vh; overflow: auto; }
-  #steps button { text-align: left; } #steps b { color: var(--acc); margin-right: 6px; } #steps button.on b { color: #1b1030; }
-  #ed { top: 112px; left: 14px; width: 330px; max-height: calc(100vh - 330px); overflow: auto; padding: 10px 12px; display: none; } #ed.open { display: block; }
-  #ed h4 { margin: 6px 0 6px; font-size: 12px; color: var(--acc); text-transform: uppercase; letter-spacing: .05em; } #ed .row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
-  #ed label { display: flex; flex-direction: column; font-size: 11px; opacity: .9; } #ed label.w { flex-direction: row; justify-content: space-between; align-items: center; gap: 8px; margin: 2px 0; }
-  #ed input { width: 78px; background: rgba(255,255,255,.08); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; } #ed .muted { opacity: .75; font-size: 11px; margin-top: 4px; }
-  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #dfe7f1; color: #1d2a44; font-size: 16px; z-index: 5; }
-  #cap { bottom: 112px; } #steps { bottom: 112px; }
-  #tip { position: fixed; left: 50%; top: 210px; transform: translate(-50%, -8px); background: rgba(20, 26, 44, .92); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; opacity: 0; pointer-events: none; transition: .2s; z-index: 6; max-width: 70vw; }
-  #tip.on { opacity: 1; transform: translate(-50%, 0); }
-  #ov { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
-  #lanes { left: 14px; right: 14px; bottom: 66px; width: calc(100% - 28px); height: 34px; cursor: pointer; padding: 0; border-radius: 10px; }
-  .sv { font-size: 12px; padding: 3px 8px; border-radius: 6px; white-space: nowrap; } .sv.saved { color: #9be7c4; } .sv.unsaved, .sv.saving { color: #ffe1a6; } .sv.error { color: #fff; background: #b42318; }
-  #bar .sv:empty { display: none; }
-  /* Studio */
-  #stb { top: 112px; left: 50%; transform: translateX(-50%); padding: 5px; display: none; gap: 4px; align-items: center; flex-wrap: wrap; max-width: calc(100vw - 420px); z-index: 3; }
-  body.studio #stb { display: flex; } #stb .sep { width: 1px; height: 22px; background: var(--line); margin: 0 3px; } #stb label { font-size: 12px; } #stb button:disabled { opacity: .4; cursor: default; }
-  #stb select, #studio select, #studio input, #studio textarea { background: rgba(255,255,255,.08); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
-  #studio select option, #stb select option { background: #1b2233; }
-  .chk { font-size: 12px; padding: 3px 8px; border-radius: 6px; cursor: pointer; } .chk.ok { color: #9be7c4; } .chk.bad { background: #b42318; color: #fff; }
-  #studio { top: 112px; right: 14px; width: 380px; max-height: calc(100vh - 250px); overflow: auto; padding: 8px 10px 10px; display: none; z-index: 3; }
-  body.studio #studio { display: block; } body.studio #mini, body.studio #steps { display: none; }
-  .tabs9 { display: flex; gap: 3px; position: sticky; top: -8px; background: rgba(14,20,32,.95); padding: 4px 0 6px; z-index: 1; } .tabs9 button { flex: 1; padding: 5px 4px; font-size: 12px; }
-  #studio h4 { margin: 10px 0 5px; font-size: 11px; color: var(--acc); text-transform: uppercase; letter-spacing: .05em; }
-  #studio .row { display: flex; gap: 5px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 5px; } #studio label { display: flex; flex-direction: column; font-size: 11px; opacity: .92; }
-  #studio input[type=number] { width: 64px; } #studio .w { flex: 1; min-width: 120px; } #studio textarea { width: 100%; box-sizing: border-box; resize: vertical; }
-  #studio .step { border: 1px solid var(--line); border-radius: 8px; padding: 6px; margin-bottom: 6px; } #studio .step.sel { border-color: var(--acc); } #studio .step.now { box-shadow: inset 3px 0 0 #2a74db; }
-  #studio .n { min-width: 28px; padding: 4px 6px; font-weight: 700; } #studio .muted { opacity: .72; font-size: 11px; } #studio .muted button { padding: 2px 7px; font-size: 11px; }
-  #studio .tag { font-size: 11px; color: #5eead4; } #studio .item { align-items: center; } #studio .item.sel { outline: 1px solid var(--acc); border-radius: 8px; } #studio .item i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-  #studio .li { display: block; width: 100%; text-align: left; margin: 2px 0; } #studio .li small { opacity: .6; } #studio .capr { border-left: 3px solid #ffe1a6; padding-left: 6px; margin-bottom: 8px; }
-  #studio button.rec { background: #e5484d; color: #fff; } #studio .bad { color: #ffb4b4; } #studio .good { color: #9be7c4; }
-  table.nums { width: 100%; border-collapse: collapse; font-size: 12px; } table.nums td, table.nums th { padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,.08); text-align: left; } table.nums td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-  #caps { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
-  .cap9 { position: absolute; left: 50%; max-width: min(760px, 70vw); background: linear-gradient(180deg, rgba(52,112,188,.82), rgba(12,36,78,.9)); border: 1px solid rgba(190,224,255,.4); border-radius: 18px; padding: 12px 20px; text-align: center; }
-  .cap9.lower { bottom: 190px; } .cap9.upper { top: 120px; } .cap9.center { top: 50%; } .cap9 b { display: block; font-size: 20px; } .cap9 p { margin: 4px 0 0; opacity: .9; }
-  #ctx { display: none; }
-  @media (max-width: 1100px) { #steps, #mini { display: none; } #tabs { top: auto; bottom: 120px; max-width: 92vw; } #head { max-width: 60vw; } }
+/* V8 glass UI (Material-Flow src/v8/player.css), adapted for V9: one calm type scale, translucent blue glass, white ink. */
+*{box-sizing:border-box}
+:root{--font:"Segoe UI Variable","Segoe UI",system-ui,Arial,sans-serif;--ink:#f1f7ff;--ink2:#c3d6ec;--edge:rgba(190,224,255,.30);--teal:#2bd4c0;--lime:#bdf03c;--orange:#ff9a1f;--g1:rgba(52,112,188,.56);--g2:rgba(12,36,78,.70);--acc:#2bd4c0;--line:rgba(190,224,255,.30)}
+html,body{margin:0;height:100%;overflow:hidden;background:#dfe7f1;color:var(--ink);font:14px/1.4 var(--font);-webkit-font-smoothing:antialiased}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.glass{background:linear-gradient(180deg,var(--g1),var(--g2));border:1px solid var(--edge);box-shadow:0 8px 26px rgba(4,14,34,.34),inset 0 1px 0 rgba(255,255,255,.22);color:var(--ink)}
+body.blur .glass{background:linear-gradient(180deg,rgba(60,124,204,.38),rgba(12,36,78,.50));backdrop-filter:blur(14px) saturate(1.3)}
+.ui{position:fixed;z-index:5;transition:opacity .35s ease,visibility 0s linear 0s}
+body.bare .ui,body.idle .ui:not(#help):not(#tip){opacity:0;visibility:hidden;pointer-events:none;transition:opacity .35s ease,visibility 0s linear .35s}
+body.idle #c{cursor:none}
+button,select,input,textarea{font:inherit;color:inherit}
+button,select{background:transparent;border:0;border-radius:999px;padding:5px 12px;cursor:pointer;color:var(--ink)}
+button:hover,select:hover{background:rgba(255,255,255,.16)}
+button.on{background:rgba(255,255,255,.26);box-shadow:inset 0 0 0 1px rgba(255,255,255,.4);color:#fff}
+button:disabled{opacity:.4;cursor:default;background:none}
+select{background:rgba(10,30,66,.55);border:1px solid var(--edge);border-radius:10px;padding:4px 8px;font-size:12.5px}select option{background:#0f2a55;color:#fff}
+.ib{display:inline-grid;place-items:center;width:40px;height:40px;padding:0;border-radius:50%;position:relative}
+.ib svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;pointer-events:none}
+.ib.sm{width:32px;height:32px}.ib.sm svg{width:18px;height:18px}.ib.xs{width:28px;height:28px}.ib.xs svg{width:16px;height:16px}
+[data-tip]::after{content:attr(data-tip);position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);white-space:nowrap;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:rgba(8,24,56,.92);color:#fff;border:1px solid var(--edge);opacity:0;pointer-events:none;transition:opacity .15s}
+[data-tip]:hover::after{opacity:1}
+.transport [data-tip]::after{right:auto;left:50%;top:auto;bottom:calc(100% + 8px);transform:translateX(-50%)}
+#top [data-tip]::after{right:auto;left:0;top:calc(100% + 8px);transform:none}
+/* top bar */
+#top{left:16px;top:12px;right:16px;display:flex;align-items:center;gap:10px;pointer-events:none;height:34px}
+#top>*{pointer-events:auto}
+#top h1{margin:0;font-size:15px;font-weight:600;border-radius:999px;padding:5px 14px;max-width:30vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 0 auto}
+.tabs{display:flex;gap:2px;border-radius:999px;padding:3px}.tabs button{padding:3px 12px;font-size:12.5px;font-weight:600;white-space:nowrap}
+#flows{flex:1 1 0;min-width:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;align-items:center}#flows button{flex:0 0 auto}
+#lines{flex:0 0 auto}#top .ib.sm{border:1px solid var(--edge);flex:0 0 auto}
+/* right icon rail */
+#rail{right:16px;top:50%;transform:translateY(-50%);width:56px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 0;border-radius:28px}
+#rail .rule{width:26px;height:1px;background:var(--edge);margin:2px 0}
+#rail .ib.on{background:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,.16))}#rail .ib.rec{background:#e5484d}
+.pop{right:84px;top:50%;transform:translateY(-50%);display:none;flex-direction:column;gap:8px;padding:12px;border-radius:18px;width:250px;max-height:calc(100vh - 150px);overflow:auto;z-index:7}
+.pop label{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px}
+.pop button{border:1px solid var(--edge);border-radius:12px;font-size:12.5px;text-align:left}
+.pop .kpi{font-size:12px;color:var(--ink2);line-height:1.5}
+/* steps list (left) */
+#steps{left:16px;top:56px;width:300px;bottom:210px;overflow:auto;padding:0 8px 8px;border-radius:20px}
+#steps .hdr{position:sticky;top:0;display:flex;justify-content:space-between;align-items:center;padding:10px 6px 6px;font-size:14px;background:linear-gradient(180deg,rgba(40,92,160,.96),rgba(40,92,160,.6) 80%,rgba(40,92,160,0));z-index:1}
+#steps ol{list-style:none;margin:0;padding:0}#steps li{display:flex;gap:8px;padding:7px;border-radius:12px;cursor:pointer}
+#steps li:hover{background:rgba(255,255,255,.12)}#steps li.now{background:linear-gradient(90deg,rgba(43,212,192,.55),rgba(189,240,60,.30))}#steps li.done{color:#a8e8c4}
+#steps .n{flex:none;width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.2);display:grid;place-items:center;font-size:11.5px;font-weight:700}
+#steps b{display:block;font-size:12.5px}#steps small{display:block;opacity:.85;font-size:11.5px}
+/* camera pad (V7 Studio) */
+#pad{right:84px;bottom:16px;width:320px;padding:10px 12px 10px;border-radius:20px;display:none;flex-direction:column;gap:8px;z-index:7}
+#pad .hd{display:flex;justify-content:space-between;align-items:center}#pad .hd b{font-size:13px}
+#pad .seg{display:flex;gap:2px;background:rgba(10,30,66,.45);border-radius:999px;padding:3px}#pad .seg button{flex:1;padding:3px 0;font-size:12px;font-weight:600}
+#pad .sticks{display:grid;grid-template-columns:78px 78px 40px 40px;gap:10px;justify-content:space-between;align-items:start}
+.stick{position:relative;width:78px;height:78px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.18),rgba(255,255,255,.04));border:1px solid var(--edge);touch-action:none;cursor:grab}
+.stick.sq{border-radius:16px;background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04))}
+.stick i{position:absolute;font-style:normal;font-size:9px;font-weight:700;opacity:.8}.stick i.n{top:3px;left:50%;transform:translateX(-50%);color:#ffd166}.stick i.e{right:5px;top:50%;transform:translateY(-50%)}.stick i.s{bottom:3px;left:50%;transform:translateX(-50%)}.stick i.w{left:5px;top:50%;transform:translateY(-50%)}
+.knob{position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,rgba(220,240,255,.7));box-shadow:0 3px 10px rgba(4,14,34,.5);transition:transform .18s;pointer-events:none}
+.rocker{position:relative;width:40px;height:78px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04));border:1px solid var(--edge);touch-action:none;cursor:grab}
+.rocker .knob{width:26px;height:26px;margin:-13px 0 0 -13px}.rocker::before,.rocker::after{position:absolute;left:50%;transform:translateX(-50%);font-size:11px;opacity:.75}.rocker.z::before{content:"+";top:2px}.rocker.z::after{content:"–";bottom:2px}.rocker.h::before{content:"▲";top:3px;font-size:8px}.rocker.h::after{content:"▼";bottom:3px;font-size:8px}
+#pad .lb{display:grid;grid-template-columns:78px 78px 40px 40px;gap:10px;justify-content:space-between;font-size:11px;text-align:center;opacity:.85;margin-top:-4px}
+#pad .sl label{display:grid;grid-template-columns:54px 1fr 50px;align-items:center;gap:6px;font-size:12px}#pad input[type=range]{width:100%;accent-color:var(--teal)}#pad .sl span{text-align:right;font-variant-numeric:tabular-nums}
+#pad .row{display:flex;gap:3px;flex-wrap:nowrap;align-items:center}#pad .row button{border:1px solid var(--edge);border-radius:10px;padding:3px 0;font-size:11.5px;flex:1 1 0;min-width:0;white-space:nowrap}#pad .row button.key,#pad .row #padPhoto{flex:0 0 auto;padding:3px 8px}
+#pad .row .key{background:rgba(255,154,31,.3);border-color:rgba(255,190,110,.7)}#pad .row button.has{background:rgba(43,212,192,.35)}#pad .row span{font-size:12px;opacity:.85;margin-right:2px}
+#pad .read{font-size:11.5px;text-align:center;color:var(--ink2);font-variant-numeric:tabular-nums}
+/* player card */
+#bar{left:50%;transform:translateX(-50%);bottom:16px;width:min(760px,calc(100vw - 112px));padding:10px 20px 8px;border-radius:24px;text-align:center}
+#card{min-height:62px}#card b{display:block;font-size:15px;font-weight:600;line-height:1.3}
+#card p{margin:2px auto 0;max-width:640px;font-size:12.5px;color:var(--ink2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#card .st{display:flex;justify-content:center;gap:12px;margin-top:5px;font-size:11.5px;color:var(--ink2);font-variant-numeric:tabular-nums;flex-wrap:wrap}
+#card .m{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:0 9px;color:#fff}.m.push{background:rgba(31,111,235,.9)}.m.agv{background:rgba(183,121,31,.9)}.m.lift{background:rgba(20,150,130,.95)}.m.wait{background:rgba(110,120,140,.9)}
+#bar .line{display:flex;align-items:center;gap:12px;margin:4px 0 2px}
+#bar .tm{flex:none;width:42px;font-size:11.5px;font-variant-numeric:tabular-nums;color:var(--ink2)}#bar .tm:first-child{text-align:right}#bar #tEnd{text-align:left}
+#scrub{position:relative;flex:1;height:20px;cursor:pointer;touch-action:none}
+#scrub .tr{position:absolute;left:0;right:0;top:8px;height:4px;background:rgba(255,255,255,.26);border-radius:2px}
+#scrub .fl{position:absolute;left:0;top:8px;height:4px;background:linear-gradient(90deg,var(--teal),var(--lime));border-radius:2px;box-shadow:0 0 8px rgba(43,212,192,.5)}
+#scrub i{position:absolute;top:6px;width:2px;height:8px;background:rgba(255,255,255,.55);border-radius:1px;transform:translateX(-1px)}
+#scrub .hd{position:absolute;top:2px;width:16px;height:16px;border-radius:50%;transform:translateX(-8px);background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.95),rgba(220,240,255,.55));border:1px solid rgba(255,255,255,.85);box-shadow:0 2px 8px rgba(4,14,34,.45)}
+#bar .row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-top:2px}
+#bar .sn{justify-self:start;font-size:11.5px;color:var(--ink2);text-align:left}#bar .rt{justify-self:end;display:flex;gap:8px;align-items:center}
+.transport{display:flex;align-items:center;gap:14px}
+.transport .ib{width:40px;height:40px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.22)}.transport .ib:hover{background:rgba(255,255,255,.22)}
+.transport .big{width:56px;height:56px;background:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,.12));border:1px solid rgba(255,255,255,.55);box-shadow:0 6px 18px rgba(4,14,34,.4),inset 0 1px 0 rgba(255,255,255,.55)}
+.transport .big svg{width:26px;height:26px}
+#play .i-pause{display:none}#play.is-playing .i-play{display:none}#play.is-playing .i-pause{display:block}
+#speed{border-radius:999px;padding:5px 12px;font-weight:600}
+/* engine chip, tip, help, mini map */
+#eng{left:16px;bottom:16px;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:600;cursor:pointer;display:flex;gap:6px;align-items:center}#eng i{width:8px;height:8px;border-radius:50%;background:#3ddc84;box-shadow:0 0 8px #3ddc84}
+#engPop{left:16px;bottom:52px;width:330px;padding:12px 14px;border-radius:16px;display:none;font-size:12.5px;z-index:7}#engPop b{display:block;margin-bottom:4px}#engPop .kpi{color:var(--ink2);line-height:1.6}
+#tip{left:50%;top:58px;transform:translateX(-50%);background:rgba(31,111,235,.92);border-radius:999px;padding:5px 14px;font-size:12.5px;display:none;z-index:9;max-width:70vw}
+#help{left:50%;top:50%;transform:translate(-50%,-50%);width:520px;max-width:calc(100vw - 32px);max-height:calc(100vh - 60px);overflow:auto;border-radius:20px;padding:16px 22px;display:none;z-index:9;background:linear-gradient(180deg,rgba(40,92,160,.96),rgba(12,36,78,.97))}
+#help table{width:100%;border-collapse:collapse;font-size:12.5px}#help td{padding:3px 0;vertical-align:top}#help td:first-child{font-weight:700;width:170px;padding-right:10px}
+#mini{right:84px;top:56px;width:300px;height:220px;border-radius:14px;padding:0;overflow:hidden;display:none}#mini canvas{width:100%;height:100%;display:block}
+#loading{position:fixed;inset:0;display:grid;place-items:center;background:#dfe7f1;color:#1d2a44;font-size:16px;z-index:20}
+#ov{position:fixed;inset:0;pointer-events:none;z-index:1}
+#caps{position:fixed;inset:0;pointer-events:none;z-index:2}
+.cap9{position:absolute;left:50%;max-width:min(760px,70vw);background:linear-gradient(180deg,rgba(52,112,188,.82),rgba(12,36,78,.9));border:1px solid rgba(190,224,255,.4);border-radius:18px;padding:12px 20px;text-align:center}
+.cap9.lower{bottom:200px}.cap9.upper{top:70px}.cap9.center{top:50%}.cap9 b{display:block;font-size:20px}.cap9 p{margin:4px 0 0;opacity:.9}
+/* Studio (editor) */
+.sv{font-size:12px;padding:3px 8px;border-radius:6px;white-space:nowrap}.sv.saved{color:#9be7c4}.sv.unsaved,.sv.saving{color:#ffe1a6}.sv.error{color:#fff;background:#b42318}
+#stb{position:fixed;top:56px;left:50%;transform:translateX(-50%);padding:5px 8px;display:none;gap:4px;align-items:center;flex-wrap:wrap;max-width:calc(100vw - 760px);border-radius:16px;z-index:6}
+body.studio #stb{display:flex}#stb .sep{width:1px;height:22px;background:var(--edge);margin:0 3px}#stb label{font-size:12px}#stb button{font-size:12.5px;padding:4px 10px}
+#studio input,#studio textarea{background:rgba(10,30,66,.55);color:var(--ink);border:1px solid var(--edge);border-radius:8px;padding:3px 6px}
+.chk{font-size:12px;padding:3px 8px;border-radius:6px;cursor:pointer}.chk.ok{color:#9be7c4}.chk.bad{background:#b42318;color:#fff}
+#studio{position:fixed;top:56px;right:84px;width:380px;max-height:calc(100vh - 250px);overflow:auto;padding:8px 10px 10px;display:none;z-index:6;border-radius:18px}
+body.studio #studio{display:block}body.studio #steps,body.studio #pad,body.studio #mini{display:none!important}
+.tabs9{display:flex;gap:3px;position:sticky;top:-8px;background:rgba(30,72,136,.97);padding:4px 0 6px;z-index:1;border-radius:12px}.tabs9 button{flex:1;padding:5px 4px;font-size:12px}
+#studio h4{margin:10px 0 5px;font-size:11px;color:var(--teal);text-transform:uppercase;letter-spacing:.05em}
+#studio .row{display:flex;gap:5px;align-items:flex-end;flex-wrap:wrap;margin-bottom:5px}#studio label{display:flex;flex-direction:column;font-size:11px;opacity:.92}
+#studio input[type=number]{width:64px}#studio .w{flex:1;min-width:120px}#studio textarea{width:100%;resize:vertical}
+#studio button{border:1px solid var(--edge);border-radius:10px;padding:4px 9px;font-size:12px}
+#studio .step{border:1px solid var(--edge);border-radius:10px;padding:6px;margin-bottom:6px}#studio .step.sel{border-color:var(--teal)}#studio .step.now{box-shadow:inset 3px 0 0 var(--teal)}
+#studio .n{min-width:28px;padding:4px 6px;font-weight:700}#studio .muted{opacity:.75;font-size:11px}#studio .muted button{padding:2px 7px;font-size:11px}
+#studio .tag{font-size:11px;color:#5eead4}#studio .item{align-items:center}#studio .item.sel{outline:1px solid var(--teal);border-radius:10px}#studio .item i{width:10px;height:10px;border-radius:50%;display:inline-block}
+#studio .li{display:block;width:100%;text-align:left;margin:2px 0}#studio .li small{opacity:.6}#studio .capr{border-left:3px solid #ffe1a6;padding-left:6px;margin-bottom:8px}
+#studio button.rec{background:#e5484d;color:#fff}#studio .bad{color:#ffb4b4}#studio .good{color:#9be7c4}
+table.nums{width:100%;border-collapse:collapse;font-size:12px}table.nums td,table.nums th{padding:3px 4px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}table.nums td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+#lanes{position:fixed;left:84px;right:84px;bottom:170px;width:calc(100% - 168px);height:34px;cursor:pointer;padding:0;border-radius:12px;display:none;z-index:6}body.studio #lanes{display:block}
+#ctx{display:none}
+@media (max-width:900px){#steps{display:none!important}#bar{width:calc(100vw - 84px)}#top h1{display:none}}
 </style>
 </head>
 <body>
 <canvas id="c"></canvas>
 <div id="loading">Material Flow Player V9 · building the real factory…</div>
-<div id="head" class="glass"><span class="v">V9</span><b id="title">Material Flow</b><small id="sub"></small><div id="kpi"></div></div>
-<div id="tabs" class="glass"></div>
-<div id="tools" class="glass">
-  <button data-mode="guided" title="Guided: one calm angle per step, never hidden by walls (G)">Guided</button><button data-mode="follow" title="Follow (F)">Follow</button><button data-mode="chase" title="Chase (C)">Chase</button><button data-mode="overview" title="Whole factory (V)">Overview</button><button data-mode="free" title="Free orbit (O)">Free</button><button data-mode="plan" title="2D plan (P)">2D plan</button><button data-mode="director" title="Director: plays the camera keys of this path (D)">Director</button>
-  <button data-fly="E1">E1</button><button data-fly="E2">E2</button><button data-fly="EPS">EPS</button><button id="f2" title="2nd floor: auto (see-through while the trolley is below), show, hide">2F: auto</button><button id="lab" class="on" title="Step chips and labels">Labels</button><button id="rec" title="Record the trip as a video take (R); uses the Director camera when the path has keys">● Record</button>
-  <button data-speed="1">1×</button><button data-speed="10" class="on">10×</button><button data-speed="30">30×</button><button data-speed="60">60×</button>
+<div id="top" class="ui">
+  <button id="stepsToggle" class="ib sm glass" data-tip="Steps list (P)"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r="1.2"/><circle cx="4.5" cy="12" r="1.2"/><circle cx="4.5" cy="18" r="1.2"/></svg></button>
+  <h1 id="title" class="glass">Material Flow</h1>
+  <div class="tabs glass" id="flows" role="group" aria-label="Paths"></div>
+  <div class="tabs glass" id="lines" role="group" aria-label="Process tabs"></div>
 </div>
-<div id="tip"></div>
-<div id="cap" class="glass"><div id="cap-n"></div><div id="cap-t"></div><div id="cap-x"></div></div>
-<div id="steps" class="glass"></div>
-<canvas id="mini" class="glass" width="300" height="220"></canvas>
-<div id="bar" class="glass"><button id="play">❚❚</button><input id="scrub" type="range" min="0" max="1" step="0.1" value="0"><span id="clock"></span><span id="fps"></span></div>
+<div id="tip" class="ui" role="status"></div>
+<div id="mini" class="ui glass"><canvas id="minic" width="300" height="220"></canvas></div>
+<div id="steps" class="ui glass" role="region" aria-label="Steps"><div class="hdr"><b>Steps</b><button id="stepsClose" class="ib xs" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><ol id="list"></ol></div>
+<div id="rail" class="ui glass" role="toolbar" aria-orientation="vertical">
+  <button data-v="2d" class="ib" data-tip="2D plan (2)"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 12h16M12 4v16"/></svg></button>
+  <button data-v="3d" class="ib" data-tip="3D factory (3)"><svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg></button>
+  <button data-v="auto" class="ib on" data-tip="Auto view: flat plan, then the factory rises (A)"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg></button>
+  <span class="rule"></span>
+  <button id="camBtn" class="ib" data-tip="Camera pad (C)"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></svg></button>
+  <button id="measure" class="ib" data-tip="Measure in metres (M)"><svg viewBox="0 0 24 24"><path d="M3 15.5L15.5 3 21 8.5 8.5 21z"/><path d="M7 12l2.2 2.2M10 9l2.2 2.2M13 6l2.2 2.2"/></svg></button>
+  <button id="optBtn" class="ib" data-tip="Options"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></button>
+  <button id="engBtn" class="ib" data-tip="Factory Engine numbers"><svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M9 10h6M9 14h6M9 18h4"/></svg></button>
+  <span class="rule"></span>
+  <button id="dirBtn" class="ib" data-tip="Director camera (D)"><svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="2.6"/><circle cx="15" cy="8" r="2.6"/><path d="M4 12h12v7H4zM16 14l4-2v7l-4-2"/></svg></button>
+  <button id="studio-btn" class="ib" data-tip="Studio: edit objects, paths, steps, director (E)"><svg viewBox="0 0 24 24"><path d="M4 20l4.5-1 10-10-3.5-3.5-10 10z"/><path d="M13.5 6.5l3.5 3.5"/></svg></button>
+  <button id="rec" class="ib" data-tip="Record a video take (R)"><svg viewBox="0 0 24 24"><path d="M4 7h11v10H4zM15 10.5l5-3v9l-5-3"/></svg></button>
+  <span class="rule"></span>
+  <button id="helpBtn" class="ib" data-tip="Help (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.4a2.5 2.5 0 114 2c-.9.7-1.6 1.1-1.6 2.3M12 17h.01"/></svg></button>
+  <button id="full" class="ib" data-tip="Full screen (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+</div>
+<div id="opts" class="ui glass pop" role="group" aria-label="Options">
+  <label>Camera <select id="camSel"><option value="guided">Guided (V7 director)</option><option value="follow">Follow the trolley</option><option value="chase">Ride with the trolley</option><option value="orbit">Orbit the trolley</option><option value="overview">Overview</option><option value="free">Free</option></select></label>
+  <label>Fly to <select id="flySel"><option value="">—</option><option>E1</option><option>E2</option><option>EPS</option></select></label>
+  <label title="2nd floor: see-through while the trolley is below, always, or hidden">2nd floor <select id="f2Sel"><option value="auto">Auto</option><option value="show">Show</option><option value="hide">Hide</option></select></label>
+  <label title="Stop at each step, like clicks in PowerPoint">Stop at steps <input type="checkbox" id="stepstop"></label>
+  <button id="lblBtn" class="on">Labels (L)</button><button id="netBtn">All paths of the tab (N)</button><button id="planBtn">Plan picture on the floor</button><button id="arrowBtn">Arrows on the floor</button><button id="miniBtn">Mini map</button><button id="blurBtn">Glass blur</button>
+</div>
+<div id="engPop" class="ui glass"></div>
+<div id="pad" class="ui glass" role="group" aria-label="Camera">
+  <div class="hd"><b>Camera</b><button id="padClose" class="ib xs"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+  <div class="seg" id="padMode"><button data-m="free">Free</button><button data-m="orbit" title="Turn around the trolley while it moves">Orbit</button><button data-m="guided">Guided</button><button data-m="chase">Ride</button><button data-m="director">Director</button></div>
+  <div class="sticks"><div class="stick" data-k="orbit" title="Orbit: drag to turn around the target (double-click: isometric)"><i class="n">N</i><i class="e">E</i><i class="s">S</i><i class="w">W</i><div class="knob"></div></div>
+    <div class="stick sq" data-k="pan" title="Move: drag to travel over the floor"><div class="knob"></div></div>
+    <div class="rocker z" data-k="zoom" title="Zoom: drag up to zoom in"><div class="knob"></div></div><div class="rocker h" data-k="crane" title="Height: drag up to raise the target"><div class="knob"></div></div></div>
+  <div class="lb"><span>Orbit</span><span>Move</span><span>Zoom</span><span>Height</span></div>
+  <div class="sl"><label>Lens <input type="range" id="padLens" min="14" max="135" step="1" value="33"><span id="padLensV"></span></label>
+    <label>Speed <input type="range" id="padSpeed" min="0.15" max="3" step="0.05" value="1"><span id="padSpeedV"></span></label>
+    <label>Smooth <input type="range" id="padSmooth" min="0" max="1" step="0.05" value="0.6"><span id="padSmoothV"></span></label></div>
+  <div class="row"><button data-p="top">Top</button><button data-p="front">Front</button><button data-p="side">Side</button><button data-p="iso">Iso</button><button data-p="trolley">Trolley</button><button data-p="reset">Reset</button></div>
+  <div class="row" title="Shots: click to fly there; Shift+click or right-click to save the current view"><span>Shots</span><button data-b="0">1</button><button data-b="1">2</button><button data-b="2">3</button><button data-b="3">4</button><button data-b="4">5</button><button data-b="5">6</button><button id="padKey" class="key" title="Add a director camera key at this time (K)">+ Key</button><button id="padPhoto" title="Save a picture of the view (PNG)">Photo</button></div>
+  <div class="read" id="padRead"></div>
+</div>
+<div id="bar" class="ui glass" role="group" aria-label="Player">
+  <div id="card"><b></b><p></p><div class="st"></div></div>
+  <div class="line"><span id="tElapsed" class="tm">0:00</span><div id="scrub" role="slider" aria-label="Timeline" tabindex="0"><div class="tr"></div><div class="fl"></div><div class="hd"></div></div><span id="tEnd" class="tm">0:00</span></div>
+  <div class="row"><span id="stepNo" class="sn"></span>
+    <div class="transport"><button id="prev" class="ib" data-tip="Previous step (Left)"><svg viewBox="0 0 24 24"><path d="M6 5v14"/><path d="M19 6.2v11.6L10 12z" fill="currentColor"/></svg></button>
+      <button id="play" class="ib big" data-tip="Play / pause (Space)"><svg class="i-play" viewBox="0 0 24 24"><path d="M8.5 5.5v13l10.5-6.5z" fill="currentColor"/></svg><svg class="i-pause" viewBox="0 0 24 24"><rect x="6.5" y="5" width="4" height="14" rx="1.3" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.3" fill="currentColor"/></svg></button>
+      <button id="next" class="ib" data-tip="Next step (Right)"><svg viewBox="0 0 24 24"><path d="M18 5v14"/><path d="M5 6.2v11.6L14 12z" fill="currentColor"/></svg></button></div>
+    <div class="rt"><span id="save" class="sv"></span><select id="speed" class="glass" title="Playback speed ( [ slower, ] faster ): engine seconds per second"><option value="1">1×</option><option value="5">5×</option><option value="10" selected>10×</option><option value="20">20×</option><option value="30">30×</option><option value="60">60×</option></select></div></div>
+</div>
+<div id="eng" class="ui glass" title="Factory Engine: the trip is timed by the engine in this page"><i></i>Engine</div>
+<div id="help" class="ui" role="dialog" aria-label="Controls"><b>Controls</b><table>
+  <tr><td>Space</td><td>Play or pause</td></tr><tr><td>Left / Right</td><td>Previous / next step</td></tr><tr><td>Home / End</td><td>Start (the flat-plan opening) / end</td></tr>
+  <tr><td>2 / 3 / A</td><td>2D flat plan / 3D factory / Auto (the plan rises into the factory)</td></tr>
+  <tr><td>G / C / D</td><td>Guided camera / camera pad / Director camera</td></tr>
+  <tr><td>Left drag</td><td>Turn in 3D (pan in 2D)</td></tr><tr><td>Right drag or Shift</td><td>Pan</td></tr><tr><td>Wheel</td><td>Zoom</td></tr>
+  <tr><td>M</td><td>Measure: click two points on the floor</td></tr><tr><td>L / N / P</td><td>Labels / all paths of the tab / steps list</td></tr>
+  <tr><td>[ / ]</td><td>Slower / faster playback</td></tr><tr><td>R</td><td>Record a video take (Director camera when the path has keys)</td></tr>
+  <tr><td>E</td><td>Studio: move objects and stops, draw paths in 2D, edit steps, director keys, numbers (F1 inside lists its keys)</td></tr>
+  <tr><td>F / H</td><td>Full screen / hide every control</td></tr><tr><td>Esc</td><td>Close menus and help</td></tr></table>
+  <p style="font-size:11.5px;color:var(--ink2);margin:10px 0 0">While playing, the panels fade after 4 s without movement and return when you move, press a key or pause.</p></div>
 <!--V9-SCRIPTS-->
 <script src="/vendor/three.js"></script>
 <script src="/vendor/three-addons.js"></script>
@@ -82,6 +201,7 @@
 <script src="/vendor/factory-engine.js"></script>
 <script type="module">import * as T from "/real/timing.js"; window.FCTiming = T;</script>
 <script type="module" src="/v9.js"></script>
+<script type="module" src="/v9-shell.js"></script>
 <script type="module" src="/v9-studio.js"></script>
 <!--/V9-SCRIPTS-->
 </body>

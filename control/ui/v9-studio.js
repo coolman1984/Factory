@@ -393,7 +393,6 @@ addEventListener("keydown", e => {
     else if (k === "s") act = () => straightenSel(e.shiftKey); else if (k === "o") act = () => { S.ortho = !S.ortho; syncToolbar(); A.tip("Ortho " + (S.ortho ? "on" : "off"), 1200); };
     else if (k === "r" && !e.shiftKey) act = autoRoute; else if (k === "k") act = () => addKey(e.shiftKey); else if (k === "j") act = camRecToggle; else if (k === "c") act = addCaption;
     else if (k === "p" && e.shiftKey) act = playDirector; else if (k === "f" && S.sel) act = focusSel; else if (k === "x" && S.sel?.kind === "obj") act = dupSel;
-    else if (k >= "1" && k <= "6" && !e.code.startsWith("Numpad")) act = () => shot(+k - 1, e.shiftKey);
   } else if (ctrl && k === "z") act = undo;
   if (act) { e.preventDefault(); e.stopImmediatePropagation(); act(); render(); }
 }, true);
@@ -419,11 +418,19 @@ function drawOverlay() {
   }
   if (V.labels) {   // V7 step chips: number + title at every stop of the path; done / now / next
     const seen = new Map(); V.edit.steps.forEach((s, i) => { const st = stopById(s.stop); if (st) seen.set(s.stop + (s.lift ? ":" + i : ""), { i, st, s }); });
-    og.font = "600 12px Segoe UI, system-ui"; og.textBaseline = "middle";
-    for (const { i, st, s } of seen.values()) { const a = scr(st.pos[0], st.pos[1], (st.pos[2] || 0) + 2.4); if (!a) continue; const up = (st.pos[2] || 0) > 3, dim = up !== ((V.ps?.p[2] || 0) > 3) && V.floor2 !== "show"; og.globalAlpha = dim ? 0.45 : 1;
-      const now = i === cur, done = i < cur, label = `${i + 1}  ${s.title || st.name}`, w = og.measureText(label).width + 22;
-      og.fillStyle = now ? "#2a74db" : done ? "rgba(18,82,72,.92)" : "rgba(28,40,70,.88)"; rr(og, a[0] - 11, a[1] - 11, w, 22, 11); og.fill(); og.strokeStyle = now ? "#bfe0ff" : "rgba(190,224,255,.45)"; og.lineWidth = 1; og.stroke();
-      og.fillStyle = "#fff"; og.fillText(label, a[0], a[1] + 0.5); og.globalAlpha = 1; }
+    og.font = "600 12px Segoe UI, system-ui"; og.textBaseline = "middle"; const intro = V.mode === "guided" && A.CAM.intro >= 0, flat = (V.flat || 0) > 0.5;
+    for (const { i, st, s } of seen.values()) {
+      const up = (st.pos[2] || 0) > 3; if (flat && up) continue; const a = scr(st.pos[0], st.pos[1], (st.pos[2] || 0) + (flat ? 0 : 2.4)); if (!a) continue; const dim = up !== ((V.ps?.p[2] || 0) > 3) && V.floor2 !== "show"; og.globalAlpha = dim ? 0.45 : 1;
+      if (st.symbol === "scan" && !flat) { const q = [-1.3, 1.3].map(d => [scr(st.pos[0] - 1.2, st.pos[1] + d, st.pos[2] || 0), scr(st.pos[0] + 1.2, st.pos[1] + d, st.pos[2] || 0)]); og.strokeStyle = "#e5363d"; og.lineWidth = 3; for (const [p, r] of q) if (p && r) { og.beginPath(); og.moveTo(...p); og.lineTo(...r); og.stroke(); } }
+      const now = i === cur && !intro, done = i < cur && !intro, label = `${i + 1} ${s.title || st.name}`, w = og.measureText(label).width + 20, x = a[0] + 14, y = a[1];
+      // V8 marker by stop type: result = circle, mapping = square, scan = red-striped square, area / dest = rounded square, gate = diamond
+      const sym = st.symbol || "area", col = { result: "#7b3fc4", mapping: "#6a2bb0", scan: "#c00000", area: "#1f6feb", dest: "#0f766e", gate: "#2bd4c0" }[sym] || "#1f6feb";
+      og.fillStyle = col; og.strokeStyle = "#fff"; og.lineWidth = 2; og.beginPath();
+      if (sym === "result") og.arc(a[0], y, 8, 0, 7); else if (sym === "gate") { og.moveTo(a[0], y - 9); og.lineTo(a[0] + 9, y); og.lineTo(a[0], y + 9); og.lineTo(a[0] - 9, y); og.closePath(); } else rr(og, a[0] - 8, y - 8, 16, 16, sym === "area" || sym === "dest" ? 4 : 1);
+      og.fill(); if (sym === "scan") { og.save(); og.clip(); og.strokeStyle = "#fff"; og.lineWidth = 2; for (let k = -16; k < 16; k += 5) { og.beginPath(); og.moveTo(a[0] + k, y + 8); og.lineTo(a[0] + k + 16, y - 8); og.stroke(); } og.restore(); og.beginPath(); rr(og, a[0] - 8, y - 8, 16, 16, 1); } og.strokeStyle = "#fff"; og.stroke();
+      const gr = og.createLinearGradient(0, y - 11, 0, y + 11); if (now) { gr.addColorStop(0, "#2f86f0"); gr.addColorStop(1, "#1b57b8"); } else if (done) { gr.addColorStop(0, "rgba(24,106,92,.92)"); gr.addColorStop(1, "rgba(12,58,52,.94)"); } else { gr.addColorStop(0, "rgba(44,98,170,.9)"); gr.addColorStop(1, "rgba(14,40,84,.92)"); }
+      og.fillStyle = gr; rr(og, x, y - 11, w, 22, 11); og.fill(); og.strokeStyle = now ? "#fff" : done ? "rgba(43,212,192,.75)" : "rgba(190,224,255,.4)"; og.lineWidth = 1; og.stroke();
+      og.fillStyle = "#fff"; og.fillText(label, x + 10, y + 0.5); og.globalAlpha = 1; }
   }
 }
 function drawLanes() {
@@ -443,12 +450,11 @@ V.hooks.ready.push(() => {
   S.known = new Set([...V.pack.paths.map(p => "path:" + p.id), ...V.pack.stops.map(s => "stop:" + s.id), ...V.pack.objects.map(o => "obj:" + o.id)]);
   if (A.OFFLINE) { try { const L = JSON.parse(localStorage.getItem(LKEY()) || "{}"); S.local = L; for (const [k, j] of Object.entries(L)) put(k, j); if (Object.keys(L).length) setTimeout(() => A.tip(`Restored ${Object.keys(L).length} edited record(s) saved in this browser`), 1500); } catch (e) {} }
   document.body.append(ov, capLayer, lanes, stb, panel, ctx);
-  const tools = $("#tools"), btn = h(`<button id="studio-btn" title="Studio: edit objects, stops, routes, steps, the director and numbers (E)">✎ Studio</button>`); tools.insertBefore(btn, $("#rec")); btn.onclick = () => setOpen(!S.open);
-  const bar = $("#bar"); bar.appendChild(h(`<span id="save" class="sv"></span>`));
+  $("#studio-btn").onclick = () => setOpen(!S.open); S.shot = shot; S.addKey = f => addKey(!!f);
   A.canvas.addEventListener("pointerdown", onDown, true); addEventListener("pointermove", onMove); addEventListener("pointerup", onUp); A.canvas.addEventListener("dblclick", onDbl, true); A.canvas.addEventListener("contextmenu", onCtx, true);
   setState("saved");
 });
-V.hooks.built = [() => { for (const o of V.pack.objects) if (!V.objIndex[o.id] && !o.deleted && o.asset) A.addObjectMesh(o); else if (o.deleted) A.placeObject(o); syncToolbar(); clashCheck(); }];
+(V.hooks.built ||= []).push(() => { for (const o of V.pack.objects) if (!V.objIndex[o.id] && !o.deleted && o.asset) A.addObjectMesh(o); else if (o.deleted) A.placeObject(o); syncToolbar(); clashCheck(); });
 V.hooks.timeline.push(() => { clearTimeout(S.ct); S.ct = setTimeout(clashCheck, 120); if (S.open && !S.drag) render(); });
 V.hooks.path.push(() => { S.stepSel = -1; S.draw = null; if (S.sel?.kind !== "obj") S.sel = null; render(); });
 V.hooks.frame.push((dt, ps) => { sampleCamRec(dt); drawOverlay(); drawLanes(); drawCaptions(); if (S.open && S.tab === "steps" && S.lastStep !== ps.step) { S.lastStep = ps.step; panel.querySelectorAll(".step").forEach(el => el.classList.toggle("now", +el.dataset.i === ps.step)); } });
