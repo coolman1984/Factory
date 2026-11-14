@@ -116,6 +116,29 @@ V9 is the complete player on the new engine, built from everything the V8 player
 - Checked here: all 10 paths load; offline file 60 fps, live 36–60 fps in headless Chrome on this laptop; engine re-timing and
   save; no page errors.
 
+### 8.4 60 fps on the Iris Xe laptop (2026-11-14)
+
+Measured on this laptop (Intel Iris Xe, ANGLE Direct3D11, 1920×1080, 59 Hz screen), headless Chrome with the real GPU,
+offline file. Before: 27 fps (960k triangles a frame, full-size batches never culled, shadow map redrawn every frame,
+full-screen 2D canvas redrawn every frame).
+
+| Change | Why |
+|---|---|
+| Batches split into 48 m tiles | The camera skips tiles it cannot see (960k → ~400k triangles in the trip view). |
+| Detail distances | Parts under 0.9 m (bins, cartons, bands, bumpers) only within 35–70 m; parts under 3 m within 2.6× that. |
+| One static shadow map per tab | 3072 px over the tab's whole process area; drawn again only on a tab change, an edit, or in 4 steps during the rise. Objects cast, floors receive. The moving trolley has a contact shadow. |
+| No full-screen canvas per frame | Step chips are DOM elements moved by transform; the editing canvas only draws while the Studio is open. |
+| No forced layout per frame | Hidden timeline lanes no longer measure themselves; card and buttons only change when their text changes. |
+| 2nd floor | Drawn solid when the trolley is on it, see-through only around elevator rides, else not drawn. |
+| Flat plan | The standing factory is not drawn while the view is the pure flat plan (outside the Studio). |
+| Shader warm-up | Every shader is compiled in the background at start (no hitch when the factory rises). |
+| Quality High / Medium / Low, Auto | Medium = 0.85 render scale. Auto starts at Medium on integrated graphics, at High elsewhere, steps down after 4 s under 55 fps and remembers the level in this browser. Options > Quality, or `?quality=high`. |
+
+After (Auto = Medium here), 15 s per run at 30×: inj1-wh guided 59.7 fps, inj2-lcm guided 58.3, eps-2f guided 60.0,
+press-assy chase 58.0, inj1-umb follow 58.9, overview 59.9, opening replayed 59.3; 95% of frames on time (16.8 ms) in every
+run. The very first opening while loading finishes: 54 fps. High quality: 52–59 fps in the trip view on this laptop.
+A real (non-headless) window may differ slightly; the Engine panel and the pad read-out show the live state.
+
 ### 8.3 V9.1 player shell = the V8 player (2026-11-14)
 
 Code: `control/ui/v9-shell.js` (shell), `control/ui/v9.html` (V8 glass theme). Plans: `node control/real/import-plans.mjs`

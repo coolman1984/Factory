@@ -1,5 +1,11 @@
 # سجل التغييرات
 
+## 2026-11-14 — V9.1 runs at 60 fps on the Iris Xe laptop
+
+- Tiled batches with frustum culling and detail distances, one static shadow map per tab, DOM step chips, no per-frame
+  layout, 2nd floor only when needed, shader warm-up, Quality High / Medium / Low with Auto. 27 → 58–60 fps at 1080p
+  (docs/19 §8.4).
+
 ## 2026-11-14 — V9.1 player shell from V8, collision fixes
 
 - The V8 player layout and features: flat plan to factory opening, 2D / 3D / Auto views, steps list with texts, player card

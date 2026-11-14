@@ -97,6 +97,14 @@ select{background:rgba(10,30,66,.55);border:1px solid var(--edge);border-radius:
 #loading{position:fixed;inset:0;display:grid;place-items:center;background:#dfe7f1;color:#1d2a44;font-size:16px;z-index:20}
 #ov{position:fixed;inset:0;pointer-events:none;z-index:1}
 #caps{position:fixed;inset:0;pointer-events:none;z-index:2}
+#chips{position:fixed;inset:0;pointer-events:none;z-index:2;overflow:hidden}
+.chip9{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;white-space:nowrap;will-change:transform;font-size:12px;font-weight:600}
+.chip9 i{width:16px;height:16px;flex:none;border:2px solid #fff;box-shadow:0 1px 5px #0009;background:#1f6feb;border-radius:4px}
+.chip9.result i{border-radius:50%;background:#7b3fc4}.chip9.mapping i{border-radius:2px;background:#6a2bb0}.chip9.dest i{background:#0f766e}.chip9.gate i{background:#2bd4c0;transform:rotate(45deg) scale(.85)}
+.chip9.scan i{border-radius:2px;background:repeating-linear-gradient(135deg,#c00000 0 3px,#fff 3px 5px)}
+.chip9 span{background:linear-gradient(180deg,rgba(44,98,170,.9),rgba(14,40,84,.92));border:1px solid var(--edge);border-radius:999px;padding:2px 10px;box-shadow:0 3px 10px rgba(4,14,34,.32)}
+.chip9.now span{background:linear-gradient(180deg,#2f86f0,#1b57b8);border-color:#fff}.chip9.done span{background:linear-gradient(180deg,rgba(24,106,92,.9),rgba(12,58,52,.94));border-color:rgba(43,212,192,.75)}
+.chip9.dim{opacity:.45}body.bare #chips{display:none}
 .cap9{position:absolute;left:50%;max-width:min(760px,70vw);background:linear-gradient(180deg,rgba(52,112,188,.82),rgba(12,36,78,.9));border:1px solid rgba(190,224,255,.4);border-radius:18px;padding:12px 20px;text-align:center}
 .cap9.lower{bottom:200px}.cap9.upper{top:70px}.cap9.center{top:50%}.cap9 b{display:block;font-size:20px}.cap9 p{margin:4px 0 0;opacity:.9}
 /* Studio (editor) */
@@ -156,6 +164,7 @@ table.nums{width:100%;border-collapse:collapse;font-size:12px}table.nums td,tabl
   <label>Camera <select id="camSel"><option value="guided">Guided (V7 director)</option><option value="follow">Follow the trolley</option><option value="chase">Ride with the trolley</option><option value="orbit">Orbit the trolley</option><option value="overview">Overview</option><option value="free">Free</option></select></label>
   <label>Fly to <select id="flySel"><option value="">—</option><option>E1</option><option>E2</option><option>EPS</option></select></label>
   <label title="2nd floor: see-through while the trolley is below, always, or hidden">2nd floor <select id="f2Sel"><option value="auto">Auto</option><option value="show">Show</option><option value="hide">Hide</option></select></label>
+  <label title="Auto lowers the detail step by step when the laptop cannot hold 60 fps">Quality <select id="qSel"><option value="auto">Auto</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></label>
   <label title="Stop at each step, like clicks in PowerPoint">Stop at steps <input type="checkbox" id="stepstop"></label>
   <button id="lblBtn" class="on">Labels (L)</button><button id="netBtn">All paths of the tab (N)</button><button id="planBtn">Plan picture on the floor</button><button id="arrowBtn">Arrows on the floor</button><button id="miniBtn">Mini map</button><button id="blurBtn">Glass blur</button>
 </div>

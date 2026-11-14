@@ -27,20 +27,20 @@ function steps() {
   U.stepNow = -2; }
 function curIndex(ps, intro) { return intro ? -1 : ps.step; }
 function frame(ps, intro) {
-  const i = curIndex(ps, intro), s = V.steps[ps.step], cap = V.edit.captions || [], card = $("#card");
-  if (intro) { card.children[0].textContent = "From flat plan to factory"; card.children[1].textContent = introText(); card.children[2].innerHTML = `<span class="m wait">INTRODUCTION</span><span>${V.steps.length} steps · ${fmt(V.total)} trip</span>`; }
+  const i = curIndex(ps, intro), s = V.steps[ps.step], cap = V.edit.captions || [], card = $("#card"), set = (el, k, v) => { if (el[k] !== v) el[k] = v; };
+  if (intro) { set(card.children[0], "textContent", "From flat plan to factory"); set(card.children[1], "textContent", introText()); set(card.children[2], "innerHTML", `<span class="m wait">INTRODUCTION</span><span>${V.steps.length} steps · ${fmt(V.total)} trip</span>`); }
   else { const mode = ps.phase === "travel" ? (ps.lift ? "lift" : s.mode === "agv" ? "agv" : "push") : "wait", lbl = { lift: "ELEVATOR " + (s.lift || ""), agv: "AGV", push: "PUSHED BY HAND", wait: "AT THE STOP" }[mode];
-    card.children[0].textContent = `${ps.step + 1}. ${s.title}`; card.children[1].textContent = cap[ps.step] || "";
-    card.children[2].innerHTML = `<span class="m ${mode}">${lbl}</span>${ps.step && ps.phase === "travel" && !ps.lift ? `<span>${(+s.dist).toFixed(1)} m</span>` : ""}<span>${ps.p[2] > 3 ? "2nd floor" : "1st floor"}</span><span>${ps.dist.toFixed(1)} m so far</span>`; }
-  const f = clamp(V.e / Math.max(1, V.total), 0, 1); $("#scrub .fl").style.width = (f * 100) + "%"; $("#scrub .hd").style.left = (f * 100) + "%";
-  $("#tElapsed").textContent = fmt(Math.min(V.e, V.total)); $("#tEnd").textContent = fmt(V.total); $("#play").classList.toggle("is-playing", V.playing);
-  $("#stepNo").textContent = intro ? "Introduction" : `Step ${ps.step + 1} of ${V.steps.length}`;
+    set(card.children[0], "textContent", `${ps.step + 1}. ${s.title}`); set(card.children[1], "textContent", cap[ps.step] || "");
+    set(card.children[2], "innerHTML", `<span class="m ${mode}">${lbl}</span>${ps.step && ps.phase === "travel" && !ps.lift ? `<span>${(+s.dist).toFixed(1)} m</span>` : ""}<span>${ps.p[2] > 3 ? "2nd floor" : "1st floor"}</span><span>${ps.dist.toFixed(1)} m so far</span>`); }
+  const f = (clamp(V.e / Math.max(1, V.total), 0, 1) * 100).toFixed(2) + "%"; if (U.f !== f) { U.f = f; $("#scrub .fl").style.width = f; $("#scrub .hd").style.left = f; }
+  set($("#tElapsed"), "textContent", fmt(Math.min(V.e, V.total))); set($("#tEnd"), "textContent", fmt(V.total)); if (U.pl !== V.playing) { U.pl = V.playing; $("#play").classList.toggle("is-playing", V.playing); }
+  set($("#stepNo"), "textContent", intro ? "Introduction" : `Step ${ps.step + 1} of ${V.steps.length}`);
   if (U.stepNow !== i) { U.stepNow = i; $("#list").querySelectorAll("li").forEach(li => { const k = +li.dataset.s; li.classList.toggle("now", k === i); li.classList.toggle("done", k < i); }); const now = $("#list li.now"); if (now) now.scrollIntoView({ block: "nearest" }); }
   if ($("#stepstop").checked && V.playing && !intro && ps.step > U.lastPlayStep && U.lastPlayStep >= 0 && V.steps[ps.step]) { V.e = V.steps[ps.step].t0; V.playing = false; }
   U.lastPlayStep = intro ? 0 : ps.step;
-  document.querySelectorAll("#rail [data-v]").forEach(b => b.classList.toggle("on", b.dataset.v === (V.view || "auto"))); $("#dirBtn").classList.toggle("on", V.mode === "director");
-  document.querySelectorAll("#padMode [data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === V.mode)); if ($("#camSel").value !== V.mode && [...$("#camSel").options].some(o => o.value === V.mode)) $("#camSel").value = V.mode;
-  if ($("#pad").style.display === "flex") padRead(); if ($("#engPop").style.display === "block") engine();
+  const vm = (V.view || "auto") + "|" + V.mode; if (U.vm !== vm) { U.vm = vm; document.querySelectorAll("#rail [data-v]").forEach(b => b.classList.toggle("on", b.dataset.v === (V.view || "auto"))); $("#dirBtn").classList.toggle("on", V.mode === "director");
+  document.querySelectorAll("#padMode [data-m]").forEach(b => b.classList.toggle("on", b.dataset.m === V.mode)); if ([...$("#camSel").options].some(o => o.value === V.mode)) $("#camSel").value = V.mode; }
+  if ((U.k = (U.k || 0) + 1) % 6 === 0) { if ($("#pad").style.display === "flex") padRead(); if ($("#engPop").style.display === "block") engine(); }
 }
 function rec(on) { $("#rec").classList.toggle("rec", on); }
 
@@ -107,7 +107,7 @@ function engine() {
 function floorPoint(e) { const r = A.canvas.getBoundingClientRect(), v = new A.T.Vector2((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1), ray = new A.T.Raycaster(); ray.setFromCamera(v, A.camera);
   const y = (V.ps?.p[2] || 0) > 3 && V.flat < 0.5 ? 6 : 0, o = ray.ray.origin, d = ray.ray.direction; if (Math.abs(d.y) < 1e-6) return null; const t = (y - o.y) / d.y; return t > 0 ? [o.x + d.x * t, -(o.z + d.z * t), y] : null; }
 const mov = document.createElement("canvas"); mov.id = "mov"; Object.assign(mov.style, { position: "fixed", inset: "0", pointerEvents: "none", zIndex: 4 });
-function drawMeasure() { const g = mov.getContext("2d"); if (mov.width !== innerWidth || mov.height !== innerHeight) { mov.width = innerWidth; mov.height = innerHeight; } g.clearRect(0, 0, mov.width, mov.height); const M = U.measure; if (!M || !M.a) return;
+function drawMeasure() { const g = mov.getContext("2d"), M = U.measure; if (!M || !M.a) { if (U.movDirty) { g.clearRect(0, 0, mov.width, mov.height); U.movDirty = false; } return; } U.movDirty = true; if (mov.width !== innerWidth || mov.height !== innerHeight) { mov.width = innerWidth; mov.height = innerHeight; } g.clearRect(0, 0, mov.width, mov.height);
   const sc = p => { const v = A.P(p[0], p[1], p[2]).project(A.camera); return v.z > 1 ? null : [(v.x + 1) / 2 * innerWidth, (1 - v.y) / 2 * innerHeight]; }, a = sc(M.a), b = M.b ? sc(M.b) : M.hover ? sc(M.hover) : null; if (!a) return;
   g.strokeStyle = "#ffd166"; g.fillStyle = "#ffd166"; g.lineWidth = 3; g.beginPath(); g.arc(a[0], a[1], 5, 0, 7); g.fill(); if (!b) return; g.setLineDash(M.b ? [] : [8, 6]); g.beginPath(); g.moveTo(...a); g.lineTo(...b); g.stroke(); g.setLineDash([]); g.beginPath(); g.arc(b[0], b[1], 5, 0, 7); g.fill();
   const q = M.b || M.hover, d = Math.hypot(q[0] - M.a[0], q[1] - M.a[1]), t = `${d.toFixed(2)} m`; g.font = "600 13px Segoe UI"; const w = g.measureText(t).width + 16, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2; g.fillStyle = "rgba(8,24,56,.9)"; g.fillRect(mx - w / 2, my - 22, w, 20); g.fillStyle = "#fff"; g.fillText(t, mx - w / 2 + 8, my - 7); }
@@ -133,7 +133,7 @@ function wire() {
     if (id === "blurBtn") { document.body.classList.toggle("blur"); b.classList.toggle("on"); } });
   $("#eng").onclick = () => { togglePop("#engPop"); engine(); };
   $("#camSel").onchange = e => camMode(e.target.value); $("#flySel").onchange = e => { if (e.target.value) { if (V.view === "2d") V.view = "3d"; A.fly(e.target.value); } e.target.value = ""; }; $("#f2Sel").onchange = e => { V.floor2 = e.target.value; };
-  $("#speed").onchange = e => { V.speed = +e.target.value; };
+  $("#speed").onchange = e => { V.speed = +e.target.value; }; $("#qSel").onchange = e => A.setQuality(e.target.value); $("#qSel").value = V.quality || "auto";
   const sc = $("#scrub"); let drag = false; const seek = e => { const r = sc.getBoundingClientRect(); V.e = clamp((e.clientX - r.left) / r.width, 0, 1) * V.total; A.CAM.intro = -1; V.rise = 1; };
   sc.addEventListener("pointerdown", e => { drag = true; sc.setPointerCapture(e.pointerId); seek(e); }); sc.addEventListener("pointermove", e => { if (drag) seek(e); }); sc.addEventListener("pointerup", () => { drag = false; });
   A.canvas.addEventListener("click", e => { if (!U.measure || V.studioOpen) return; const p = floorPoint(e); if (!p) return; if (!U.measure.a || U.measure.b) U.measure = { a: p, b: null }; else { U.measure.b = p; tip(`Distance: ${Math.hypot(p[0] - U.measure.a[0], p[1] - U.measure.a[1]).toFixed(2)} m (click again for a new measurement, M to stop)`, 5000); } });
@@ -158,7 +158,7 @@ function step(d) { const C = A.CAM, intro = V.mode === "guided" && C.intro >= 0,
 function toggleMeasure() { U.measure = U.measure ? null : { a: null, b: null }; $("#measure").classList.toggle("on", !!U.measure); if (U.measure) tip("Measure: click two points on the floor", 3000); }
 function labels() { V.labels = !V.labels; $("#lblBtn").classList.toggle("on", V.labels); A.scene.traverse(o => { if (o.userData.label) o.visible = V.labels; }); }
 
-V.ui = { tabs: () => A && tabs(), steps: () => A && steps(), frame, tip, rec };
+V.ui = { tabs: () => A && tabs(), steps: () => A && steps(), frame, tip, rec, quality: l => { if (A && V.quality === "auto" && V.ready) tip(`Quality: ${l} (Auto keeps 60 fps; Options to change)`, 2500); } };
 V.hooks.ready.push(() => { A = V.api; document.body.appendChild(mov); wirePad(); wire(); V.planFloor = false; V.floorArrows = false; U.idleT = performance.now(); });
 V.hooks.built = V.hooks.built || []; V.hooks.built.push(() => { tabs(); steps(); wake(); });
 V.hooks.frame.push(dt => { applySticks(dt); drawMeasure(); idleCheck(); });

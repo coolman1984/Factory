@@ -193,7 +193,7 @@ function syncToolbar() {
   stb.querySelector('[data-a="undo"]').disabled = !S.undo.length; stb.querySelector('[data-a="redo"]').disabled = !S.redo.length; stb.querySelector('[data-a="auto"]').disabled = A.OFFLINE;
   const n = S.clash.objects.length + S.clash.walls.length, el = $("#stb-chk"); el.className = "chk " + (n ? "bad" : "ok"); el.textContent = n ? `${S.clash.objects.length} object clash(es) · ${S.clash.walls.length} wall crossing(s)` : "No clashes";
   setState(S.state, S.msg); }
-function setOpen(on) { S.open = on; V.studioOpen = on; document.body.classList.toggle("studio", on); $("#studio-btn")?.classList.toggle("on", on); if (!on) { S.draw = null; S.tool = "select"; } render(); syncToolbar(); }
+function setOpen(on) { S.open = on; S.lw = 0; V.studioOpen = on; document.body.classList.toggle("studio", on); $("#studio-btn")?.classList.toggle("on", on); if (!on) { S.draw = null; S.tool = "select"; } render(); syncToolbar(); }
 function setTab(t) { S.tab = t; render(); }
 const inp = (k, v, opt = "") => `<input data-f="${k}" value="${A.esc(v ?? "")}" ${opt}>`, numIn = (k, v, step = 0.1, opt = "") => `<input type="number" data-f="${k}" step="${step}" value="${v ?? ""}" ${opt}>`;
 function render() {
@@ -400,8 +400,9 @@ addEventListener("keydown", e => {
 /* ---------- overlay: step chips, route handles, drawing, all paths, clashes; timeline lanes ---------- */
 function rr(g, x, y, w, hh, r) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, hh, r) : g.rect(x, y, w, hh); }
 function drawOverlay() {
-  const W = innerWidth, H = innerHeight; if (ov.width !== W || ov.height !== H) { ov.width = W; ov.height = H; } og.clearRect(0, 0, W, H); if (!V.ready || !V.edit) return;
-  const cur = V.ps?.step ?? 0, col = V.edit.color || "#a78bfa";
+  if (!V.ready || !V.edit) return; const cur = V.ps?.step ?? 0, col = V.edit.color || "#a78bfa", need = S.open || S.allPaths;
+  if (!need) { if (S.ovDirty) { og.clearRect(0, 0, ov.width, ov.height); S.ovDirty = false; ov.style.display = "none"; } drawChips(cur); return; }
+  const W = innerWidth, H = innerHeight; if (ov.width !== W || ov.height !== H) { ov.width = W; ov.height = H; } og.clearRect(0, 0, W, H); S.ovDirty = true; ov.style.display = "";
   if (S.allPaths) for (const p of V.pack.paths) { if (p.tab !== V.tab || p.id === V.path.id) continue; og.strokeStyle = (p.data.color || "#888") + "aa"; og.lineWidth = 2; og.setLineDash([6, 5]); og.beginPath();
     p.data.steps.forEach((s, i) => { if (!i) return; const R = p.data.routes?.[i]?.length > 1 ? p.data.routes[i] : [stopById(p.data.steps[i - 1].stop)?.pos, stopById(s.stop)?.pos].filter(Boolean); R.forEach((q, k) => { const a = scr(q[0], q[1], q[2] || 0); if (!a) return; k ? og.lineTo(...a) : og.moveTo(...a); }); }); og.stroke(); og.setLineDash([]); }
   if (S.open) {   // route handles of the current path
@@ -416,25 +417,22 @@ function drawOverlay() {
       if (S.mouse && started) { const z = D.kind === "step" ? stopById(V.edit.steps[D.i - 1].stop).pos[2] || 0 : D.stops.at(-1)?.pos[2] || 0, m = floorAt({ clientX: S.mouse[0], clientY: S.mouse[1] }, z); if (m) lineTo(orthoTo(D.pts.at(-1) || (D.kind === "step" ? stopById(V.edit.steps[D.i - 1].stop).pos : D.stops.at(-1)?.pos), [snapV(m[0]), snapV(m[1]), z])); }
       og.stroke(); og.setLineDash([]); }
   }
-  if (V.labels) {   // V7 step chips: number + title at every stop of the path; done / now / next
-    const seen = new Map(); V.edit.steps.forEach((s, i) => { const st = stopById(s.stop); if (st) seen.set(s.stop + (s.lift ? ":" + i : ""), { i, st, s }); });
-    og.font = "600 12px Segoe UI, system-ui"; og.textBaseline = "middle"; const intro = V.mode === "guided" && A.CAM.intro >= 0, flat = (V.flat || 0) > 0.5;
-    for (const { i, st, s } of seen.values()) {
-      const up = (st.pos[2] || 0) > 3; if (flat && up) continue; const a = scr(st.pos[0], st.pos[1], (st.pos[2] || 0) + (flat ? 0 : 2.4)); if (!a) continue; const dim = up !== ((V.ps?.p[2] || 0) > 3) && V.floor2 !== "show"; og.globalAlpha = dim ? 0.45 : 1;
-      if (st.symbol === "scan" && !flat) { const q = [-1.3, 1.3].map(d => [scr(st.pos[0] - 1.2, st.pos[1] + d, st.pos[2] || 0), scr(st.pos[0] + 1.2, st.pos[1] + d, st.pos[2] || 0)]); og.strokeStyle = "#e5363d"; og.lineWidth = 3; for (const [p, r] of q) if (p && r) { og.beginPath(); og.moveTo(...p); og.lineTo(...r); og.stroke(); } }
-      const now = i === cur && !intro, done = i < cur && !intro, label = `${i + 1} ${s.title || st.name}`, w = og.measureText(label).width + 20, x = a[0] + 14, y = a[1];
-      // V8 marker by stop type: result = circle, mapping = square, scan = red-striped square, area / dest = rounded square, gate = diamond
-      const sym = st.symbol || "area", col = { result: "#7b3fc4", mapping: "#6a2bb0", scan: "#c00000", area: "#1f6feb", dest: "#0f766e", gate: "#2bd4c0" }[sym] || "#1f6feb";
-      og.fillStyle = col; og.strokeStyle = "#fff"; og.lineWidth = 2; og.beginPath();
-      if (sym === "result") og.arc(a[0], y, 8, 0, 7); else if (sym === "gate") { og.moveTo(a[0], y - 9); og.lineTo(a[0] + 9, y); og.lineTo(a[0], y + 9); og.lineTo(a[0] - 9, y); og.closePath(); } else rr(og, a[0] - 8, y - 8, 16, 16, sym === "area" || sym === "dest" ? 4 : 1);
-      og.fill(); if (sym === "scan") { og.save(); og.clip(); og.strokeStyle = "#fff"; og.lineWidth = 2; for (let k = -16; k < 16; k += 5) { og.beginPath(); og.moveTo(a[0] + k, y + 8); og.lineTo(a[0] + k + 16, y - 8); og.stroke(); } og.restore(); og.beginPath(); rr(og, a[0] - 8, y - 8, 16, 16, 1); } og.strokeStyle = "#fff"; og.stroke();
-      const gr = og.createLinearGradient(0, y - 11, 0, y + 11); if (now) { gr.addColorStop(0, "#2f86f0"); gr.addColorStop(1, "#1b57b8"); } else if (done) { gr.addColorStop(0, "rgba(24,106,92,.92)"); gr.addColorStop(1, "rgba(12,58,52,.94)"); } else { gr.addColorStop(0, "rgba(44,98,170,.9)"); gr.addColorStop(1, "rgba(14,40,84,.92)"); }
-      og.fillStyle = gr; rr(og, x, y - 11, w, 22, 11); og.fill(); og.strokeStyle = now ? "#fff" : done ? "rgba(43,212,192,.75)" : "rgba(190,224,255,.4)"; og.lineWidth = 1; og.stroke();
-      og.fillStyle = "#fff"; og.fillText(label, x + 10, y + 0.5); og.globalAlpha = 1; }
-  }
+  drawChips(cur);
+}
+/* V8 step chips as DOM elements (moved by transform: cheap for the compositor; no full-screen canvas each frame) */
+const chipLayer = h(`<div id="chips"></div>`), chipEls = new Map(), MK = { result: "result", mapping: "mapping", scan: "scan", area: "area", dest: "dest", gate: "gate" };
+function drawChips(cur) {
+  const live = new Set(), intro = V.mode === "guided" && A.CAM.intro >= 0, flat = (V.flat || 0) > 0.5;
+  if (V.labels) V.edit.steps.forEach((s, i) => { const st = stopById(s.stop); if (!st) return; const key = s.stop + (s.lift ? ":" + i : ""); if (live.has(key)) return;
+    const up = (st.pos[2] || 0) > 3; if (flat && up) return; const a = scr(st.pos[0], st.pos[1], (st.pos[2] || 0) + (flat ? 0 : 2.4)); if (!a || a[0] < -200 || a[0] > innerWidth + 50 || a[1] < -40 || a[1] > innerHeight + 40) return;
+    live.add(key); let el = chipEls.get(key); if (!el) { el = h(`<div class="chip9"><i></i><span></span></div>`); chipLayer.appendChild(el); chipEls.set(key, el); }
+    const now = i === cur && !intro, done = i < cur && !intro, dim = up !== ((V.ps?.p[2] || 0) > 3) && V.floor2 !== "show", label = `${i + 1} ${s.title || st.name}`, cls = `chip9 ${MK[st.symbol] || "area"}${now ? " now" : done ? " done" : ""}${dim ? " dim" : ""}`;
+    if (el._l !== label) { el._l = label; el.lastChild.textContent = label; } if (el.className !== cls) el.className = cls;
+    el.style.transform = `translate3d(${(a[0] - 9) | 0}px,${(a[1] - 11) | 0}px,0)`; });
+  for (const [k, el] of chipEls) if (!live.has(k)) { el.remove(); chipEls.delete(k); }
 }
 function drawLanes() {
-  const W = lanes.clientWidth, H = 34; if (!W) return; if (lanes.width !== W) lanes.width = W; lg.clearRect(0, 0, W, H); if (!V.ready || !V.total) return;
+  if (!S.open) return; const W = S.lw || (S.lw = lanes.clientWidth), H = 34; if (!W) { S.lw = 0; return; } if (lanes.width !== W) lanes.width = W; lg.clearRect(0, 0, W, H); if (!V.ready || !V.total) return;
   const x = t => 8 + (W - 16) * t / V.total, col = V.edit.color || "#a78bfa";
   V.steps.forEach((s, i) => { if (!i) return; lg.fillStyle = s.lift ? "#5eead4" : s.mode === "agv" ? "#60a5fa" : col; lg.fillRect(x(s.t0), 4, Math.max(1, x(s.tm) - x(s.t0)), 10); lg.fillStyle = "rgba(255,255,255,.18)"; lg.fillRect(x(s.tm), 4, Math.max(1, x(s.t1) - x(s.tm)), 10);
     lg.fillStyle = "rgba(255,255,255,.8)"; lg.font = "9px Segoe UI"; if (x(s.t1) - x(s.t0) > 14) lg.fillText(String(i + 1), x(s.t0) + 2, 12.5); });
@@ -449,7 +447,7 @@ V.hooks.ready.push(() => {
   A = V.api; T = A.T;
   S.known = new Set([...V.pack.paths.map(p => "path:" + p.id), ...V.pack.stops.map(s => "stop:" + s.id), ...V.pack.objects.map(o => "obj:" + o.id)]);
   if (A.OFFLINE) { try { const L = JSON.parse(localStorage.getItem(LKEY()) || "{}"); S.local = L; for (const [k, j] of Object.entries(L)) put(k, j); if (Object.keys(L).length) setTimeout(() => A.tip(`Restored ${Object.keys(L).length} edited record(s) saved in this browser`), 1500); } catch (e) {} }
-  document.body.append(ov, capLayer, lanes, stb, panel, ctx);
+  document.body.append(ov, chipLayer, capLayer, lanes, stb, panel, ctx);
   $("#studio-btn").onclick = () => setOpen(!S.open); S.shot = shot; S.addKey = f => addKey(!!f);
   A.canvas.addEventListener("pointerdown", onDown, true); addEventListener("pointermove", onMove); addEventListener("pointerup", onUp); A.canvas.addEventListener("dblclick", onDbl, true); A.canvas.addEventListener("contextmenu", onCtx, true);
   setState("saved");

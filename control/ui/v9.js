@@ -15,12 +15,12 @@ window.V9 = V;
 const canvas = $("#c"), renderer = new T.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance", preserveDrawingBuffer: false });
 renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1));
 renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.NeutralToneMapping ?? T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1;
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap; renderer.shadowMap.autoUpdate = false;
 const scene = new T.Scene(); scene.background = new T.Color(0xdfe7f1); scene.fog = new T.Fog(0xdfe7f1, 380, 900);
 const camera = new T.PerspectiveCamera(40, 1, 0.3, 3000);
 { const envScene = window.MFLook.environment(T), pm = new T.PMREMGenerator(renderer); scene.environment = pm.fromScene(envScene, 0.02).texture; pm.dispose(); }
 scene.add(new T.HemisphereLight(0xffffff, 0x2a3550, 0.9));
-const sun = new T.DirectionalLight(0xfff2e0, 2.2); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+const sun = new T.DirectionalLight(0xfff2e0, 2.2); sun.castShadow = true; sun.shadow.mapSize.set(3072, 3072);
 Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 400 }); sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04; scene.add(sun, sun.target);
 const FACT = new T.Group(); scene.add(FACT);       // everything that rises out of the flat plan (walls, columns, objects, 2nd floors)
 const F2 = new T.Group(); FACT.add(F2);            // everything of the 2nd floors (fades while the trolley is below)
@@ -40,17 +40,26 @@ function fit(md, size, pos, yaw, fitH) {
   const sx = size[0] / s.x, sz = size[1] / s.z, sy = fitH ? size[2] / s.y : Math.min(1.3, Math.max(0.75, Math.sqrt(sx * sz)));
   return new T.Matrix4().makeTranslation(pos.x, pos.y, pos.z).multiply(new T.Matrix4().makeRotationY(yaw * Math.PI / 180)).multiply(new T.Matrix4().makeTranslation(-c.x * sx, -b.min.y * sy, -c.z * sz)).multiply(new T.Matrix4().makeScale(sx, sy, sz));
 }
-function instanced(md, mats, parent = scene, ids = null) { const ims = [];
-  for (const p of md.parts) { const im = new T.InstancedMesh(p.geo, p.mat, mats.length); mats.forEach((M, i) => im.setMatrixAt(i, M.clone().multiply(p.m))); im.castShadow = true; im.receiveShadow = true; im.instanceMatrix.needsUpdate = true; parent.add(im); ims.push(im);
-    if (ids) { im.userData.ids = ids; im.userData.pm = p.m; V.pickables.push(im); } }
-  // object index: id -> its instances, so the Studio can move, turn or hide one object live
-  if (ids) ids.forEach((id, i) => { V.objIndex[id] = { md, i, ims }; });
-  return ims; }
+const TILE = 48, tileOf = M => Math.floor(M.elements[12] / TILE) + "," + Math.floor(M.elements[14] / TILE), _sz = new T.Vector3(), _bx = new T.Box3();
+V.tiles = [];   // every batch with its tile centre (distance culling of small details, shadow casters)
+function instanced(md, mats, parent = scene, ids = null) {
+  const groups = new Map(); mats.forEach((M, i) => { const k = tileOf(M); (groups.get(k) || groups.set(k, []).get(k)).push(i); });
+  const all = [];
+  for (const idx of groups.values()) {
+    const ims = [], tm = idx.map(i => mats[i]), tid = ids ? idx.map(i => ids[i]) : null, cx = tm.reduce((a, M) => a + M.elements[12], 0) / tm.length, cz = tm.reduce((a, M) => a + M.elements[14], 0) / tm.length;
+    for (const p of md.parts) { const im = new T.InstancedMesh(p.geo, p.mat, tm.length); tm.forEach((M, i) => im.setMatrixAt(i, M.clone().multiply(p.m))); im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere();
+      if (!p.geo.boundingBox) p.geo.computeBoundingBox(); _bx.copy(p.geo.boundingBox).applyMatrix4(tm[0].clone().multiply(p.m)).getSize(_sz);
+      const big = Math.max(_sz.x, _sz.y, _sz.z), small = big < 0.9; im.castShadow = !small; im.receiveShadow = false;   /* objects cast, floors receive: shadow lookups only on the floor pixels */ im.userData.detail = small ? 1 : big < 3 ? 2 : 0; im.userData.c = [cx, cz]; parent.add(im); ims.push(im); all.push(im); V.tiles.push(im);
+      if (tid) { im.userData.ids = tid; im.userData.pm = p.m; V.pickables.push(im); } }
+    // object index: id -> its instances, so the Studio can move, turn or hide one object live
+    if (tid) tid.forEach((id, i) => { V.objIndex[id] = { md, i, ims }; });
+  }
+  return all; }
 const FITH = new Set(["RACK", "PALLET", "CRANE_BRIDGE", "BOLLARD", "TABLE", "BIN_CART", "SMT_MODULE", "EPS_MACHINE", "LIFT"]);
 function placeObject(o) {   // write one object's current pos / yaw / size into its instances (or hide it when deleted)
   const ix = V.objIndex[o.id]; if (!ix) return false; const md = ix.md, M = o.deleted ? new T.Matrix4().makeScale(0, 0, 0) : fit(md, o.size, P(o.pos[0], o.pos[1], o.pos[2] || 0), o.yaw, FITH.has(o.prefab));
   if (ix.mesh) { ix.mesh.matrix.copy(M); ix.mesh.matrixAutoUpdate = false; ix.mesh.visible = !o.deleted; return true; }
-  for (const im of ix.ims) { im.setMatrixAt(ix.i, M.clone().multiply(im.userData.pm)); im.instanceMatrix.needsUpdate = true; im.boundingSphere = null; im.boundingBox = null; } return true; }
+  for (const im of ix.ims) { im.setMatrixAt(ix.i, M.clone().multiply(im.userData.pm)); im.instanceMatrix.needsUpdate = true; im.computeBoundingSphere(); im.boundingBox = null; } V.shadowDirty = true; return true; }
 async function addObjectMesh(o) {   // a new object placed in the Studio: its own small mesh group (no re-instancing)
   const md = await model(o.asset.split("/").pop().replace(".glb", "")); if (!md) return false; const g = new T.Group();
   for (const p of md.parts) { const m = new T.Mesh(p.geo, p.mat); m.matrixAutoUpdate = false; m.matrix.copy(p.m); m.castShadow = m.receiveShadow = true; m.userData.objId = o.id; g.add(m); V.pickables.push(m); }
@@ -85,9 +94,8 @@ async function buildFactory(pack) {
     if (l.kind === "column") { const md = await model("column"); if (!md) continue; const s = new T.Vector3(); md.box.getSize(s); instanced(md, l.segments.map(r => new T.Matrix4().makeTranslation(r[0], l.z, -r[1]).multiply(new T.Matrix4().makeScale(r[2] / s.x, l.height / s.y, r[3] / s.z))), FACT); continue; }
     const w = W[l.kind]; if (!w) continue; const hgt = l.z > 0 ? Math.min(l.height, 3) : w[0], y0 = (l.kind === "outline" ? l.height - 0.55 : 0) + l.z;
     const wm = l.kind === "outline" ? window.MFLook.material(T, "paint", { color: new T.Color(w[2]) }) : window.MFLook.material(T, "wall", { color: new T.Color(w[2]) });
-    const im = new T.InstancedMesh(box, wm, l.segments.length), M = new T.Matrix4();
-    l.segments.forEach((s, i) => { const a = P(s[0], s[1]), b2 = P(s[2], s[3]), d = b2.clone().sub(a), L = Math.max(d.length(), 0.01); M.makeRotationY(-Math.atan2(d.z, d.x)); M.scale(new T.Vector3(L + w[1] * 0.5, hgt, w[1])); M.setPosition(a.clone().add(b2).multiplyScalar(0.5).setY(y0 + hgt / 2)); im.setMatrixAt(i, M); });
-    im.castShadow = l.kind !== "partition"; im.receiveShadow = true; parent.add(im);
+    const Ms = l.segments.map(s => { const a = P(s[0], s[1]), b2 = P(s[2], s[3]), d = b2.clone().sub(a), L = Math.max(d.length(), 0.01), M = new T.Matrix4(); M.makeRotationY(-Math.atan2(d.z, d.x)); M.scale(new T.Vector3(L + w[1] * 0.5, hgt, w[1])); M.setPosition(a.clone().add(b2).multiplyScalar(0.5).setY(y0 + hgt / 2)); return M; });
+    for (const im of instanced({ parts: [{ geo: box, mat: wm, m: new T.Matrix4() }] }, Ms, parent)) { im.castShadow = l.kind !== "partition"; im.userData.detail = false; }
   }
   const groups = {};
   for (const o of pack.objects) { if (["TROLLEY", "AGV", "OPERATOR"].includes(o.prefab)) continue; const a = o.asset.split("/").pop().replace(".glb", ""); (groups[a] ||= []).push(o); }
@@ -103,9 +111,9 @@ async function buildFactory(pack) {
   { const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), r = g.createRadialGradient(64, 64, 8, 64, 64, 62); r.addColorStop(0, "rgba(10,14,24,.55)"); r.addColorStop(.6, "rgba(10,14,24,.25)"); r.addColorStop(1, "rgba(10,14,24,0)"); g.fillStyle = r; g.fillRect(0, 0, 128, 128);
     const blob = new T.Mesh(new T.PlaneGeometry(2.6, 3.4).rotateX(-Math.PI / 2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false })); blob.position.y = 0.03; V.trolley.add(blob); }
 }
-function actor(md, size) { const g = new T.Group(); if (md) { const m = md.scene.clone(true); m.applyMatrix4(fit(md, size, new T.Vector3(), 0, true)); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.add(m); } scene.add(g); return g; }
+function actor(md, size) { const g = new T.Group(); if (md) { const m = md.scene.clone(true); m.applyMatrix4(fit(md, size, new T.Vector3(), 0, true)); m.traverse(o => { if (o.isMesh) o.castShadow = false; }); g.add(m); } scene.add(g); return g; }
 function actorNative(md, turn = 0, scale = 1) {   // keep the model's own size (V8 trolley), centred on its footprint, standing on the floor
-  const g = new T.Group(); if (md) { const m = md.scene.clone(true), b = md.box, c = new T.Vector3(); b.getCenter(c); m.position.set(-c.x, -b.min.y, -c.z); const pivot = new T.Group(); pivot.rotation.y = turn; pivot.scale.setScalar(scale); pivot.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = true; }); g.add(pivot); } scene.add(g); return g; }
+  const g = new T.Group(); if (md) { const m = md.scene.clone(true), b = md.box, c = new T.Vector3(); b.getCenter(c); m.position.set(-c.x, -b.min.y, -c.z); const pivot = new T.Group(); pivot.rotation.y = turn; pivot.scale.setScalar(scale); pivot.add(m); m.traverse(o => { if (o.isMesh) o.castShadow = false; }); g.add(pivot); } scene.add(g); return g; }
 
 /* ---------- the selected path ---------- */
 const stopsById = () => Object.fromEntries(V.pack.stops.map(s => [s.id, { position_m: s.pos, name: s.name }]));
@@ -131,6 +139,7 @@ function applyTimeline(tl, k) {
 }
 function stopMarker(s, i) {   // a ring on the floor; the numbered step chips are drawn by the overlay (Studio)
   const ring = new T.Mesh(new T.RingGeometry(0.75, 0.95, 40), new T.MeshBasicMaterial({ color: 0xffb02e, transparent: true, opacity: 0.95, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.copy(P(s.pos[0], s.pos[1], (s.pos[2] || 0) + 0.04)); PATHG.add(ring);
+  if (s.symbol === "scan") for (const d of [-1.3, 1.3]) { const r = new T.Mesh(new T.PlaneGeometry(2.4, 0.1), new T.MeshBasicMaterial({ color: 0xe5363d, transparent: true, opacity: 0.95, depthWrite: false })); r.rotation.x = -Math.PI / 2; r.position.copy(P(s.pos[0], s.pos[1] + d, (s.pos[2] || 0) + 0.06)); r.renderOrder = 4; PATHG.add(r); }   // V8: the handheld-scan point
 }
 function buildRoute() {
   const pts = [], cum = [], start = []; let acc = 0;
@@ -324,6 +333,20 @@ async function record() {
   const dir = (V.edit.director?.keys || []).length; V.rec = rec; V.e = 0; V.playing = true; setMode(dir ? "director" : "guided"); camReset(); CAM.intro = dir ? -1 : 0; V.recEnd = V.total + 2; rec.start(1000); V.ui?.rec?.(true);
 }
 
+/* ---------- quality: high / medium / low, Auto steps down when the laptop cannot hold 60 fps ---------- */
+const QUALITY = { high: { pr: 1, far: 35, shadow: true }, medium: { pr: 0.85, far: 50, shadow: true }, low: { pr: 0.7, far: 35, shadow: false } };
+const gpuName = (() => { try { const gl = renderer.getContext(), x = gl.getExtension("WEBGL_debug_renderer_info"); return x ? gl.getParameter(x.UNMASKED_RENDERER_WEBGL) : ""; } catch (e) { return ""; } })();
+const integrated = /Intel|Iris|UHD|HD Graphics|Radeon\(TM\) Graphics|Mali|Adreno|Apple/i.test(gpuName), QKEY = "v9-quality-level";
+// Auto starts where this browser last held 60 fps (remembered), else Medium on integrated graphics (Iris Xe: measured 60 fps), High on others
+V.quality = q.get("quality") || "auto"; V.qLevel = V.quality === "auto" ? ((() => { try { return localStorage.getItem(QKEY); } catch (e) { return null; } })() || (integrated ? "medium" : "high")) : V.quality; V.gpu = gpuName;
+function applyQuality(level) { const Q = QUALITY[level]; V.qLevel = level; renderer.setPixelRatio(Q.pr); V.detailFar = Q.far; if (renderer.shadowMap.enabled !== Q.shadow) { renderer.shadowMap.enabled = Q.shadow; scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; }); } V.shadowDirty = true; resize(); V.ui?.quality?.(level); }
+function setQuality(qv) { V.quality = qv; V.qSlow = 0; if (qv === "auto") { try { localStorage.removeItem(QKEY); } catch (e) {} } applyQuality(qv === "auto" ? (integrated ? "medium" : "high") : qv); }
+function quality(dt) {
+  if (V.quality !== "auto" || !V.fps || (CAM.intro >= 0 && V.mode === "guided") || document.hidden) return;
+  V.qSlow = V.fps < 55 ? (V.qSlow || 0) + dt : 0;   // 4 s in a row under 55 fps: one step down (never back up by itself, so it does not flicker)
+  if (V.qSlow > 4) { V.qSlow = 0; if (V.qLevel === "high") applyQuality("medium"); else if (V.qLevel === "medium") applyQuality("low"); try { localStorage.setItem(QKEY, V.qLevel); } catch (e) {} }
+}
+
 /* ---------- loop ---------- */
 let last = performance.now(), frames = 0, fpsT = last;
 function frame(now) {
@@ -339,14 +362,23 @@ function frame(now) {
     const intro = V.mode === "guided" && CAM.intro >= 0, flatT = V.view === "2d" ? 1 : intro ? 1 - (V.rise || 0) : 0;
     V.flat = intro ? flatT : (V.flat ?? flatT) + (flatT - (V.flat ?? flatT)) * Math.min(1, dt * 4); FACT.scale.y = Math.max(0.012, 1 - V.flat);
     for (const pl of PLANS.children) { const o = pl.userData.tab === V.tab ? Math.max(V.flat, V.planFloor ? 0.45 : 0) : V.planFloor ? 0.3 : 0; pl.material.opacity = o; pl.visible = o > 0.01; }
-    const want2F = V.flat > 0.5 ? 0 : V.floor2 === "show" ? 1 : V.floor2 === "hide" ? 0 : ps.p[2] > 0.5 ? 1 : 0.28;   // see through the 2nd floor while the trolley is below
-    F2.visible = want2F > 0.01; if (V.f2op !== want2F) { V.f2op = want2F; F2.traverse(o => { for (const m of [].concat(o.material || [])) if (m.userData && "base" in m.userData) { m.opacity = m.userData.base * want2F; m.depthWrite = want2F > 0.9; } }); }
+    const nearLift = !!(V.steps[ps.step]?.lift || V.steps[ps.step + 1]?.lift), want2F = V.flat > 0.5 ? 0 : V.floor2 === "show" ? 1 : V.floor2 === "hide" ? 0 : ps.p[2] > 0.5 ? 1 : nearLift ? 0.28 : 0;   // auto: the 2nd floor on the 2nd floor, see-through around an elevator ride, else not drawn (no overdraw)
+    F2.visible = want2F > 0.01; if (V.f2op !== want2F) { V.f2op = want2F; F2.traverse(o => { for (const m of [].concat(o.material || [])) if (m.userData && "base" in m.userData) { m.opacity = m.userData.base * want2F; m.depthWrite = want2F > 0.9; m.transparent = want2F < 0.99 || m.userData.base < 0.99; } }); }
     camFrame(dt, ps, tp);
     for (const f of V.hooks.frame) f(dt, ps, now);
     V.ui?.frame?.(ps, intro); drawMini(ps);
   }
-  const sz = Math.min(220, Math.max(40, camera.position.distanceTo(CAM.tgt) * 1.3)); Object.assign(sun.shadow.camera, { left: -sz, right: sz, top: sz, bottom: -sz }); sun.shadow.camera.updateProjectionMatrix();
-  sun.position.copy(CAM.tgt).add(new T.Vector3(-90, 160, 70)); sun.target.position.copy(CAM.tgt);
+  // one shadow map over the whole process area of the tab: drawn once, again only when the tab changes, something is edited,
+  // or in 4 steps while the factory rises (no redraws while the camera moves = no hitches)
+  const sh = V.sh ||= { tab: null, fy: -1 };
+  if (V.ready && V.routeC && (V.shadowDirty || sh.tab !== V.tab || Math.abs(FACT.scale.y - sh.fy) > 0.24 || (FACT.scale.y === 1 && sh.fy !== 1))) {
+    const r = V.planRect?.[V.tab] || [V.routeC.x - V.routeSpan / 2, -V.routeC.z - V.routeSpan / 2, V.routeC.x + V.routeSpan / 2, -V.routeC.z + V.routeSpan / 2], c = P((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, 0), half = Math.max(r[2] - r[0], r[3] - r[1]) / 2 + 12;
+    sh.tab = V.tab; sh.fy = FACT.scale.y; V.shadowDirty = false; Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 600 }); sun.shadow.camera.updateProjectionMatrix();
+    sun.position.copy(c).add(new T.Vector3(-90, 160, 70)); sun.target.position.copy(c); sun.updateMatrixWorld(); sun.target.updateMatrixWorld(); renderer.shadowMap.needsUpdate = true; }
+  // small details (bins, cartons, bands, bumpers) are drawn only near the camera
+  if ((V.fc = (V.fc || 0) + 1) % 10 === 0) { const ex = camera.position.x, ez = camera.position.z, far = V.detailFar || 70; for (const im of V.tiles) if (im.userData.detail) { const d = Math.hypot(im.userData.c[0] - ex, im.userData.c[1] - ez) - TILE * 0.7; im.visible = d < (im.userData.detail === 1 ? far : far * 2.6); } }
+  FACT.visible = V.flat < 0.97 || !!V.studioOpen;   // the pure flat plan is the picture: the standing factory is not drawn at all
+  quality(dt);
   renderer.render(scene, camera);
   frames++; if (now - fpsT > 1000) { V.fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now; }
 }
@@ -357,9 +389,11 @@ addEventListener("resize", resize); resize();
     // let later scripts (the Studio) register their hooks first: wait until the whole page is parsed
     await new Promise(r => document.readyState === "complete" ? setTimeout(r, 0) : addEventListener("DOMContentLoaded", () => r(), { once: true }));
     V.pack = window.V9_PACK || await (await fetch("/api/scene3d")).json(); if (V.pack.error) throw new Error(V.pack.error);
-    V.api = { FE, record, fly, seekStep, playIntro, planFit, FACT, PLANS, T, scene, camera, renderer, canvas, P, F2, PATHG, CAM, orbit, selectPath, retime, applyTimeline, setMode, camReset, pose, stopsById, placeObject, addObjectMesh, model, label, tip, tabsUI, stepsUI, esc, mmss, eyeAt, FITH, fit, OFFLINE };
+    V.api = { setQuality, FE, record, fly, seekStep, playIntro, planFit, FACT, PLANS, T, scene, camera, renderer, canvas, P, F2, PATHG, CAM, orbit, selectPath, retime, applyTimeline, setMode, camReset, pose, stopsById, placeObject, addObjectMesh, model, label, tip, tabsUI, stepsUI, esc, mmss, eyeAt, FITH, fit, OFFLINE };
     for (const f of V.hooks.ready) await f();   // the Studio restores autosaved edits here, before the first path is shown
     await buildFactory(V.pack); V.view = q.get("view") || "auto"; selectPath(q.get("path") || V.pack.paths[0].id); setMode(q.get("mode") || (V.view === "2d" ? "plan" : "guided")); V.ready = true; $("#loading").remove();
+    FACT.traverse(o => { if (o !== FACT && o !== F2 && o.isMesh) { o.updateMatrix(); o.matrixAutoUpdate = false; } }); applyQuality(V.qLevel);
+    try { const t0 = performance.now(); FACT.visible = true; F2.visible = true; F2.traverse(o => { o.visible = true; }); for (const im of V.tiles) im.visible = true; if (renderer.compileAsync) await renderer.compileAsync(scene, camera); else renderer.compile(scene, camera); V.compileMs = Math.round(performance.now() - t0); } catch (e) { console.warn("shader warm-up skipped", e); }
     for (const f of V.hooks.built || []) f();
   } catch (err) { $("#loading").textContent = "Could not build V9: " + err.message; console.error(err); }
 })();
