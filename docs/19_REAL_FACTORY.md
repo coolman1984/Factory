@@ -89,3 +89,29 @@ straight runs), saved as one recorded, undoable command, then the engine re-time
 
 Limits: object classes and heights are inferred from 2D layers; walls are extruded line pairs (no door openings); the INJ 1
 plan picture shows about 10 injection machines where the Y26 CAD has 6 (different drawing revisions); wait times are assumed.
+
+## 8. Material Flow Player V9 (2026-11-14)
+
+V9 is the complete player on the new engine, built from everything the V8 player taught:
+
+| | |
+|---|---|
+| Open live (master data, Save) | Control Center (`start-real-factory.cmd`) → **3D & film** → *Open Material Flow Player V9*, or `http://127.0.0.1:8766/v9` |
+| Offline file (like V8) | `node control/v9/build.mjs` → `Material-Flow/dist/Material_Flow_Player_v9.0.html` (6.2 MB, double-click, no server) |
+| Code | `control/ui/v9.html`, `control/ui/v9.js`, `control/real/timing.js` (engine timing shared by Node and the browser), `control/v9/build.mjs` |
+
+- **All V8 tabs and paths on the true CAD**: INJ 1, INJ 2, EPS, Press; 10 paths, 46 stops. One transform fits every V8 slide
+  (INJ 1 96.6 %, INJ 2 92.9 %, EPS 93.7 % of CAD lines, 0.12 m/px): CAD = plan + (566.16, 587.88).
+- **Two floors and elevators**: the CAD has no 2nd-floor drawing, so each tab's 2nd floor is placed exactly above the 1st through
+  its elevator landings (offsets INJ 2 205.2 m, EPS 173.85 m, Press 190.8 m) at an assumed 6.0 m, with V8's traced walls and plan
+  drawing; 5 elevator shafts; elevator rides are engine legs on a shared lift resource (60 s assumed). The 2nd floor turns
+  see-through while the trolley is below (2F: auto / show / hide).
+- **Factory Engine in the page**: Edit (E) changes waits, push/AGV speed and the lift time; the engine re-times at once. Live
+  mode saves to the master data (recorded, undoable) and stores an engine run; the offline file downloads the edits as JSON.
+- **V8 lessons**: three.js build and `MFLook` (reflections, concrete, walls), neutral tone mapping, pixel ratio 1, guided camera
+  that keeps the trolley in sight using the true walls of its floor, minimap per floor, takes (WebM video), V8 glass UI.
+- **Routes**: all 10 paths clash-free against the CAD (auto-route; devices, gates and elevators are not obstacles; an object
+  drawn where an elevator stands is the elevator core and is removed). INJ 1 keeps the CAD's 6 injection machines (owner
+  decision 2026-11-14).
+- Checked here: all 10 paths load; offline file 60 fps, live 36–60 fps in headless Chrome on this laptop; engine re-timing and
+  save; no page errors.

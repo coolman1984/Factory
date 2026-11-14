@@ -11,6 +11,7 @@ import { worldTransform } from "../engine/src/blueprint.js";
 import { openLive, renderFilm, films, filmPath } from "./real/film.mjs";
 import { exportScene } from "./real/export-scene.mjs";
 import { autoRoute } from "./real/autoroute.mjs";
+import { runAndSave } from "./real/path.mjs";
 
 const vendorThree = () => ["three.js", ...Array.from({ length: 10 }, (_, i) => `three-${String(i + 1).padStart(3, "0")}.js`)].map(f => readFileSync(join(vendorDir, f), "utf8")).join("");
 import { statSync, createReadStream } from "node:fs";
@@ -20,7 +21,7 @@ const vendorDir = join(here, "../material-flow/src/v8/vendor"), assetDir = join(
 const args = process.argv.slice(2), arg = (k, d) => { const i = args.indexOf("--" + k); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const PORT = +arg("port", process.env.FC_PORT || 8765), S = await openStore(arg("db", process.env.FC_DB || undefined));
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json" };
-const STATIC = { "/3d.html": "ui/3d.html", "/viewer3d.js": "ui/viewer3d.js", "/": "ui/index.html", "/app.js": "ui/app.js", "/app.css": "ui/app.css", "/i18n.js": "ui/i18n.js", "/schema.js": "schema.js" };
+const STATIC = { "/v9": "ui/v9.html", "/v9.html": "ui/v9.html", "/v9.js": "ui/v9.js", "/real/timing.js": "real/timing.js", "/3d.html": "ui/3d.html", "/viewer3d.js": "ui/viewer3d.js", "/": "ui/index.html", "/app.js": "ui/app.js", "/app.css": "ui/app.css", "/i18n.js": "ui/i18n.js", "/schema.js": "schema.js" };
 
 const send = (res, code, body, type = "application/json; charset=utf-8", extra = {}) => { res.writeHead(code, { "content-type": type, "cache-control": "no-store", ...extra }); res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
 const body = req => new Promise((ok, bad) => { let b = ""; req.on("data", c => { b += c; if (b.length > 50e6) { bad(new Error("request too large")); req.destroy(); } }); req.on("end", () => { try { ok(b ? JSON.parse(b) : {}); } catch (e) { bad(new Error("body is not JSON")); } }); });
@@ -61,6 +62,7 @@ const routes = [
   ["POST", /^\/api\/query$/, (m, q, b) => S.query(b.sql)],
   ["GET", /^\/api\/films$/, () => films()],
   ["POST", /^\/api\/autoroute$/, (m, q, b) => autoRoute(S, b.path)],
+  ["POST", /^\/api\/path-run$/, (m, q, b) => { const r = runAndSave(S, b.path, "v9"); return { id: r.id, trip_s: r.trip_s, distance_m: r.distance_m }; }],
   ["GET", /^\/api\/scene3d$/, async (m, q) => { if (!S.all("path").length) return { error: "this database has no real-factory data (start with start-real-factory.cmd)" }; return (await exportScene({ db: S.file, path: q.get("path") || null, out: null })).pack; }],
   ["POST", /^\/api\/live3d$/, (m, q, b) => openLive({ path: b.path || null, db: S.file })],
   ["POST", /^\/api\/film$/, (m, q, b) => { if (S.filmJob) return { ok: false, reason: "a film is already rendering" }; S.filmJob = renderFilm({ path: b.path || null, db: S.file }).then(r => (S.filmJob = null, S.lastFilm = r)).catch(e => (S.filmJob = null, S.lastFilm = { ok: false, reason: e.message })); return { ok: true, started: true }; }],
@@ -74,6 +76,8 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
     if (req.method === "GET" && url.pathname === "/vendor/three.js") return send(res, 200, vendorThree(), "text/javascript; charset=utf-8", { "cache-control": "max-age=3600" });
+    if (req.method === "GET" && url.pathname === "/vendor/factory-engine.js") return send(res, 200, readFileSync(join(vendorDir, "../engine/factory-engine.js")), "text/javascript; charset=utf-8");
+    if (req.method === "GET" && /^\/plans\/[\w.\-]+\.png$/.test(url.pathname)) { const fp = join(here, "data/film", url.pathname.slice(1)); if (existsSync(fp)) return send(res, 200, readFileSync(fp), "image/png", { "cache-control": "max-age=600" }); }
     if (req.method === "GET" && url.pathname === "/vendor/look.js") return send(res, 200, readFileSync(join(vendorDir, "../look.js")), "text/javascript; charset=utf-8");
     if (req.method === "POST" && url.pathname === "/api/films/upload") {   // a take recorded in the browser
       const name = (url.searchParams.get("name") || "take.webm").replace(/[^\w.\-]/g, ""); if (!/\.webm$/.test(name)) return send(res, 400, { ok: false, reason: "webm only" });

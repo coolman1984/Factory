@@ -125,6 +125,11 @@ for (const tab of C.tabs) {
     log(`${tab}: 2nd floor offset ${off2.map(v => v.toFixed(2)).join(", ")} m, ${slabs.length - 1} plan picture(s), ${w2.length} walls`);
   }
 }
+{ // a "rack" or "equipment" drawn where an elevator stands is the elevator itself (layer 4 draws lift cores too)
+  const liftsE = entities.filter(e => e.prefab_id === "LIFT"), inside = (e, p) => { const a = -(e.transform.yaw_deg || 0) * Math.PI / 180, dx = p[0] - e.transform.position_m[0], dy = p[1] - e.transform.position_m[1]; return Math.abs(dx * Math.cos(a) - dy * Math.sin(a)) <= e.size_m[0] / 2 && Math.abs(dx * Math.sin(a) + dy * Math.cos(a)) <= e.size_m[1] / 2; };
+  const drop = entities.filter(e => ["RACK", "EQUIPMENT"].includes(e.prefab_id) && liftsE.some(l => inside(e, l.transform.position_m)));
+  for (const d of drop) entities.splice(entities.indexOf(d), 1);
+  log("objects that are elevator cores (removed):", drop.map(d => d.entity_id).join(", ") || "none"); }
 const first = stops.find(s => s.stop_id === paths[0].steps[0].stop).position_m;
 E("TROLLEY-01", "Parts trolley", "transporter", "TROLLEY", first, [1.2, 0.8, 1.5], 0, { caps: ["manual_push"], source: "path trolley" });
 E("OPERATOR-01", "Material handler", "worker", "OPERATOR", [first[0] - 1, first[1]], [0.6, 0.4, 1.75], 0, { source: "path operator" });

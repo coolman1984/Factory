@@ -17,11 +17,11 @@ export function runAndSave(store, pathId, actor = "engine") {
 
 // Route clearance against the true CAD layout: objects whose footprint (plus the trolley's half width) the route crosses, and
 // walls the route passes through. Returns { objects: [{ id, name, at:[x,y] }], walls: [{ layer, at:[x,y] }] }.
-export function clearance(path, entities, cadlayers, halfWidth = 0.6) {
+export function clearance(path, entities, cadlayers, halfWidth = 0.42) {   // trolley 0.8 m wide: a clash is a real overlap with its body
   const pts = []; for (const r of path.routes || []) for (let i = 1; i < (r || []).length; i++) { const [a, b] = [r[i - 1], r[i]]; if ((a[2] || 0) > 0.5 || (b[2] || 0) > 0.5) continue; const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.25)); for (let k = 0; k <= n; k++) pts.push([a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n]); }
   const objects = [];
   for (const e of entities) {
-    if (!e.size_m || ["zone", "transporter", "worker"].includes(e.category) || e.prefab_id === "RFID_GATE" || (e.transform.position_m[2] || 0) > 3) continue;   // gates are driven through; overhead cranes do not block the floor
+    if (!e.size_m || ["zone", "transporter", "worker"].includes(e.category) || ["RFID_GATE", "PC_STATION", "SCANNER", "LIFT"].includes(e.prefab_id) || (e.transform.position_m[2] || 0) > 3) continue;   // gates are driven through; overhead cranes do not block the floor
     const [cx, cy] = e.transform.position_m, a = -(e.transform.yaw_deg || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), hl = e.size_m[0] / 2 + halfWidth, hd = e.size_m[1] / 2 + halfWidth;
     const hit = pts.find(([x, y]) => { const dx = x - cx, dy = y - cy, lx = dx * c - dy * s, ly = dx * s + dy * c; return Math.abs(lx) <= hl && Math.abs(ly) <= hd; });
     if (hit) objects.push({ id: e.entity_id, name: e.name, at: hit.map(v => +v.toFixed(2)) });

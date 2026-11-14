@@ -1,5 +1,11 @@
 # سجل التغييرات
 
+## 2026-11-14 — Material Flow Player V9
+
+- Complete player on the new engine: all V8 tabs (INJ 1, INJ 2, EPS, Press) and 10 paths on the true CAD, both floors with elevator rides, the Factory Engine re-timing paths in the page (edit waits and speeds; save to master data), the V8 look, guided camera, minimap and video takes.
+- Live in the Control Center (/v9) and as one offline HTML file (control/v9/build.mjs).
+- All 10 paths clash-free (auto-route; elevator cores and devices handled); auto-route memory fixed (typed-array A*).
+
 ## 2026-11-14 — Real factory from AutoCAD
 
 - E1-E2 imported from the Y26 AutoCAD layout in true metres: buildings, 9,540 wall/column/marking shapes, 414 objects (injection machines, SMT modules, EPS machines, cranes, racks, pallets, ...), stops and the INJ 1 paths (player plan registered onto the CAD, 96.6% line overlap).
