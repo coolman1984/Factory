@@ -3,6 +3,16 @@
 Every version is a separate file `dist/Material_Flow_Player_v<version>.html` (older ones kept). Newest first.
 A change is not done until this file, the docs and [LESSONS.md](LESSONS.md) are updated in the same commit (`mf docs-check`).
 
+## V9.0 - Material Flow Player on the real factory and the new engine - 2026-11-14
+
+- Built from the 3D Factory repository (`control/v9/build.mjs`; live at `/v9` in the real-factory Control Center): one offline
+  file `dist/Material_Flow_Player_v9.0.html` (6.2 MB) with every V8 tab and path on the true AutoCAD layout (one transform for all
+  V8 slides, 92.9-96.6% line overlap at 0.12 m/px), both floors placed by the elevator landings (2F height 6.0 m assumed),
+  elevator rides, the Factory Engine re-timing paths in the page, and the V8 look, guided camera, minimap and takes.
+- All 10 paths clash-free against the CAD (auto-route). INJ 1 shows the CAD's 6 injection machines (owner decision).
+- Checked: offline file 60 fps in headless Chrome on this laptop, engine re-timing, no page errors. Not checked: the V8 gate
+  (V9 is a new player, not a V8 build).
+
 ## V8.3 - Engine 0.3: real returns, measured times, traffic, Studio edits through the engine - 2026-11-13
 
 - Factory Engine 0.3.0 (traffic zones, serial numbers / test-repair / packing plan, layout journal); bridge still replays every
